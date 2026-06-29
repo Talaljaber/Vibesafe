@@ -21,14 +21,7 @@
 - **Before:** Secrets hardcoded, empty `.env.example`, missing dependency declarations.
 - **After:** Clean `.env.example`, safer configurations, and fewer obvious deployment risks.
 
----
 
-## 📸 Screenshots
-
-<!-- TODO: Add VS Code sidebar screenshot -->
-<!-- TODO: Add Problems panel screenshot -->
-<!-- TODO: Add CLI scan output screenshot -->
-<!-- TODO: Add HTML report screenshot -->
 
 ---
 
