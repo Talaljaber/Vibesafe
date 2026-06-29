@@ -8,6 +8,7 @@ import { MissingAuthorizationDetector } from "../detectors/missing-authorization
 import { DependencyDetector } from "../detectors/dependency-detector.js";
 import { CodebaseMessDetector } from "../detectors/codebase-mess-detector.js";
 import { ProjectStructureDetector } from "../detectors/project-structure-detector.js";
+import { HardcodedLocalhostDetector } from "../detectors/hardcoded-localhost-detector.js";
 
 export function createDefaultRegistry(): DetectorRegistry {
   const registry = new DetectorRegistry();
@@ -18,6 +19,7 @@ export function createDefaultRegistry(): DetectorRegistry {
   registry.register(new MissingAuthorizationDetector());
   registry.register(new DependencyDetector());
   registry.register(new CodebaseMessDetector());
+  registry.register(new HardcodedLocalhostDetector());
   registry.register(new ProjectStructureDetector());
   return registry;
 }
@@ -41,14 +43,20 @@ export class DetectorRegistry {
   /**
    * Runs all registered detectors against the provided context.
    */
-  async runAll(context: ScanContext, onProgress?: (message: string, current: number, total: number) => void): Promise<{ findings: Finding[]; errors: { detectorId: string; detectorName: string; message: string }[] }> {
+  async runAll(
+    context: ScanContext,
+    onProgress?: (message: string, current: number, total: number) => void,
+  ): Promise<{
+    findings: Finding[];
+    errors: { detectorId: string; detectorName: string; message: string }[];
+  }> {
     const findings: Finding[] = [];
     const errors: { detectorId: string; detectorName: string; message: string }[] = [];
 
     // Filter detectors based on config.enabledCategories
     const enabledCategories = context.config.enabledCategories;
-    const activeDetectors = this.detectors.filter(d => 
-      !enabledCategories || enabledCategories.includes(d.category)
+    const activeDetectors = this.detectors.filter(
+      (d) => !enabledCategories || enabledCategories.includes(d.category),
     );
 
     const total = activeDetectors.length;
@@ -59,18 +67,18 @@ export class DetectorRegistry {
       if (onProgress) {
         onProgress(`Running ${detector.constructor.name}...`, completed, total);
       }
-      
+
       try {
         const result = await detector.detect(context);
         findings.push(...result);
-      } catch (error: any) {
+      } catch (error: unknown) {
         errors.push({
           detectorId: detector.id,
           detectorName: detector.name,
-          message: error.message || String(error)
+          message: error instanceof Error ? error.message : String(error),
         });
       }
-      
+
       completed++;
       if (onProgress) {
         onProgress(`Finished ${detector.constructor.name}`, completed, total);
