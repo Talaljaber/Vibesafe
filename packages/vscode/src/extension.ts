@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import path from "path";
 import { ScannerPipeline, createDefaultRegistry } from "@vibeguard/core";
-import { updateDiagnostics } from "./diagnostics.js";
+import { updateDiagnostics, updateAllDiagnostics } from "./diagnostics.js";
 import { VibeGuardCodeActionProvider } from "./codeActions.js";
 
 // Keep a reference to the collection so we can clear/update it
@@ -44,6 +44,37 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
 
+  // Register command to scan the entire project manually
+  context.subscriptions.push(
+    vscode.commands.registerCommand("vibeguard.scan", async () => {
+      if (!vscode.workspace.workspaceFolders) {
+        vscode.window.showErrorMessage("VibeGuard: No workspace open.");
+        return;
+      }
+      const rootPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
+      
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: "VibeGuard: Scanning project for issues...",
+        cancellable: false
+      }, async () => {
+        try {
+          const result = await pipeline.scan({ rootPath });
+          updateAllDiagnostics(rootPath, diagnosticCollection, result.findings);
+          
+          if (result.findings.length > 0) {
+            vscode.window.showWarningMessage(`VibeGuard found ${result.findings.length} issues. Check the Problems panel!`);
+            vscode.commands.executeCommand("workbench.action.problems.focus");
+          } else {
+            vscode.window.showInformationMessage("VibeGuard: No issues found! Your code is pristine ✨");
+          }
+        } catch (error: any) {
+          vscode.window.showErrorMessage("VibeGuard scan failed: " + error.message);
+        }
+      });
+    })
+  );
+
   // Run the scanner whenever a document is saved
   context.subscriptions.push(
     vscode.workspace.onDidSaveTextDocument(async (document) => {
@@ -58,11 +89,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Optionally run it on open documents right away
   if (vscode.workspace.getConfiguration("vibeguard").get("scanOnOpen")) {
-    for (const doc of vscode.workspace.textDocuments) {
-      if (["javascript", "javascriptreact", "typescript", "typescriptreact"].includes(doc.languageId)) {
-        runScannerOnDocument(doc);
-      }
-    }
+    vscode.commands.executeCommand("vibeguard.scan");
   }
 }
 

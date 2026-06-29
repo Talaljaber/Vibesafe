@@ -70,3 +70,58 @@ export function updateDiagnostics(
   // Update the collection for this specific document's URI
   collection.set(document.uri, diagnostics);
 }
+
+import * as path from "path";
+
+/**
+ * Updates the VS Code DiagnosticCollection with VibeGuard findings for the entire project.
+ */
+export function updateAllDiagnostics(
+  rootPath: string,
+  collection: vscode.DiagnosticCollection,
+  findings: Finding[]
+): void {
+  // Clear existing diagnostics to avoid stale squiggles
+  collection.clear();
+
+  // Group findings by file path
+  const findingsByFile = new Map<string, Finding[]>();
+  for (const finding of findings) {
+    if (!finding.file || !finding.line) continue;
+    
+    // Convert relative path to absolute
+    const absPath = path.resolve(rootPath, finding.file);
+    if (!findingsByFile.has(absPath)) {
+      findingsByFile.set(absPath, []);
+    }
+    findingsByFile.get(absPath)!.push(finding);
+  }
+
+  // Iterate over files and create Diagnostics
+  for (const [absPath, fileFindings] of findingsByFile.entries()) {
+    const uri = vscode.Uri.file(absPath);
+    const diagnostics: vscode.Diagnostic[] = [];
+    
+    for (const finding of fileFindings) {
+      const lineIndex = finding.line! - 1;
+      
+      // Since we don't have the TextDocument loaded, we highlight the first 100 chars of the line.
+      const range = new vscode.Range(lineIndex, 0, lineIndex, 100);
+      
+      const message = `VibeGuard [${finding.ruleId}]: ${finding.title}\n\n${finding.plainEnglishProblem}\n\nWhy it matters: ${finding.whyItMatters}`;
+      const diagnostic = new vscode.Diagnostic(
+        range,
+        message,
+        mapSeverity(finding.severity)
+      );
+      
+      diagnostic.source = "VibeGuard";
+      diagnostic.code = finding.ruleId;
+      (diagnostic as any).vibeguardFinding = finding;
+      
+      diagnostics.push(diagnostic);
+    }
+    
+    collection.set(uri, diagnostics);
+  }
+}
