@@ -1,7 +1,25 @@
 #!/usr/bin/env node
-// vibeguard CLI entry point
-// Phase 5 will implement the full CLI with commander.js commands.
-// This placeholder exits cleanly so the build succeeds.
+import { Command } from "commander";
+import { printBanner } from "./ui/banner.js";
+import { runScan } from "./commands/scan.js";
+import { VIBEGUARD_VERSION } from "@vibeguard/shared";
 
-// eslint-disable-next-line no-console
-console.log("VibeGuard CLI — coming in Phase 5");
+// Print the professional startup banner
+printBanner();
+
+const program = new Command();
+
+program
+  .name("vibeguard")
+  .description("The don't-deploy-that-yet tool for vibe-coded apps")
+  .version(VIBEGUARD_VERSION);
+
+program
+  .command("scan")
+  .description("Scan a directory for vibe-coding security and quality issues")
+  .argument("[dir]", "Directory to scan", ".")
+  .action(async (dir) => {
+    await runScan(dir);
+  });
+
+program.parse(process.argv);
