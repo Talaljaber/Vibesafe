@@ -9,7 +9,7 @@
   },
   "main": "./dist/extension.js",
   "scripts": {
-    "build": "tsc --project tsconfig.json",
+    "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "test": "echo \"VS Code extension tests run separately via vscode-test\" && exit 0",
@@ -73,7 +73,12 @@
         },
         "vibeguard.minSeverity": {
           "type": "string",
-          "enum": ["critical", "high", "medium", "low"],
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low"
+          ],
           "default": "low",
           "description": "Minimum severity level to show in the sidebar."
         },
@@ -86,6 +91,10 @@
     }
   },
   "activationEvents": [
+    "onLanguage:javascript",
+    "onLanguage:javascriptreact",
+    "onLanguage:typescript",
+    "onLanguage:typescriptreact",
     "onCommand:vibeguard.scan",
     "onView:vibeguard.issues"
   ],
@@ -97,6 +106,7 @@
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.90.0",
     "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.28.1",
     "rimraf": "^6.0.0",
     "typescript": "^5.5.0"
   }
