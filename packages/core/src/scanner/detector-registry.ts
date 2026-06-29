@@ -1,5 +1,26 @@
 import type { Detector, Finding, ScanContext } from "@vibeguard/shared";
 
+import { SecretDetector } from "../detectors/secret-detector.js";
+import { FrontendExposureDetector } from "../detectors/frontend-exposure-detector.js";
+import { MissingAuthDetector } from "../detectors/missing-auth-detector.js";
+import { MissingValidationDetector } from "../detectors/missing-validation-detector.js";
+import { MissingAuthorizationDetector } from "../detectors/missing-authorization-detector.js";
+import { DependencyDetector } from "../detectors/dependency-detector.js";
+import { CodebaseMessDetector } from "../detectors/codebase-mess-detector.js";
+import { ProjectStructureDetector } from "../detectors/project-structure-detector.js";
+
+export function createDefaultRegistry(): DetectorRegistry {
+  const registry = new DetectorRegistry();
+  registry.register(new SecretDetector());
+  registry.register(new FrontendExposureDetector());
+  registry.register(new MissingAuthDetector());
+  registry.register(new MissingValidationDetector());
+  registry.register(new MissingAuthorizationDetector());
+  registry.register(new DependencyDetector());
+  registry.register(new CodebaseMessDetector());
+  registry.register(new ProjectStructureDetector());
+  return registry;
+}
 export class DetectorRegistry {
   private detectors: Detector[] = [];
 
