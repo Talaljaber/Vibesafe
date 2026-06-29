@@ -1,6 +1,6 @@
 {
-  "name": "vibesafe-scanner",
-  "version": "0.1.3",
+  "name": "vibesafe",
+  "version": "0.1.4",
   "icon": "icon.png",
   "displayName": "VibeSafe by Talal Jaber",
   "description": "VibeSafe VS Code Extension — pre-deploy safety scanner for vibe-coded apps",
@@ -98,6 +98,11 @@
           "type": "boolean",
           "default": false,
           "description": "Automatically scan the project when a workspace is opened."
+        },
+        "vibesafe.scanOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically run VibeSafe whenever you save a file. Might cause performance issues in very large codebases."
         }
       }
     }

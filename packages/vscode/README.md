@@ -2,8 +2,8 @@
   <h1>🛡️ VibeSafe for VS Code</h1>
   <p><strong>Catch security flaws and exposed secrets from AI "vibe coding" before you ship.</strong></p>
   <p>
-    <a href="https://marketplace.visualstudio.com/items?itemName=VibeSafe.vibesafe"><img src="https://img.shields.io/visual-studio-marketplace/v/VibeSafe.vibesafe?style=flat-square&color=blueviolet" alt="VS Code Marketplace"></a>
-    <a href="https://marketplace.visualstudio.com/items?itemName=VibeSafe.vibesafe"><img src="https://img.shields.io/visual-studio-marketplace/i/VibeSafe.vibesafe?style=flat-square&color=success" alt="Installs"></a>
+    <a href="https://marketplace.visualstudio.com/items?itemName=talaljaber.vibesafe"><img src="https://img.shields.io/visual-studio-marketplace/v/talaljaber.vibesafe?style=flat-square&color=blueviolet" alt="VS Code Marketplace"></a>
+    <a href="https://marketplace.visualstudio.com/items?itemName=talaljaber.vibesafe"><img src="https://img.shields.io/visual-studio-marketplace/i/talaljaber.vibesafe?style=flat-square&color=success" alt="Installs"></a>
     <a href="https://github.com/talaljaber/vibesafe"><img src="https://img.shields.io/badge/GitHub-Source-blue?style=flat-square&logo=github" alt="GitHub"></a>
   </p>
 </div>

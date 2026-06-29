@@ -1,5 +1,5 @@
 {
-  "name": "vibesafe",
+  "name": "@vibesafe/cli",
   "version": "0.1.0",
   "description": "The don't-deploy-that-yet tool for vibe-coded apps — CLI",
   "license": "MIT",

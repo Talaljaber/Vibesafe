@@ -41,4 +41,16 @@ describe("MissingAuthDetector", () => {
     const findings = await detector.detect(context);
     expect(findings).toHaveLength(0);
   });
+  it("should detect if only generic getUser is used", async () => {
+    const context = createContext({
+      "app/api/users/route.ts": `
+        export async function POST(req: Request) {
+          const user = getUser(); // generic, should not count as auth
+          return Response.json({ success: true });
+        }
+      `,
+    });
+    const findings = await detector.detect(context);
+    expect(findings).toHaveLength(1);
+  });
 });

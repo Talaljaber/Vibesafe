@@ -1,8 +1,7 @@
 export const AUTH_FUNCTION_SIGNATURES = [
   "getServerSession",
-  "auth()",
-  "currentUser",
-  "getUser",
+  "await auth()",
+  "import { auth }",
   "supabase.auth.getUser",
   "supabase.auth.getSession",
   "verifyToken",

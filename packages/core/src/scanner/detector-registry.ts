@@ -41,8 +41,9 @@ export class DetectorRegistry {
   /**
    * Runs all registered detectors against the provided context.
    */
-  async runAll(context: ScanContext, onProgress?: (message: string, current: number, total: number) => void): Promise<Finding[]> {
+  async runAll(context: ScanContext, onProgress?: (message: string, current: number, total: number) => void): Promise<{ findings: Finding[]; errors: { detectorId: string; detectorName: string; message: string }[] }> {
     const findings: Finding[] = [];
+    const errors: { detectorId: string; detectorName: string; message: string }[] = [];
 
     // Filter detectors based on config.enabledCategories
     const enabledCategories = context.config.enabledCategories;
@@ -62,8 +63,12 @@ export class DetectorRegistry {
       try {
         const result = await detector.detect(context);
         findings.push(...result);
-      } catch (error) {
-        // Swallow error and continue
+      } catch (error: any) {
+        errors.push({
+          detectorId: detector.id,
+          detectorName: detector.name,
+          message: error.message || String(error)
+        });
       }
       
       completed++;
@@ -72,6 +77,6 @@ export class DetectorRegistry {
       }
     }
 
-    return findings;
+    return { findings, errors };
   }
 }

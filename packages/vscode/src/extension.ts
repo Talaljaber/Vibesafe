@@ -17,6 +17,9 @@ let deployStatusProvider: VibeSafeDeployStatusProvider;
 let issuesProvider: VibeSafeIssuesProvider;
 let hoverProvider: VibeSafeHoverProvider;
 
+let scanTimeout: NodeJS.Timeout | null = null;
+let latestScanPromise: Promise<void> | null = null;
+
 export function activate(context: vscode.ExtensionContext): void {
   console.log('VibeSafe extension is now active!');
 
@@ -152,13 +155,27 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Run the scanner whenever a document is saved
   context.subscriptions.push(
-    vscode.workspace.onDidSaveTextDocument(async (document) => {
+    vscode.workspace.onDidSaveTextDocument((document) => {
+      // Check if scanOnSave is enabled
+      if (!vscode.workspace.getConfiguration("vibesafe").get("scanOnSave")) {
+        return;
+      }
+
       // Only scan code files
       if (!["javascript", "javascriptreact", "typescript", "typescriptreact"].includes(document.languageId)) {
         return;
       }
 
-      await runScannerOnDocument(document);
+      // Debounce the scan request
+      if (scanTimeout) {
+        clearTimeout(scanTimeout);
+      }
+      
+      scanTimeout = setTimeout(() => {
+        // Queue the promise to prevent overlapping concurrent scans
+        const previousPromise = latestScanPromise || Promise.resolve();
+        latestScanPromise = previousPromise.then(() => runScannerOnDocument(document)).catch(() => {});
+      }, 1500);
     })
   );
 

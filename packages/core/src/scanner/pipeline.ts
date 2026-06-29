@@ -65,7 +65,7 @@ export class ScannerPipeline {
     };
 
     // 4. Run detectors
-    let findings = await this.registry.runAll(scanContext, onProgress);
+    let { findings, errors: detectorErrors } = await this.registry.runAll(scanContext, onProgress);
 
     // 5. Filter findings based on config
     if (config.minSeverity) {
@@ -98,6 +98,7 @@ export class ScannerPipeline {
       summary,
       repairPlan,
       durationMs,
+      errors: detectorErrors,
     };
   }
 

@@ -148,6 +148,9 @@ export interface ScanResult {
 
   /** How long the scan took in milliseconds. */
   durationMs: number;
+
+  /** Any errors encountered by individual detectors during the scan. */
+  errors?: { detectorId: string; detectorName: string; message: string }[];
 }
 
 // ─── Project Context ──────────────────────────────────────────────────────────

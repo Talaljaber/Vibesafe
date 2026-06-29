@@ -3,7 +3,7 @@
   <p><strong>The Pre-Deploy Safety Scanner for Vibe-Coded Apps</strong></p>
   <p>
     <a href="https://www.npmjs.com/package/@vibesafe/cli"><img src="https://img.shields.io/npm/v/@vibesafe/cli?style=flat-square&color=blue" alt="NPM Version"></a>
-    <a href="https://marketplace.visualstudio.com/items?itemName=VibeSafe.vibesafe"><img src="https://img.shields.io/visual-studio-marketplace/v/VibeSafe.vibesafe?style=flat-square&color=blueviolet" alt="VS Code Marketplace"></a>
+    <a href="https://marketplace.visualstudio.com/items?itemName=talaljaber.vibesafe"><img src="https://img.shields.io/visual-studio-marketplace/v/talaljaber.vibesafe?style=flat-square&color=blueviolet" alt="VS Code Marketplace"></a>
     <img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="License">
   </p>
 </div>
@@ -22,7 +22,7 @@ You can run VibeSafe instantly using `npx`, or install it as a development depen
 
 **Option 1: Run instantly (No installation)**
 ```bash
-npx @vibesafe/cli scan .
+npx vibesafe scan .
 ```
 
 **Option 2: Install locally in your project**
@@ -35,8 +35,8 @@ yarn add -D @vibesafe/cli
 ```
 
 **CLI Commands:**
-- `npx @vibesafe/cli scan [path]` - Scans the specified directory, outputs a detailed **Repair Plan**, and generates a beautiful `vibesafe-report.html` dashboard.
-- `npx @vibesafe/cli --help` - Shows all available options and commands.
+- `npx vibesafe scan [path]` - Scans the specified directory, outputs a detailed **Repair Plan**, and generates a beautiful `vibesafe-report.html` dashboard.
+- `npx vibesafe --help` - Shows all available options and commands.
 
 ### 🔌 VS Code Extension
 Prefer working entirely within your editor? Install the **VibeSafe** extension!

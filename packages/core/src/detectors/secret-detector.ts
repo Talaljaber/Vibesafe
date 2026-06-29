@@ -1,4 +1,4 @@
-import { Detector, Finding, ScanContext } from "@vibesafe/shared";
+import { Detector, Finding, ScanContext, redactSecret } from "@vibesafe/shared";
 import { SECRET_PATTERNS } from "./patterns/secret-patterns.js";
 import path from "path";
 import crypto from "crypto";
@@ -44,7 +44,7 @@ export class SecretDetector implements Detector {
               confidence: pattern.confidence,
               file: filePath,
               line: i + 1,
-              evidence: match[0],
+              evidence: redactSecret(match[0]),
               plainEnglishProblem: `We found what looks like a ${pattern.name} written directly in your code.`,
               whyItMatters: `If you deploy this, anyone who can see this file can extract the key and use your account, potentially running up large bills or accessing private data.`,
               fixSteps: [
