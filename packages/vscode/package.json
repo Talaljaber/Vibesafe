@@ -1,0 +1,103 @@
+{
+  "name": "vibeguard-vscode",
+  "version": "0.1.0",
+  "description": "VibeGuard VS Code Extension — pre-deploy safety scanner for vibe-coded apps",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "main": "./dist/extension.js",
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "echo \"VS Code extension tests run separately via vscode-test\" && exit 0",
+    "clean": "rimraf dist *.tsbuildinfo",
+    "package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "vibeguard",
+          "title": "VibeGuard",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "vibeguard": [
+        {
+          "id": "vibeguard.deployStatus",
+          "name": "Deploy Status",
+          "type": "webview"
+        },
+        {
+          "id": "vibeguard.issues",
+          "name": "Issues",
+          "type": "tree"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "vibeguard.scan",
+        "title": "VibeGuard: Scan Project",
+        "icon": "$(shield)"
+      },
+      {
+        "command": "vibeguard.rescan",
+        "title": "VibeGuard: Re-scan",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "vibeguard.copyFixPrompt",
+        "title": "VibeGuard: Copy Fix Prompt",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "vibeguard.applyFix",
+        "title": "VibeGuard: Apply Safe Fix",
+        "icon": "$(wrench)"
+      }
+    ],
+    "configuration": {
+      "title": "VibeGuard",
+      "properties": {
+        "vibeguard.enabledCategories": {
+          "type": "array",
+          "default": [],
+          "description": "Categories to enable. Empty array means all categories are enabled."
+        },
+        "vibeguard.minSeverity": {
+          "type": "string",
+          "enum": ["critical", "high", "medium", "low"],
+          "default": "low",
+          "description": "Minimum severity level to show in the sidebar."
+        },
+        "vibeguard.scanOnOpen": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically scan the project when a workspace is opened."
+        }
+      }
+    }
+  },
+  "activationEvents": [
+    "onCommand:vibeguard.scan",
+    "onView:vibeguard.issues"
+  ],
+  "dependencies": {
+    "@vibeguard/core": "workspace:*",
+    "@vibeguard/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.0.0",
+    "rimraf": "^6.0.0",
+    "typescript": "^5.5.0"
+  }
+}

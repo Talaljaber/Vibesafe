@@ -1,0 +1,35 @@
+{
+  "name": "@vibeguard/core",
+  "version": "0.1.0",
+  "description": "VibeGuard scanning engine — detectors, scoring, repair plan, auto-fixes",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rimraf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@vibeguard/shared": "workspace:*",
+    "fast-glob": "^3.3.3",
+    "ignore": "^7.0.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "rimraf": "^6.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  }
+}
