@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "description": "Shared types, constants, and enums for VibeGuard",
   "license": "MIT",
-  "private": true,
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

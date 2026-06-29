@@ -18,7 +18,7 @@ export class ScannerPipeline {
   /**
    * Runs the full scanning pipeline on a project.
    */
-  async scan(userConfig: Partial<ScanConfig> & { rootPath: string }): Promise<ScanResult> {
+  async scan(userConfig: Partial<ScanConfig> & { rootPath: string }, onProgress?: (message: string, current: number, total: number) => void): Promise<ScanResult> {
     const startTime = Date.now();
     const config = mergeConfig(userConfig.rootPath, userConfig);
     
@@ -65,7 +65,7 @@ export class ScannerPipeline {
     };
 
     // 4. Run detectors
-    let findings = await this.registry.runAll(scanContext);
+    let findings = await this.registry.runAll(scanContext, onProgress);
 
     // 5. Filter findings based on config
     if (config.minSeverity) {
@@ -159,6 +159,8 @@ export class ScannerPipeline {
       title: f.title,
       severity: f.severity,
       category: f.category,
+      file: f.file,
+      line: f.line,
       description: f.whyItMatters,
       fixSteps: f.fixSteps,
       aiFixPrompt: f.aiFixPrompt,

@@ -67,7 +67,8 @@ export function printScanResult(result: ScanResult) {
 
   for (const step of result.repairPlan.steps) {
     const sevColor = getColorForSeverity(step.severity);
-    console.log(`${chalk.bold(`Step ${step.order}`)}: Fix ${sevColor(step.title)} (~${step.estimatedMinutes} mins)`);
+    const locationStr = (step.file && step.line) ? ` (@ ${step.file}:${step.line})` : (step.file ? ` (@ ${step.file})` : '');
+    console.log(`${chalk.bold(`Step ${step.order}`)}: Fix ${sevColor(step.title)}${chalk.dim(locationStr)} (~${step.estimatedMinutes} mins)`);
     for (const fix of step.fixSteps) {
       console.log(`  - ${fix}`);
     }

@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "description": "VibeGuard scanning engine — detectors, scoring, repair plan, auto-fixes",
   "license": "MIT",
-  "private": true,
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

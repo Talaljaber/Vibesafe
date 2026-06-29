@@ -227,6 +227,12 @@ export interface RepairStep {
   severity: Severity;
   category: FindingCategory;
 
+  /** Relative file path where the issue was found. */
+  file?: string | undefined;
+
+  /** Line number where the issue was found. */
+  line?: number | undefined;
+
   /** Longer description of what to do. */
   description: string;
 

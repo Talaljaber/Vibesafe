@@ -41,7 +41,7 @@ export class DetectorRegistry {
   /**
    * Runs all registered detectors against the provided context.
    */
-  async runAll(context: ScanContext): Promise<Finding[]> {
+  async runAll(context: ScanContext, onProgress?: (message: string, current: number, total: number) => void): Promise<Finding[]> {
     const findings: Finding[] = [];
 
     // Filter detectors based on config.enabledCategories
@@ -50,23 +50,26 @@ export class DetectorRegistry {
       !enabledCategories || enabledCategories.includes(d.category)
     );
 
-    // Run all detectors in parallel
-    const results = await Promise.all(
-      activeDetectors.map(async (detector) => {
-        try {
-          return await detector.detect(context);
-        } catch (error) {
-          // In a real app, we might want to log this or report detector failures
-          // For now, we swallow the error and return no findings for this detector
-          // to prevent one bad detector from failing the entire scan.
-          return [];
-        }
-      })
-    );
+    const total = activeDetectors.length;
+    let completed = 0;
 
-    // Flatten results
-    for (const result of results) {
-      findings.push(...result);
+    // Run detectors sequentially to allow meaningful progress updates
+    for (const detector of activeDetectors) {
+      if (onProgress) {
+        onProgress(`Running ${detector.constructor.name}...`, completed, total);
+      }
+      
+      try {
+        const result = await detector.detect(context);
+        findings.push(...result);
+      } catch (error) {
+        // Swallow error and continue
+      }
+      
+      completed++;
+      if (onProgress) {
+        onProgress(`Finished ${detector.constructor.name}`, completed, total);
+      }
     }
 
     return findings;

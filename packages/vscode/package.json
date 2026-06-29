@@ -1,9 +1,21 @@
 {
-  "name": "vibeguard-vscode",
-  "version": "0.1.0",
-  "description": "VibeGuard VS Code Extension — pre-deploy safety scanner for vibe-coded apps",
+  "name": "vibeguard-scanner",
+  "version": "0.1.3",
+  "icon": "icon.png",
+  "displayName": "VibeSafe by Talal Jaber",
+  "description": "VibeSafe VS Code Extension — pre-deploy safety scanner for vibe-coded apps",
   "license": "MIT",
-  "private": true,
+  "galleryBanner": {
+    "color": "#0f111a",
+    "theme": "dark"
+  },
+  "categories": ["Linters", "Other"],
+  "keywords": ["security", "vibe coding", "scanner", "secrets", "code quality"],
+  "publisher": "talaljaber",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/talaljaber/vibeguard"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -14,8 +26,8 @@
     "lint": "eslint src",
     "test": "echo \"VS Code extension tests run separately via vscode-test\" && exit 0",
     "clean": "rimraf dist *.tsbuildinfo",
-    "package": "vsce package",
-    "publish": "vsce publish"
+    "package": "vsce package --no-dependencies",
+    "publish": "vsce publish --no-dependencies"
   },
   "contributes": {
     "viewsContainers": {

@@ -58,7 +58,27 @@ export class ProjectStructureDetector implements Detector {
       });
     }
 
-    // 3. No tests
+    // 3. Missing .env.example
+    if (context.projectContext.hasEnvFile && !context.projectContext.hasEnvExample) {
+      findings.push({
+        id: `STRUCT-${crypto.randomBytes(3).toString("hex")}`,
+        ruleId: "structure/missing-env-example",
+        title: "Missing .env.example file",
+        severity: "low",
+        category: "structure",
+        deployBlocking: false,
+        confidence: "high",
+        plainEnglishProblem: "You have a `.env` file, but no `.env.example` file.",
+        whyItMatters: "Without an example file, other developers won't know which environment variables they need to set up to run the project.",
+        fixSteps: [
+          "Create a `.env.example` file.",
+          "Copy the keys from your `.env` file into it, but leave the values blank."
+        ],
+        autoFixAvailable: true,
+      });
+    }
+
+    // 4. No tests
     if (!context.projectContext.hasTests) {
       findings.push({
         id: `STRUCT-${crypto.randomBytes(3).toString("hex")}`,
