@@ -42,3 +42,9 @@ Thumbs.db
 *.log
 npm-debug.log*
 pnpm-debug.log*
+
+# Internal Planning
+Plan.md
+context.md
+RELEASE_CHECKLIST.md
+docs/
