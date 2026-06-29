@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { EnvExampleFixer } from "../../src/fixers/env-example-fixer";
-import type { Finding } from "@vibeguard/shared";
+import type { Finding } from "@vibesafe/shared";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
@@ -10,7 +10,7 @@ describe("EnvExampleFixer", () => {
   let tempDir: string;
 
   beforeEach(async () => {
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "vibeguard-test-"));
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "vibesafe-test-"));
   });
 
   afterEach(async () => {

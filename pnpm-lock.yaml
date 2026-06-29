@@ -35,10 +35,10 @@ importers:
       '@inquirer/prompts':
         specifier: ^8.5.2
         version: 8.5.2(@types/node@20.19.43)
-      '@vibeguard/core':
+      '@vibesafe/core':
         specifier: workspace:*
         version: link:../core
-      '@vibeguard/shared':
+      '@vibesafe/shared':
         specifier: workspace:*
         version: link:../shared
       boxen:
@@ -81,7 +81,7 @@ importers:
 
   packages/core:
     dependencies:
-      '@vibeguard/shared':
+      '@vibesafe/shared':
         specifier: workspace:*
         version: link:../shared
       fast-glob:
@@ -121,10 +121,10 @@ importers:
 
   packages/vscode:
     dependencies:
-      '@vibeguard/core':
+      '@vibesafe/core':
         specifier: workspace:*
         version: link:../core
-      '@vibeguard/shared':
+      '@vibesafe/shared':
         specifier: workspace:*
         version: link:../shared
     devDependencies:

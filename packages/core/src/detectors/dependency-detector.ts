@@ -5,7 +5,7 @@
 // abnormally high dependency counts, and known typosquatting patterns.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { Detector, Finding, ScanContext } from "@vibeguard/shared";
+import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
 import crypto from "crypto";
 
 /** Scripts that run automatically during npm install — a common supply-chain attack vector. */

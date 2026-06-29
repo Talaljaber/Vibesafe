@@ -1,4 +1,4 @@
-import { Detector, Finding, ScanContext } from "@vibeguard/shared";
+import { Detector, Finding, ScanContext } from "@vibesafe/shared";
 import { isApiRoute, hasRiskyHttpMethods, hasAuthCheck, isRiskyRoutePattern } from "./utils/route-analyzer.js";
 import crypto from "crypto";
 

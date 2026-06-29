@@ -1,5 +1,5 @@
 {
-  "name": "vibeguard-scanner",
+  "name": "vibesafe-scanner",
   "version": "0.1.3",
   "icon": "icon.png",
   "displayName": "VibeSafe by Talal Jaber",
@@ -14,7 +14,7 @@
   "publisher": "talaljaber",
   "repository": {
     "type": "git",
-    "url": "https://github.com/talaljaber/vibeguard"
+    "url": "https://github.com/talaljaber/vibesafe"
   },
   "engines": {
     "vscode": "^1.90.0"
@@ -33,21 +33,21 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "vibeguard",
-          "title": "VibeGuard",
+          "id": "vibesafe",
+          "title": "VibeSafe",
           "icon": "media/icon.svg"
         }
       ]
     },
     "views": {
-      "vibeguard": [
+      "vibesafe": [
         {
-          "id": "vibeguard.deployStatus",
+          "id": "vibesafe.deployStatus",
           "name": "Deploy Status",
           "type": "webview"
         },
         {
-          "id": "vibeguard.issues",
+          "id": "vibesafe.issues",
           "name": "Issues",
           "type": "tree"
         }
@@ -55,35 +55,35 @@
     },
     "commands": [
       {
-        "command": "vibeguard.scan",
-        "title": "VibeGuard: Scan Project",
+        "command": "vibesafe.scan",
+        "title": "VibeSafe: Scan Project",
         "icon": "$(shield)"
       },
       {
-        "command": "vibeguard.rescan",
-        "title": "VibeGuard: Re-scan",
+        "command": "vibesafe.rescan",
+        "title": "VibeSafe: Re-scan",
         "icon": "$(refresh)"
       },
       {
-        "command": "vibeguard.copyFixPrompt",
-        "title": "VibeGuard: Copy Fix Prompt",
+        "command": "vibesafe.copyFixPrompt",
+        "title": "VibeSafe: Copy Fix Prompt",
         "icon": "$(copy)"
       },
       {
-        "command": "vibeguard.applyFix",
-        "title": "VibeGuard: Apply Safe Fix",
+        "command": "vibesafe.applyFix",
+        "title": "VibeSafe: Apply Safe Fix",
         "icon": "$(wrench)"
       }
     ],
     "configuration": {
-      "title": "VibeGuard",
+      "title": "VibeSafe",
       "properties": {
-        "vibeguard.enabledCategories": {
+        "vibesafe.enabledCategories": {
           "type": "array",
           "default": [],
           "description": "Categories to enable. Empty array means all categories are enabled."
         },
-        "vibeguard.minSeverity": {
+        "vibesafe.minSeverity": {
           "type": "string",
           "enum": [
             "critical",
@@ -94,7 +94,7 @@
           "default": "low",
           "description": "Minimum severity level to show in the sidebar."
         },
-        "vibeguard.scanOnOpen": {
+        "vibesafe.scanOnOpen": {
           "type": "boolean",
           "default": false,
           "description": "Automatically scan the project when a workspace is opened."
@@ -107,12 +107,12 @@
     "onLanguage:javascriptreact",
     "onLanguage:typescript",
     "onLanguage:typescriptreact",
-    "onCommand:vibeguard.scan",
-    "onView:vibeguard.issues"
+    "onCommand:vibesafe.scan",
+    "onView:vibesafe.issues"
   ],
   "dependencies": {
-    "@vibeguard/core": "workspace:*",
-    "@vibeguard/shared": "workspace:*"
+    "@vibesafe/core": "workspace:*",
+    "@vibesafe/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

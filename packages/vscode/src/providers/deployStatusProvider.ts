@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
-import type { ScanResult } from "@vibeguard/shared";
+import type { ScanResult } from "@vibesafe/shared";
 
-export class VibeGuardDeployStatusProvider implements vscode.WebviewViewProvider {
-  public static readonly viewType = "vibeguard.deployStatus";
+export class VibeSafeDeployStatusProvider implements vscode.WebviewViewProvider {
+  public static readonly viewType = "vibesafe.deployStatus";
   private _view?: vscode.WebviewView;
   private _latestResult?: ScanResult;
 

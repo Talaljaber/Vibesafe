@@ -3,7 +3,7 @@ import { Command } from "commander";
 import { printBanner } from "./ui/banner.js";
 import { runScan } from "./commands/scan.js";
 import { runFix } from "./commands/fix.js";
-import { VIBEGUARD_VERSION } from "@vibeguard/shared";
+import { VIBESAFE_VERSION } from "@vibesafe/shared";
 
 // Print the professional startup banner
 printBanner();
@@ -11,9 +11,9 @@ printBanner();
 const program = new Command();
 
 program
-  .name("vibeguard")
+  .name("vibesafe")
   .description("The don't-deploy-that-yet tool for vibe-coded apps")
-  .version(VIBEGUARD_VERSION);
+  .version(VIBESAFE_VERSION);
 
 program
   .command("scan")

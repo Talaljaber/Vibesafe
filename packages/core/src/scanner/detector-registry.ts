@@ -1,4 +1,4 @@
-import type { Detector, Finding, ScanContext } from "@vibeguard/shared";
+import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
 
 import { SecretDetector } from "../detectors/secret-detector.js";
 import { FrontendExposureDetector } from "../detectors/frontend-exposure-detector.js";

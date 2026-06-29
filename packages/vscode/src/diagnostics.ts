@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
-import type { Finding, Severity } from "@vibeguard/shared";
+import type { Finding, Severity } from "@vibesafe/shared";
 
-// Map VibeGuard severity to VS Code DiagnosticSeverity
+// Map VibeSafe severity to VS Code DiagnosticSeverity
 function mapSeverity(severity: Severity): vscode.DiagnosticSeverity {
   switch (severity) {
     case "critical":
@@ -16,7 +16,7 @@ function mapSeverity(severity: Severity): vscode.DiagnosticSeverity {
 }
 
 /**
- * Updates the VS Code DiagnosticCollection with VibeGuard findings for a specific document.
+ * Updates the VS Code DiagnosticCollection with VibeSafe findings for a specific document.
  */
 export function updateDiagnostics(
   document: vscode.TextDocument,
@@ -50,7 +50,7 @@ export function updateDiagnostics(
       lineText.text.length
     );
 
-    const message = `VibeGuard [${finding.ruleId}]: ${finding.title}\n\n${finding.plainEnglishProblem}\n\nWhy it matters: ${finding.whyItMatters}`;
+    const message = `VibeSafe [${finding.ruleId}]: ${finding.title}\n\n${finding.plainEnglishProblem}\n\nWhy it matters: ${finding.whyItMatters}`;
     
     const diagnostic = new vscode.Diagnostic(
       range,
@@ -58,11 +58,11 @@ export function updateDiagnostics(
       mapSeverity(finding.severity)
     );
 
-    diagnostic.source = "VibeGuard";
+    diagnostic.source = "VibeSafe";
     diagnostic.code = finding.ruleId;
 
     // Attach the finding data so our CodeActionProvider can read it later
-    (diagnostic as any).vibeguardFinding = finding;
+    (diagnostic as any).vibesafeFinding = finding;
 
     diagnostics.push(diagnostic);
   }
@@ -74,7 +74,7 @@ export function updateDiagnostics(
 import * as path from "path";
 
 /**
- * Updates the VS Code DiagnosticCollection with VibeGuard findings for the entire project.
+ * Updates the VS Code DiagnosticCollection with VibeSafe findings for the entire project.
  */
 export function updateAllDiagnostics(
   rootPath: string,
@@ -108,16 +108,16 @@ export function updateAllDiagnostics(
       // Since we don't have the TextDocument loaded, we highlight the first 100 chars of the line.
       const range = new vscode.Range(lineIndex, 0, lineIndex, 100);
       
-      const message = `VibeGuard [${finding.ruleId}]: ${finding.title}\n\n${finding.plainEnglishProblem}\n\nWhy it matters: ${finding.whyItMatters}`;
+      const message = `VibeSafe [${finding.ruleId}]: ${finding.title}\n\n${finding.plainEnglishProblem}\n\nWhy it matters: ${finding.whyItMatters}`;
       const diagnostic = new vscode.Diagnostic(
         range,
         message,
         mapSeverity(finding.severity)
       );
       
-      diagnostic.source = "VibeGuard";
+      diagnostic.source = "VibeSafe";
       diagnostic.code = finding.ruleId;
-      (diagnostic as any).vibeguardFinding = finding;
+      (diagnostic as any).vibesafeFinding = finding;
       
       diagnostics.push(diagnostic);
     }

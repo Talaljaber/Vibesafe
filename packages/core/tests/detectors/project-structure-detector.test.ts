@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { ProjectStructureDetector } from "../../src/detectors/project-structure-detector";
-import type { ScanContext } from "@vibeguard/shared";
+import type { ScanContext } from "@vibesafe/shared";
 
 describe("ProjectStructureDetector", () => {
   const detector = new ProjectStructureDetector();

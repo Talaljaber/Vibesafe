@@ -1,4 +1,4 @@
-import type { ScanConfig } from "@vibeguard/shared";
+import type { ScanConfig } from "@vibesafe/shared";
 
 /**
  * Validates the provided configuration to ensure bounds.

@@ -5,7 +5,7 @@
 // like .gitignore, README, or tests.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { Detector, Finding, ScanContext } from "@vibeguard/shared";
+import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
 import crypto from "crypto";
 
 export class ProjectStructureDetector implements Detector {

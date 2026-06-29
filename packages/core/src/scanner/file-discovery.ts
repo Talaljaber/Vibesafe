@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import fg from "fast-glob";
 import ignore from "ignore";
-import { ALWAYS_EXCLUDED_DIRS, SCANNABLE_EXTENSIONS, SCANNABLE_FILENAMES } from "@vibeguard/shared";
+import { ALWAYS_EXCLUDED_DIRS, SCANNABLE_EXTENSIONS, SCANNABLE_FILENAMES } from "@vibesafe/shared";
 
 export class FileDiscovery {
   private rootPath: string;

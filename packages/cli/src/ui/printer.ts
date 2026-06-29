@@ -1,6 +1,6 @@
 import chalk from "chalk";
-import type { ScanResult, Finding, DeployStatus, Severity } from "@vibeguard/shared";
-import { DEPLOY_STATUS_LABEL, DEPLOY_STATUS_MESSAGE, SEVERITY_LEVELS } from "@vibeguard/shared";
+import type { ScanResult, Finding, DeployStatus, Severity } from "@vibesafe/shared";
+import { DEPLOY_STATUS_LABEL, DEPLOY_STATUS_MESSAGE, SEVERITY_LEVELS } from "@vibesafe/shared";
 
 function getColorForDeployStatus(status: DeployStatus) {
   switch (status) {

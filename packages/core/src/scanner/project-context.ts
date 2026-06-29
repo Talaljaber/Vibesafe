@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { ProjectContext } from "@vibeguard/shared";
+import type { ProjectContext } from "@vibesafe/shared";
 
 export class ProjectContextBuilder {
   private rootPath: string;

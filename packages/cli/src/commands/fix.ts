@@ -1,6 +1,6 @@
 import path from "path";
 import chalk from "chalk";
-import { ScannerPipeline, createDefaultRegistry, createDefaultFixRegistry } from "@vibeguard/core";
+import { ScannerPipeline, createDefaultRegistry, createDefaultFixRegistry } from "@vibesafe/core";
 import { confirm } from "@inquirer/prompts";
 
 export async function runFix(findingId: string, targetDir: string) {

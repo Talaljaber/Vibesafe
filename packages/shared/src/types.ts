@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// VibeGuard — Core Type Definitions
+// VibeSafe — Core Type Definitions
 //
 // These are the source of truth for all types used across packages.
 // Do NOT create parallel type definitions in other packages.
@@ -33,7 +33,7 @@ export type DeployStatus = "safe" | "warning" | "danger" | "blocker";
  * A single security, quality, or structural issue found in the project.
  *
  * The "translation layer" fields (plainEnglishProblem, whyItMatters, fixSteps,
- * aiFixPrompt) are what make VibeGuard different from a raw scanner.
+ * aiFixPrompt) are what make VibeSafe different from a raw scanner.
  */
 export interface Finding {
   /** Unique ID for this finding instance (e.g., "SEC-001-a1b2c3"). */
@@ -84,7 +84,7 @@ export interface Finding {
   /** Ordered list of fix steps the user should follow. */
   fixSteps: string[];
 
-  /** Can VibeGuard safely auto-fix this mechanically? */
+  /** Can VibeSafe safely auto-fix this mechanically? */
   autoFixAvailable: boolean;
 
   /**
@@ -120,7 +120,7 @@ export interface ScanSummary {
 
 // ─── Scan Result ─────────────────────────────────────────────────────────────
 
-/** The complete result of a VibeGuard scan. */
+/** The complete result of a VibeSafe scan. */
 export interface ScanResult {
   /** ISO timestamp when the scan completed. */
   timestamp: string;
@@ -242,7 +242,7 @@ export interface RepairStep {
   /** Copy-paste AI prompt if available. */
   aiFixPrompt?: string | undefined;
 
-  /** Whether VibeGuard can auto-fix this. */
+  /** Whether VibeSafe can auto-fix this. */
   autoFixAvailable: boolean;
 
   /** Estimated minutes for this specific step. */

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { SecretDetector } from "../../src/detectors/secret-detector";
-import type { ScanContext } from "@vibeguard/shared";
+import type { ScanContext } from "@vibesafe/shared";
 
 describe("SecretDetector", () => {
   const detector = new SecretDetector();

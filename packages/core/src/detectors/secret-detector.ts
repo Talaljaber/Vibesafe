@@ -1,4 +1,4 @@
-import { Detector, Finding, ScanContext } from "@vibeguard/shared";
+import { Detector, Finding, ScanContext } from "@vibesafe/shared";
 import { SECRET_PATTERNS } from "./patterns/secret-patterns.js";
 import path from "path";
 import crypto from "crypto";

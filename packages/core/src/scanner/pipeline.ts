@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { ScanConfig, ScanResult, ScanContext, Finding, ScanSummary, RepairPlan } from "@vibeguard/shared";
-import { getDeployStatus, isMoreSevere, SEVERITY_WEIGHTS, CATEGORY_MULTIPLIERS } from "@vibeguard/shared";
+import type { ScanConfig, ScanResult, ScanContext, Finding, ScanSummary, RepairPlan } from "@vibesafe/shared";
+import { getDeployStatus, isMoreSevere, SEVERITY_WEIGHTS, CATEGORY_MULTIPLIERS } from "@vibesafe/shared";
 import { FileDiscovery } from "./file-discovery.js";
 import { ProjectContextBuilder } from "./project-context.js";
 import { DetectorRegistry } from "./detector-registry.js";

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { CodebaseMessDetector } from "../../src/detectors/codebase-mess-detector";
-import type { ScanContext } from "@vibeguard/shared";
+import type { ScanContext } from "@vibesafe/shared";
 
 describe("CodebaseMessDetector", () => {
   const detector = new CodebaseMessDetector();

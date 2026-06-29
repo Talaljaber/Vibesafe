@@ -1,6 +1,6 @@
 import path from "path";
 import chalk from "chalk";
-import { ScannerPipeline, createDefaultRegistry } from "@vibeguard/core";
+import { ScannerPipeline, createDefaultRegistry } from "@vibesafe/core";
 import { printScanResult } from "../ui/printer.js";
 import { confirm } from "@inquirer/prompts";
 import cliProgress from "cli-progress";
@@ -23,7 +23,7 @@ export async function runScan(targetDir: string) {
     process.exit(0);
   }
 
-  console.log(chalk.gray("\nStarting VibeGuard scan...\n"));
+  console.log(chalk.gray("\nStarting VibeSafe scan...\n"));
 
   try {
     const registry = createDefaultRegistry();

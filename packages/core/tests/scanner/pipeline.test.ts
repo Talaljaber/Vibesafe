@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import path from "node:path";
 import { ScannerPipeline } from "../../src/scanner/pipeline.js";
 import { DetectorRegistry } from "../../src/scanner/detector-registry.js";
-import type { Detector, Finding, ScanContext } from "@vibeguard/shared";
+import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
 
 class MockDetector implements Detector {
   id = "mock-detector";

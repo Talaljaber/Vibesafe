@@ -1,8 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// @vibeguard/shared — Public API
+// @vibesafe/shared — Public API
 //
 // All types, constants, and utilities exported from this package.
-// Other packages import ONLY from "@vibeguard/shared", never from sub-paths.
+// Other packages import ONLY from "@vibesafe/shared", never from sub-paths.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Types — the source of truth for all interfaces
@@ -36,7 +36,7 @@ export {
   PRODUCT_TAGLINE,
   SCANNABLE_EXTENSIONS,
   SCANNABLE_FILENAMES,
-  VIBEGUARD_VERSION,
+  VIBESAFE_VERSION,
 } from "./constants.js";
 
 // Severity utilities

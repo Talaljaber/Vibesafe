@@ -5,7 +5,7 @@
 // i.e., "You're logged in, but are you *allowed* to do this?"
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { Detector, Finding, ScanContext } from "@vibeguard/shared";
+import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
 import { isApiRoute, hasAuthCheck } from "./utils/route-analyzer.js";
 import crypto from "crypto";
 

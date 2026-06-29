@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// VibeGuard — Shared Constants
+// VibeSafe — Shared Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { FindingCategory, Severity } from "./types.js";
@@ -86,9 +86,9 @@ export const CATEGORY_PREFIX: Record<FindingCategory, string> = {
 
 // ─── Version ──────────────────────────────────────────────────────────────────
 
-export const VIBEGUARD_VERSION = "0.1.0";
+export const VIBESAFE_VERSION = "0.1.0";
 
 // ─── Branding ─────────────────────────────────────────────────────────────────
 
-export const PRODUCT_NAME = "VibeGuard";
+export const PRODUCT_NAME = "VibeSafe";
 export const PRODUCT_TAGLINE = "The don't-deploy-that-yet tool for vibe-coded apps.";

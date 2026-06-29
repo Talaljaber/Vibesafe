@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
-import type { ScanResult } from "@vibeguard/shared";
+import type { ScanResult } from "@vibesafe/shared";
 
-export class VibeGuardStatusBar {
+export class VibeSafeStatusBar {
   private statusBarItem: vscode.StatusBarItem;
 
   constructor() {
@@ -9,8 +9,8 @@ export class VibeGuardStatusBar {
       vscode.StatusBarAlignment.Left,
       100
     );
-    this.statusBarItem.command = "vibeguard.scan";
-    this.statusBarItem.text = "$(shield) VibeGuard: Ready";
+    this.statusBarItem.command = "vibesafe.scan";
+    this.statusBarItem.text = "$(shield) VibeSafe: Ready";
     this.statusBarItem.show();
   }
 
@@ -36,9 +36,9 @@ export class VibeGuardStatusBar {
         break;
     }
 
-    this.statusBarItem.text = `${icon} VibeGuard: ${score} (${deployStatus})`;
+    this.statusBarItem.text = `${icon} VibeSafe: ${score} (${deployStatus})`;
     this.statusBarItem.color = color;
-    this.statusBarItem.tooltip = `VibeGuard Deploy Score: ${score}\nStatus: ${deployStatus}\nFindings: ${result.findings.length}`;
+    this.statusBarItem.tooltip = `VibeSafe Deploy Score: ${score}\nStatus: ${deployStatus}\nFindings: ${result.findings.length}`;
   }
 
   public dispose() {

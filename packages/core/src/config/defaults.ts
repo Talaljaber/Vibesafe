@@ -1,5 +1,5 @@
-import type { ScanConfig, FindingCategory } from "@vibeguard/shared";
-import { DEFAULT_MAX_FILES, DEFAULT_MIN_SEVERITY, DEFAULT_SCAN_TIMEOUT_MS } from "@vibeguard/shared";
+import type { ScanConfig, FindingCategory } from "@vibesafe/shared";
+import { DEFAULT_MAX_FILES, DEFAULT_MIN_SEVERITY, DEFAULT_SCAN_TIMEOUT_MS } from "@vibesafe/shared";
 
 const ALL_CATEGORIES: FindingCategory[] = [
   "secret",
@@ -13,7 +13,7 @@ const ALL_CATEGORIES: FindingCategory[] = [
 ];
 
 /**
- * Default configuration for VibeGuard scanner.
+ * Default configuration for VibeSafe scanner.
  */
 export const DEFAULT_CONFIG: Omit<ScanConfig, "rootPath"> = {
   enabledCategories: ALL_CATEGORIES,

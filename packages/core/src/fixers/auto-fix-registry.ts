@@ -1,4 +1,4 @@
-import type { AutoFixer } from "@vibeguard/shared";
+import type { AutoFixer } from "@vibesafe/shared";
 
 export class AutoFixRegistry {
   private fixers: Map<string, AutoFixer> = new Map();

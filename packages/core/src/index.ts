@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// @vibeguard/core — Public API
+// @vibesafe/core — Public API
 // ─────────────────────────────────────────────────────────────────────────────
 
 export { DEFAULT_CONFIG, mergeConfig } from "./config/defaults.js";

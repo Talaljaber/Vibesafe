@@ -1,10 +1,10 @@
 import * as vscode from "vscode";
 import path from "path";
-import type { ScanResult, Finding, Severity } from "@vibeguard/shared";
+import type { ScanResult, Finding, Severity } from "@vibesafe/shared";
 
 type TreeElement = GroupItem | FindingItem;
 
-export class VibeGuardIssuesProvider implements vscode.TreeDataProvider<TreeElement> {
+export class VibeSafeIssuesProvider implements vscode.TreeDataProvider<TreeElement> {
   private _onDidChangeTreeData: vscode.EventEmitter<TreeElement | undefined | null | void> = new vscode.EventEmitter<TreeElement | undefined | null | void>();
   readonly onDidChangeTreeData: vscode.Event<TreeElement | undefined | null | void> = this._onDidChangeTreeData.event;
 
@@ -56,7 +56,7 @@ class GroupItem extends vscode.TreeItem {
   constructor(
     public readonly severity: Severity,
     public readonly count: number,
-    public readonly collapsibleState: vscode.TreeItemCollapsibleState
+    collapsibleState: vscode.TreeItemCollapsibleState
   ) {
     super(`${severity.charAt(0).toUpperCase() + severity.slice(1)} (${count})`, collapsibleState);
     

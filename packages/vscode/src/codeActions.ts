@@ -1,10 +1,10 @@
 import * as vscode from "vscode";
-import type { Finding } from "@vibeguard/shared";
+import type { Finding } from "@vibesafe/shared";
 
 /**
- * Provides Quick Fixes for VibeGuard diagnostics.
+ * Provides Quick Fixes for VibeSafe diagnostics.
  */
-export class VibeGuardCodeActionProvider implements vscode.CodeActionProvider {
+export class VibeSafeCodeActionProvider implements vscode.CodeActionProvider {
   public static readonly providedCodeActionKinds = [
     vscode.CodeActionKind.QuickFix
   ];
@@ -17,13 +17,13 @@ export class VibeGuardCodeActionProvider implements vscode.CodeActionProvider {
   ): vscode.CodeAction[] {
     const actions: vscode.CodeAction[] = [];
 
-    // Filter diagnostics that belong to VibeGuard
-    const vibeguardDiagnostics = context.diagnostics.filter(
-      (diagnostic) => diagnostic.source === "VibeGuard"
+    // Filter diagnostics that belong to VibeSafe
+    const vibesafeDiagnostics = context.diagnostics.filter(
+      (diagnostic) => diagnostic.source === "VibeSafe"
     );
 
-    for (const diagnostic of vibeguardDiagnostics) {
-      const finding: Finding | undefined = (diagnostic as any).vibeguardFinding;
+    for (const diagnostic of vibesafeDiagnostics) {
+      const finding: Finding | undefined = (diagnostic as any).vibesafeFinding;
 
       if (!finding) {
         continue;
@@ -32,7 +32,7 @@ export class VibeGuardCodeActionProvider implements vscode.CodeActionProvider {
       // If there's an AI Fix Prompt available, offer it as a Code Action
       if (finding.aiFixPrompt) {
         const action = new vscode.CodeAction(
-          `✨ VibeGuard: Copy AI Fix Prompt for Copilot`,
+          `✨ VibeSafe: Copy AI Fix Prompt for Copilot`,
           vscode.CodeActionKind.QuickFix
         );
         
@@ -42,7 +42,7 @@ export class VibeGuardCodeActionProvider implements vscode.CodeActionProvider {
         
         // This command will be registered in extension.ts
         action.command = {
-          command: "vibeguard.copyFixPrompt",
+          command: "vibesafe.copyFixPrompt",
           title: "Copy AI Fix Prompt",
           arguments: [finding.aiFixPrompt]
         };

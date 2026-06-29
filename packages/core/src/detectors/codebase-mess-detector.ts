@@ -5,7 +5,7 @@
 // or indicative of "vibe coding" run amok.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { Detector, Finding, ScanContext } from "@vibeguard/shared";
+import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
 import crypto from "crypto";
 
 const MAX_FILE_LINES = 500;

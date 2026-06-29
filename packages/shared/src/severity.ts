@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// VibeGuard — Severity Utilities
+// VibeSafe — Severity Utilities
 //
 // Helper functions and mappings for working with severity levels.
 // ─────────────────────────────────────────────────────────────────────────────

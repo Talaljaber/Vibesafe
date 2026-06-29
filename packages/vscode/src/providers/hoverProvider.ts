@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
 import path from "path";
-import type { ScanResult } from "@vibeguard/shared";
+import type { ScanResult } from "@vibesafe/shared";
 
-export class VibeGuardHoverProvider implements vscode.HoverProvider {
+export class VibeSafeHoverProvider implements vscode.HoverProvider {
   private latestResult?: ScanResult;
 
   public update(result: ScanResult) {
@@ -33,7 +33,7 @@ export class VibeGuardHoverProvider implements vscode.HoverProvider {
     markdown.isTrusted = true;
     markdown.supportHtml = true;
 
-    markdown.appendMarkdown(`### 🛡️ VibeGuard: ${finding.title}\n\n`);
+    markdown.appendMarkdown(`### 🛡️ VibeSafe: ${finding.title}\n\n`);
     markdown.appendMarkdown(`${finding.plainEnglishProblem}\n\n`);
     
     markdown.appendMarkdown(`**Why It Matters:**\n${finding.whyItMatters}\n\n`);
@@ -46,11 +46,11 @@ export class VibeGuardHoverProvider implements vscode.HoverProvider {
 
     if (finding.aiFixPrompt) {
       markdown.appendMarkdown(`---\n`);
-      markdown.appendMarkdown(`[✨ Copy AI Prompt for Copilot](command:vibeguard.copyFixPrompt?${encodeURIComponent(JSON.stringify(finding.aiFixPrompt))})\n`);
+      markdown.appendMarkdown(`[✨ Copy AI Prompt for Copilot](command:vibesafe.copyFixPrompt?${encodeURIComponent(JSON.stringify(finding.aiFixPrompt))})\n`);
     }
 
     if (finding.autoFixAvailable) {
-      markdown.appendMarkdown(`\n[🔧 Apply Safe Fix](command:vibeguard.applyFix?${encodeURIComponent(JSON.stringify(finding))})\n`);
+      markdown.appendMarkdown(`\n[🔧 Apply Safe Fix](command:vibesafe.applyFix?${encodeURIComponent(JSON.stringify(finding))})\n`);
     }
 
     return new vscode.Hover(markdown);

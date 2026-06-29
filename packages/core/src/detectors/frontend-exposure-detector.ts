@@ -1,4 +1,4 @@
-import { Detector, Finding, ScanContext } from "@vibeguard/shared";
+import { Detector, Finding, ScanContext } from "@vibesafe/shared";
 import { isClientFile } from "./utils/file-classifier.js";
 import crypto from "crypto";
 

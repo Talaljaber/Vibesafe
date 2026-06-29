@@ -1,44 +1,44 @@
 import * as vscode from "vscode";
 import path from "path";
-import { ScannerPipeline, createDefaultRegistry, createDefaultFixRegistry } from "@vibeguard/core";
+import { ScannerPipeline, createDefaultRegistry, createDefaultFixRegistry } from "@vibesafe/core";
 import { updateDiagnostics, updateAllDiagnostics } from "./diagnostics.js";
-import { VibeGuardCodeActionProvider } from "./codeActions.js";
-import { VibeGuardStatusBar } from "./ui/statusBar.js";
-import { VibeGuardDeployStatusProvider } from "./providers/deployStatusProvider.js";
-import { VibeGuardIssuesProvider } from "./providers/issuesTreeProvider.js";
-import { VibeGuardHoverProvider } from "./providers/hoverProvider.js";
-import type { Finding } from "@vibeguard/shared";
+import { VibeSafeCodeActionProvider } from "./codeActions.js";
+import { VibeSafeStatusBar } from "./ui/statusBar.js";
+import { VibeSafeDeployStatusProvider } from "./providers/deployStatusProvider.js";
+import { VibeSafeIssuesProvider } from "./providers/issuesTreeProvider.js";
+import { VibeSafeHoverProvider } from "./providers/hoverProvider.js";
+import type { Finding } from "@vibesafe/shared";
 
 // Keep a reference to the collection so we can clear/update it
 let diagnosticCollection: vscode.DiagnosticCollection;
 let pipeline: ScannerPipeline;
-let statusBar: VibeGuardStatusBar;
-let deployStatusProvider: VibeGuardDeployStatusProvider;
-let issuesProvider: VibeGuardIssuesProvider;
-let hoverProvider: VibeGuardHoverProvider;
+let statusBar: VibeSafeStatusBar;
+let deployStatusProvider: VibeSafeDeployStatusProvider;
+let issuesProvider: VibeSafeIssuesProvider;
+let hoverProvider: VibeSafeHoverProvider;
 
 export function activate(context: vscode.ExtensionContext): void {
-  console.log('VibeGuard extension is now active!');
+  console.log('VibeSafe extension is now active!');
 
   // Initialize the core scanner
   pipeline = new ScannerPipeline(createDefaultRegistry());
 
   // Initialize UI components
-  statusBar = new VibeGuardStatusBar();
-  deployStatusProvider = new VibeGuardDeployStatusProvider(context.extensionUri);
-  issuesProvider = new VibeGuardIssuesProvider();
-  hoverProvider = new VibeGuardHoverProvider();
+  statusBar = new VibeSafeStatusBar();
+  deployStatusProvider = new VibeSafeDeployStatusProvider(context.extensionUri);
+  issuesProvider = new VibeSafeIssuesProvider();
+  hoverProvider = new VibeSafeHoverProvider();
 
   // Register views
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(VibeGuardDeployStatusProvider.viewType, deployStatusProvider)
+    vscode.window.registerWebviewViewProvider(VibeSafeDeployStatusProvider.viewType, deployStatusProvider)
   );
   context.subscriptions.push(
-    vscode.window.registerTreeDataProvider("vibeguard.issues", issuesProvider)
+    vscode.window.registerTreeDataProvider("vibesafe.issues", issuesProvider)
   );
 
   // Create a diagnostic collection for our squiggles
-  diagnosticCollection = vscode.languages.createDiagnosticCollection("vibeguard");
+  diagnosticCollection = vscode.languages.createDiagnosticCollection("vibesafe");
   context.subscriptions.push(diagnosticCollection);
 
   // Register the Quick Fix Provider for all supported vibe-coding languages
@@ -52,9 +52,9 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.languages.registerCodeActionsProvider(
       documentSelector,
-      new VibeGuardCodeActionProvider(),
+      new VibeSafeCodeActionProvider(),
       {
-        providedCodeActionKinds: VibeGuardCodeActionProvider.providedCodeActionKinds
+        providedCodeActionKinds: VibeSafeCodeActionProvider.providedCodeActionKinds
       }
     )
   );
@@ -65,35 +65,36 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Register command to copy the AI fix prompt to clipboard
   context.subscriptions.push(
-    vscode.commands.registerCommand("vibeguard.copyFixPrompt", async (prompt: string) => {
+    vscode.commands.registerCommand("vibesafe.copyFixPrompt", async (prompt: string) => {
       await vscode.env.clipboard.writeText(prompt);
-      vscode.window.showInformationMessage("✨ VibeGuard AI Fix Prompt copied to clipboard! Paste it into Copilot.");
+      vscode.window.showInformationMessage("✨ VibeSafe AI Fix Prompt copied to clipboard! Paste it into Copilot.");
     })
   );
 
   // Register applySafeFix command with Workspace Trust check
   context.subscriptions.push(
-    vscode.commands.registerCommand("vibeguard.applyFix", async (finding: Finding) => {
+    vscode.commands.registerCommand("vibesafe.applyFix", async (finding: Finding) => {
       if (!vscode.workspace.isTrusted) {
-        vscode.window.showErrorMessage("VibeGuard: Cannot apply fixes in Restricted Mode. Please trust this workspace first.");
+        vscode.window.showErrorMessage("VibeSafe: Cannot apply fixes in Restricted Mode. Please trust this workspace first.");
         return;
       }
 
-      if (!vscode.workspace.workspaceFolders) return;
-      const rootPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
+      const rootFolder = vscode.workspace.workspaceFolders?.[0];
+      if (!rootFolder) return;
+      const rootPath = rootFolder.uri.fsPath;
 
       const fixRegistry = createDefaultFixRegistry();
       const fixer = fixRegistry.getFixer(finding.ruleId);
 
       if (!fixer) {
-        vscode.window.showErrorMessage(`VibeGuard: No AutoFixer is registered for rule '${finding.ruleId}'.`);
+        vscode.window.showErrorMessage(`VibeSafe: No AutoFixer is registered for rule '${finding.ruleId}'.`);
         return;
       }
 
       const preview = await fixer.preview(finding, rootPath);
       
       const confirm = await vscode.window.showInformationMessage(
-        `VibeGuard Auto-Fix:\n\n${preview.description}\n\nAre you sure you want to apply this fix?`,
+        `VibeSafe Auto-Fix:\n\n${preview.description}\n\nAre you sure you want to apply this fix?`,
         { modal: true },
         "Apply Fix"
       );
@@ -101,11 +102,11 @@ export function activate(context: vscode.ExtensionContext): void {
       if (confirm === "Apply Fix") {
         const result = await fixer.apply(finding, rootPath);
         if (result.success) {
-          vscode.window.showInformationMessage(`✅ VibeGuard Fix Applied: ${result.message}`);
+          vscode.window.showInformationMessage(`✅ VibeSafe Fix Applied: ${result.message}`);
           // Trigger a re-scan to clear the squiggles
-          vscode.commands.executeCommand("vibeguard.scan");
+          vscode.commands.executeCommand("vibesafe.scan");
         } else {
-          vscode.window.showErrorMessage(`❌ VibeGuard Fix Failed: ${result.message}\n${result.error || ''}`);
+          vscode.window.showErrorMessage(`❌ VibeSafe Fix Failed: ${result.message}\n${result.error || ''}`);
         }
       }
     })
@@ -113,17 +114,17 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Register command to scan the entire project manually
   context.subscriptions.push(
-    vscode.commands.registerCommand("vibeguard.scan", async () => {
+    vscode.commands.registerCommand("vibesafe.scan", async () => {
       const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
       if (!workspaceFolder) {
-        vscode.window.showErrorMessage("VibeGuard: No workspace open.");
+        vscode.window.showErrorMessage("VibeSafe: No workspace open.");
         return;
       }
       const rootPath = workspaceFolder.uri.fsPath;
       
       await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: "VibeGuard: Scanning project for issues...",
+        title: "VibeSafe: Scanning project for issues...",
         cancellable: false
       }, async () => {
         try {
@@ -137,13 +138,13 @@ export function activate(context: vscode.ExtensionContext): void {
           hoverProvider.update(result);
           
           if (result.findings.length > 0) {
-            vscode.window.showWarningMessage(`VibeGuard found ${result.findings.length} issues. Check the Problems panel!`);
+            vscode.window.showWarningMessage(`VibeSafe found ${result.findings.length} issues. Check the Problems panel!`);
             vscode.commands.executeCommand("workbench.action.problems.focus");
           } else {
-            vscode.window.showInformationMessage("VibeGuard: No issues found! Your code is pristine ✨");
+            vscode.window.showInformationMessage("VibeSafe: No issues found! Your code is pristine ✨");
           }
         } catch (error: any) {
-          vscode.window.showErrorMessage("VibeGuard scan failed: " + error.message);
+          vscode.window.showErrorMessage("VibeSafe scan failed: " + error.message);
         }
       });
     })
@@ -162,8 +163,8 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   // Optionally run it on open documents right away
-  if (vscode.workspace.getConfiguration("vibeguard").get("scanOnOpen")) {
-    vscode.commands.executeCommand("vibeguard.scan");
+  if (vscode.workspace.getConfiguration("vibesafe").get("scanOnOpen")) {
+    vscode.commands.executeCommand("vibesafe.scan");
   }
 }
 
@@ -190,7 +191,7 @@ async function runScannerOnDocument(document: vscode.TextDocument) {
     issuesProvider.update(result);
     hoverProvider.update(result);
   } catch (error) {
-    console.error("VibeGuard scan failed:", error);
+    console.error("VibeSafe scan failed:", error);
   }
 }
 

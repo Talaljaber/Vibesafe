@@ -1,7 +1,7 @@
 {
-  "name": "@vibeguard/shared",
+  "name": "@vibesafe/shared",
   "version": "0.1.0",
-  "description": "Shared types, constants, and enums for VibeGuard",
+  "description": "Shared types, constants, and enums for VibeSafe",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { ScanResult } from "@vibeguard/shared";
+import type { ScanResult } from "@vibesafe/shared";
 
 export async function generateHtmlReport(result: ScanResult): Promise<string> {
   const html = `
@@ -9,7 +9,7 @@ export async function generateHtmlReport(result: ScanResult): Promise<string> {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VibeGuard Security Report</title>
+  <title>VibeSafe Security Report</title>
   <style>
     :root {
       --bg: #0f111a;
@@ -113,7 +113,7 @@ export async function generateHtmlReport(result: ScanResult): Promise<string> {
 </head>
 <body>
   <div class="container">
-    <h1>🛡️ VibeGuard Report</h1>
+    <h1>🛡️ VibeSafe Report</h1>
     
     <div class="card">
       <h2>Overview</h2>
@@ -166,7 +166,7 @@ export async function generateHtmlReport(result: ScanResult): Promise<string> {
 </html>
   `;
 
-  const reportPath = path.resolve(result.projectPath, "vibeguard-report.html");
+  const reportPath = path.resolve(result.projectPath, "vibesafe-report.html");
   await fs.writeFile(reportPath, html, "utf-8");
   return reportPath;
 }
