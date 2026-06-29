@@ -19,7 +19,16 @@
 
 ### Before / After
 - **Before:** Secrets hardcoded, empty `.env.example`, missing dependency declarations.
-- **After:** Clean `.env.example`, safe configurations, well-structured app ready for production.
+- **After:** Clean `.env.example`, safer configurations, and fewer obvious deployment risks.
+
+---
+
+## 📸 Screenshots
+
+<!-- TODO: Add VS Code sidebar screenshot -->
+<!-- TODO: Add Problems panel screenshot -->
+<!-- TODO: Add CLI scan output screenshot -->
+<!-- TODO: Add HTML report screenshot -->
 
 ---
 
@@ -106,8 +115,8 @@ VibeSafe is currently in early release (v0.1) and is meant to catch the most com
 
 - [ ] **v0.2:** Expanding the core ruleset to cover more frontend framework-specific pitfalls (Next.js, Vue, Svelte).
 - [ ] **v0.3:** Support for custom, user-defined rules and configurations (`vibesafe.config.js`).
-- [ ] **v0.4:** Direct LLM integrations for intelligent auto-fixing suggestions tailored to your codebase.
-- [ ] **v1.0:** Stable release with comprehensive reporting, CI/CD integrations, and enterprise-grade speed.
+- [ ] **v0.4:** Integration with SARIF and GitHub Actions for automated PR reviews.
+- [ ] **v1.0:** Stable release with comprehensive reporting and enterprise-grade speed.
 
 ---
 

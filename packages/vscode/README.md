@@ -18,7 +18,7 @@
 - 📋 **Detailed Repair Plans**: Get step-by-step repair plans with exact file locations and line numbers natively inside VS Code.
 - 🤖 **AI Fix Prompts**: For every issue, VibeSafe generates a highly specific, copy-pasteable prompt. Drop it straight into Copilot or Cursor to let AI fix the AI's mistakes.
 - 🛠️ **Auto-Fix Capabilities**: Safely apply fixes to your codebase with a single click natively through the extension.
-- 📊 **Beautiful HTML Reports**: Generates a clean, interactive dashboard summarizing your code health and highlighting deployment blockers.
+- 📊 **Detailed Dashboards**: Companion CLI generates clean, interactive HTML dashboards summarizing your code health.
 
 ## 🚀 Installation & Usage
 
@@ -32,9 +32,9 @@
 Open the **Command Palette** (`Ctrl+Shift+P` or `Cmd+Shift+P`) and type `VibeSafe`:
 
 - **`VibeSafe: Scan Project`**: Triggers a full workspace scan and populates the VibeSafe side panel with issues.
-- **`VibeSafe: Apply Fix`**: (Contextual) Applies an automated fix to an identified issue.
+- **`VibeSafe: Re-scan`**: Refreshes the scan results for the current project.
 - **`VibeSafe: Copy Fix Prompt`**: (Contextual) Copies the AI prompt to your clipboard to paste into your AI chat assistant.
-- **`VibeSafe: Show Deploy Status`**: Opens the Deploy Status dashboard in a beautiful VS Code webview.
+- **`VibeSafe: Apply Safe Fix`**: (Contextual) Applies an automated fix to an identified issue.
 
 ## ⚙️ Configuration
 
@@ -42,9 +42,10 @@ Customize VibeSafe behavior in your `settings.json` or the VS Code Settings UI:
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| `vibesafe.enabledCategories` | Which rule categories to run (`security`, `quality`, `secrets`) | All enabled |
+| `vibesafe.enabledCategories` | Which rule categories to run (`secret`, `auth`, `authorization`, `frontend_exposure`, `validation`, `dependency`, `code_quality`, `structure`) | All enabled |
 | `vibesafe.minSeverity` | Minimum severity level to report (`critical`, `high`, `medium`, `low`) | `low` |
 | `vibesafe.scanOnOpen` | Automatically run a scan when opening a workspace | `false` |
+| `vibesafe.scanOnSave` | Automatically run VibeSafe whenever you save a file | `false` |
 
 ## 🤝 Open Source
 VibeSafe is open source! Feel free to contribute, report issues, or suggest features on our [GitHub Repository](https://github.com/talaljaber/vibesafe).
