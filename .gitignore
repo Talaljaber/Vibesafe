@@ -1,0 +1,44 @@
+# VibeGuard — root .gitignore
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# VS Code extension packages
+*.vsix
+
+# Environment files — NEVER commit these
+.env
+.env.local
+.env.*.local
+
+# Turbo
+.turbo/
+
+# Test coverage
+coverage/
+
+# Next.js (fixtures)
+.next/
+.vercel/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
