@@ -7,7 +7,8 @@ import { VibeSafeStatusBar } from "./ui/statusBar.js";
 import { VibeSafeDeployStatusProvider } from "./providers/deployStatusProvider.js";
 import { VibeSafeIssuesProvider } from "./providers/issuesTreeProvider.js";
 import { VibeSafeHoverProvider } from "./providers/hoverProvider.js";
-import type { Finding } from "@vibesafe/shared";
+import { openDashboard, updateDashboardIfOpen } from "./views/dashboard-webview.js";
+import type { Finding, ScanResult } from "@vibesafe/shared";
 
 // Keep a reference to the collection so we can clear/update it
 let diagnosticCollection: vscode.DiagnosticCollection;
@@ -19,6 +20,7 @@ let hoverProvider: VibeSafeHoverProvider;
 
 let scanTimeout: NodeJS.Timeout | null = null;
 let latestScanPromise: Promise<void> | null = null;
+let lastFullScanResult: ScanResult | null = null;
 
 export function activate(context: vscode.ExtensionContext): void {
   console.log('VibeSafe extension is now active!');
@@ -71,6 +73,13 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("vibesafe.copyFixPrompt", async (prompt: string) => {
       await vscode.env.clipboard.writeText(prompt);
       vscode.window.showInformationMessage("✨ VibeSafe AI Fix Prompt copied to clipboard! Paste it into Copilot.");
+    })
+  );
+
+  // Register command to open dashboard
+  context.subscriptions.push(
+    vscode.commands.registerCommand("vibesafe.openDashboard", () => {
+      openDashboard(context.extensionUri, lastFullScanResult);
     })
   );
 
@@ -132,6 +141,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }, async () => {
         try {
           const result = await pipeline.scan({ rootPath });
+          lastFullScanResult = result;
           
           // Update all UI pieces
           updateAllDiagnostics(rootPath, diagnosticCollection, result.findings);
@@ -139,6 +149,7 @@ export function activate(context: vscode.ExtensionContext): void {
           deployStatusProvider.update(result);
           issuesProvider.update(result);
           hoverProvider.update(result);
+          updateDashboardIfOpen(result);
           
           if (result.findings.length > 0) {
             vscode.window.showWarningMessage(`VibeSafe found ${result.findings.length} issues. Check the Problems panel!`);
@@ -190,25 +201,42 @@ async function runScannerOnDocument(document: vscode.TextDocument) {
     const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
     if (!workspaceFolder) return;
 
-    // Run the pipeline. To keep it fast, we scan the whole project directory 
-    // but filter findings to just this document in updateDiagnostics.
-    // In a highly optimized version, we would pass only the single file to the scanner.
-    const result = await pipeline.scan({ rootPath: workspaceFolder.uri.fsPath });
-
-    // Filter findings to only those originating from the saved file
     const docRelativePath = path.relative(workspaceFolder.uri.fsPath, document.uri.fsPath).replace(/\\/g, "/");
-    const documentFindings = result.findings.filter(f => f.file === docRelativePath);
 
-    // Update squiggles
-    updateDiagnostics(document, diagnosticCollection, documentFindings);
+    // Perform targeted scan on just the saved file
+    const targetedResult = await pipeline.scan({ 
+      rootPath: workspaceFolder.uri.fsPath,
+      targetFiles: [docRelativePath]
+    });
+
+    const newDocumentFindings = targetedResult.findings;
+
+    // Update squiggles immediately for the file
+    updateDiagnostics(document, diagnosticCollection, newDocumentFindings);
     
-    // Update global state components with full result
-    statusBar.update(result);
-    deployStatusProvider.update(result);
-    issuesProvider.update(result);
-    hoverProvider.update(result);
+    // Merge into the global cached state if it exists
+    if (lastFullScanResult) {
+      // Remove old findings for this file
+      lastFullScanResult.findings = lastFullScanResult.findings.filter(f => f.file !== docRelativePath);
+      // Add new findings
+      lastFullScanResult.findings.push(...newDocumentFindings);
+      
+      // Recalculate score and summary
+      const { score, deployStatus } = pipeline.calculateScore(lastFullScanResult.findings);
+      lastFullScanResult.score = score;
+      lastFullScanResult.deployStatus = deployStatus;
+      lastFullScanResult.summary = pipeline.buildSummary(lastFullScanResult.findings, lastFullScanResult.summary.filesScanned);
+      lastFullScanResult.repairPlan = pipeline.buildRepairPlan(lastFullScanResult.findings);
+      
+      // Update global UI with merged result
+      statusBar.update(lastFullScanResult);
+      deployStatusProvider.update(lastFullScanResult);
+      issuesProvider.update(lastFullScanResult);
+      hoverProvider.update(lastFullScanResult);
+      updateDashboardIfOpen(lastFullScanResult);
+    }
   } catch (error) {
-    console.error("VibeSafe scan failed:", error);
+    console.error("VibeSafe targeted scan failed:", error);
   }
 }
 

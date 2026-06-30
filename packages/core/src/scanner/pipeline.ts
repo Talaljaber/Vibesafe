@@ -30,7 +30,9 @@ export class ScannerPipeline {
 
     // 1. Discover files
     const fileDiscovery = new FileDiscovery(config.rootPath);
-    let files = await fileDiscovery.discoverFiles(config.excludePatterns);
+    let files = config.targetFiles && config.targetFiles.length > 0 
+      ? config.targetFiles 
+      : await fileDiscovery.discoverFiles(config.excludePatterns);
     
     if (config.maxFiles && files.length > config.maxFiles) {
       // Trim to maxFiles if we exceed the limit to prevent out-of-memory or hanging
@@ -67,6 +69,9 @@ export class ScannerPipeline {
     // 4. Run detectors
     let { findings, errors: detectorErrors } = await this.registry.runAll(scanContext, onProgress);
 
+    // 4.5. Apply inline ignores
+    findings = await this.applyInlineIgnores(findings, scanContext);
+
     // 5. Filter findings based on config
     if (config.minSeverity) {
       findings = findings.filter(f => 
@@ -102,7 +107,53 @@ export class ScannerPipeline {
     };
   }
 
-  private calculateScore(findings: Finding[]): { score: number; deployStatus: ReturnType<typeof getDeployStatus> } {
+  private async applyInlineIgnores(findings: Finding[], context: ScanContext): Promise<Finding[]> {
+    const validFindings: Finding[] = [];
+    const fileContents = new Map<string, string[]>();
+
+    for (const finding of findings) {
+      if (!finding.file || !finding.line) {
+        validFindings.push(finding);
+        continue;
+      }
+
+      if (!fileContents.has(finding.file)) {
+        const content = await context.readFile(finding.file);
+        fileContents.set(finding.file, content.split('\n'));
+      }
+      
+      const lines = fileContents.get(finding.file)!;
+      
+      // Check for file-level ignore
+      const hasFileIgnore = lines.some(l => l.includes('vibesafe-disable-file'));
+      if (hasFileIgnore) continue;
+
+      // Check for line-level ignore (previous line)
+      const prevLineIndex = finding.line - 2; // finding.line is 1-indexed
+      let hasLineIgnore = false;
+      
+      const prevLine = lines[prevLineIndex];
+      if (prevLine) {
+        hasLineIgnore = prevLine.includes('vibesafe-disable-next-line');
+      }
+
+      // Also check if the ignore is on the exact same line at the end
+      if (!hasLineIgnore) {
+         const currentLineIndex = finding.line - 1;
+         const currentLine = lines[currentLineIndex];
+         if (currentLine) {
+           hasLineIgnore = currentLine.includes('vibesafe-disable-line');
+         }
+      }
+
+      if (!hasLineIgnore) {
+        validFindings.push(finding);
+      }
+    }
+    return validFindings;
+  }
+
+  public calculateScore(findings: Finding[]): { score: number; deployStatus: ReturnType<typeof getDeployStatus> } {
     let score = 100;
     let hasCritical = false;
 
@@ -124,7 +175,7 @@ export class ScannerPipeline {
     };
   }
 
-  private buildSummary(findings: Finding[], filesScanned: number): ScanSummary {
+  public buildSummary(findings: Finding[], filesScanned: number): ScanSummary {
     const summary: ScanSummary = {
       totalFindings: findings.length,
       criticalCount: 0,
@@ -153,7 +204,7 @@ export class ScannerPipeline {
     return summary;
   }
 
-  private buildRepairPlan(findings: Finding[]): RepairPlan {
+  public buildRepairPlan(findings: Finding[]): RepairPlan {
     const steps = findings.map((f, i) => ({
       order: i + 1,
       findingId: f.id,

@@ -38,7 +38,7 @@ export class VibeSafeCodeActionProvider implements vscode.CodeActionProvider {
         
         // Tie it to the diagnostic so it clears if fixed
         action.diagnostics = [diagnostic];
-        action.isPreferred = true;
+        action.isPreferred = !finding.autoFixAvailable; // Prefer auto-fix if available
         
         // This command will be registered in extension.ts
         action.command = {
@@ -49,6 +49,39 @@ export class VibeSafeCodeActionProvider implements vscode.CodeActionProvider {
 
         actions.push(action);
       }
+
+      if (finding.autoFixAvailable) {
+        const fixAction = new vscode.CodeAction(
+          `🛠️ VibeSafe: Apply Safe Fix`,
+          vscode.CodeActionKind.QuickFix
+        );
+        fixAction.diagnostics = [diagnostic];
+        fixAction.isPreferred = true;
+        fixAction.command = {
+          command: "vibesafe.applyFix",
+          title: "Apply Safe Fix",
+          arguments: [finding]
+        };
+        actions.push(fixAction);
+      }
+
+      // Add inline ignore action
+      const ignoreAction = new vscode.CodeAction(
+        "🙈 VibeSafe: Ignore this line",
+        vscode.CodeActionKind.QuickFix
+      );
+      const edit = new vscode.WorkspaceEdit();
+      
+      const lineToInsert = diagnostic.range.start.line;
+      const lineText = document.lineAt(lineToInsert).text;
+      const indentation = lineText.match(/^\s*/)?.[0] || "";
+      
+      const commentToInsert = `${indentation}// vibesafe-disable-next-line\n`;
+      edit.insert(document.uri, new vscode.Position(lineToInsert, 0), commentToInsert);
+      
+      ignoreAction.edit = edit;
+      ignoreAction.diagnostics = [diagnostic];
+      actions.push(ignoreAction);
     }
 
     return actions;

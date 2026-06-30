@@ -200,6 +200,9 @@ export interface ScanConfig {
 
   /** Scan timeout in milliseconds. Defaults to 30000 (30s). */
   timeoutMs?: number | undefined;
+
+  /** Optional list of relative file paths to scan (for targeted scans). */
+  targetFiles?: string[] | undefined;
 }
 
 // ─── Repair Plan ─────────────────────────────────────────────────────────────

@@ -60,6 +60,11 @@
         "icon": "$(shield)"
       },
       {
+        "command": "vibesafe.openDashboard",
+        "title": "VibeSafe: Open Dashboard",
+        "icon": "$(dashboard)"
+      },
+      {
         "command": "vibesafe.rescan",
         "title": "VibeSafe: Re-scan",
         "icon": "$(refresh)"
