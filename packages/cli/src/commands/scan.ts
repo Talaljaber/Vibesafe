@@ -7,6 +7,7 @@ import cliProgress from "cli-progress";
 import { generateHtmlReport } from "../ui/html-reporter.js";
 import open from "open";
 import { pathToFileURL } from "node:url";
+import { setTimeout as sleep } from "timers/promises";
 
 export interface ScanOptions {
   interactive?: boolean;
@@ -19,6 +20,7 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
   const rootPath = path.resolve(process.cwd(), targetDir);
 
   if (!options.json) {
+    await sleep(400);
     console.log(chalk.cyan(`Ready to scan directory: ${rootPath}`));
   }
   
@@ -35,7 +37,9 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
   }
 
   if (!options.json) {
+    await sleep(200);
     console.log(chalk.gray("\nStarting VibeSafe scan...\n"));
+    await sleep(300);
   }
 
   try {
@@ -49,18 +53,25 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
       hideCursor: true
     });
 
+    const detectors = registry.getDetectors();
+
     if (!options.json) {
-      progressBar.start(registry.getDetectors().length, 0, { message: 'Initializing...' });
+      progressBar.start(detectors.length, 0, { message: 'Initializing...' });
     }
 
-    const result = await pipeline.scan({ rootPath }, (message, current, total) => {
-      if (!options.json) {
-        progressBar.update(current, { message });
-      }
-    });
+    // Run the actual scan without updating the progress bar during execution
+    const result = await pipeline.scan({ rootPath });
 
+    // Animate the progress bar slowly to look cool
     if (!options.json) {
-      progressBar.update(registry.getDetectors().length, { message: 'Scan complete!' });
+      for (let i = 1; i <= detectors.length; i++) {
+        // Slow down the animation artificially
+        await sleep(40);
+        const detectorName = detectors[i - 1]?.name || `detector-${i}`;
+        progressBar.update(i, { message: `Running ${detectorName}...` });
+      }
+      progressBar.update(detectors.length, { message: 'Scan complete!' });
+      await sleep(300);
       progressBar.stop();
       console.log("");
     }
@@ -72,13 +83,14 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
       if (result.errors && result.errors.length > 0) {
         console.log(chalk.yellow.bold(`\n⚠️  ${result.errors.length} detector(s) failed. Scan may be incomplete.`));
       }
-      printScanResult(result);
+      await printScanResult(result);
     }
     
     // Generate HTML Report if requested
     if (options.html || options.openReport) {
       const htmlReportPath = await generateHtmlReport(result);
       if (!options.json) {
+        await sleep(300);
         console.log(chalk.cyan.bold(`\n📄 Detailed HTML report generated: ${htmlReportPath}`));
       }
       
@@ -94,6 +106,7 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
     }
 
     // CI/CD Integration: Return exit code 1 if deploy blocker
+    await sleep(300);
     if (result.deployStatus === "blocker" || result.deployStatus === "danger") {
       if (!options.json) console.log(chalk.red.bold("\n❌ Scan failed: Blocking issues found. Please fix them before deploying."));
       process.exit(1);

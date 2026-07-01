@@ -31,6 +31,17 @@
 
 You can run VibeSafe instantly using `npx`, or install it locally in your project.
 
+> [!NOTE]
+> **For Local Testing / Contributors:** If you have cloned this repository and want to test your local changes on *other* projects on your computer, DO NOT use `npx @vibesafe/cli` as it will download the published version from NPM. Instead, link it globally:
+> ```bash
+> cd packages/cli
+> npm link
+> ```
+> Then, in any other folder on your computer, you can run the local build directly:
+> ```bash
+> vibesafe scan . --html
+> ```
+
 **Option 1: Run instantly (No installation)**
 ```bash
 npx @vibesafe/cli scan .

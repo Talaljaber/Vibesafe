@@ -1,6 +1,7 @@
 import chalk from "chalk";
 import type { ScanResult, Finding, DeployStatus, Severity } from "@vibesafe/shared";
 import { DEPLOY_STATUS_LABEL, DEPLOY_STATUS_MESSAGE, SEVERITY_LEVELS } from "@vibesafe/shared";
+import { setTimeout as sleep } from "timers/promises";
 
 function getColorForDeployStatus(status: DeployStatus) {
   switch (status) {
@@ -20,58 +21,65 @@ function getColorForSeverity(severity: Severity) {
   }
 }
 
-export function printScanResult(result: ScanResult) {
+export async function printScanResult(result: ScanResult) {
+  await sleep(400);
   console.log("\n" + chalk.bold.underline("📊 SCAN RESULTS") + "\n");
+  await sleep(300);
   
   // 1. Overview & Score
   const statusColor = getColorForDeployStatus(result.deployStatus);
   console.log(`Score:         ${statusColor(result.score + " / 100")}`);
+  await sleep(100);
   console.log(`Deploy Status: ${statusColor(DEPLOY_STATUS_LABEL[result.deployStatus])}`);
+  await sleep(100);
   console.log(`Message:       ${statusColor(DEPLOY_STATUS_MESSAGE[result.deployStatus])}`);
+  await sleep(100);
   console.log(`Time taken:    ${chalk.gray(result.durationMs + "ms")}`);
+  await sleep(100);
   console.log(`Files scanned: ${chalk.gray(result.summary.filesScanned)}`);
   console.log("");
+  await sleep(400);
 
-  // 2. Findings List
+  // 2. Issues & Repair Plan
+  console.log(chalk.bold.underline("\n🛠️  ISSUES & REPAIR PLAN") + "\n");
+  await sleep(300);
+  console.log(chalk.yellow(result.repairPlan.summary));
+  console.log("");
+  await sleep(200);
+
   if (result.findings.length === 0) {
     console.log(chalk.green("✨ No issues found! Your code is pristine. ✨\n"));
     return;
   }
 
-  // Group findings by severity
   for (const severity of SEVERITY_LEVELS) {
-    const severityFindings = result.findings.filter(f => f.severity === severity);
-    if (severityFindings.length === 0) continue;
+    const steps = result.repairPlan.steps.filter(s => s.severity === severity);
+    if (steps.length === 0) continue;
 
     const sevColor = getColorForSeverity(severity);
-    console.log(sevColor(`=== ${severity.toUpperCase()} ISSUES (${severityFindings.length}) ===`));
+    console.log(sevColor(`=== ${severity.toUpperCase()} ISSUES (${steps.length}) ===`));
+    await sleep(200);
 
-    for (const finding of severityFindings) {
-      console.log(`\n  ${sevColor("●")} ${chalk.bold(finding.title)} [${chalk.gray(finding.ruleId)}]`);
-      if (finding.file) {
-        console.log(`    File: ${chalk.cyan(finding.file)}${finding.line ? chalk.cyan(":" + finding.line) : ""}`);
+    for (const step of steps) {
+      const finding = result.findings.find(f => f.id === step.findingId)!;
+
+      console.log(`\n  ${sevColor("●")} ${chalk.bold(`Step ${step.order}: ${step.title}`)} [${chalk.gray(finding.ruleId)}]`);
+      if (step.file) {
+        console.log(`    File: ${chalk.cyan(step.file)}${step.line ? chalk.cyan(":" + step.line) : ""}`);
       }
       if (finding.evidence) {
         console.log(`    Code: ${chalk.dim(finding.evidence.trim().substring(0, 100))}`);
       }
       console.log(`    Problem: ${finding.plainEnglishProblem}`);
       console.log(`    Why it matters: ${chalk.dim(finding.whyItMatters)}`);
+      
+      console.log(`    ${chalk.bold("Fix")} (~${step.estimatedMinutes} mins):`);
+      for (const fix of step.fixSteps) {
+        console.log(`      - ${fix}`);
+      }
+      await sleep(100);
     }
     console.log("");
-  }
-
-  // 3. Repair Plan
-  console.log(chalk.bold.underline("\n🛠️  REPAIR PLAN") + "\n");
-  console.log(chalk.yellow(result.repairPlan.summary));
-  console.log("");
-
-  for (const step of result.repairPlan.steps) {
-    const sevColor = getColorForSeverity(step.severity);
-    const locationStr = (step.file && step.line) ? ` (@ ${step.file}:${step.line})` : (step.file ? ` (@ ${step.file})` : '');
-    console.log(`${chalk.bold(`Step ${step.order}`)}: Fix ${sevColor(step.title)}${chalk.dim(locationStr)} (~${step.estimatedMinutes} mins)`);
-    for (const fix of step.fixSteps) {
-      console.log(`  - ${fix}`);
-    }
-    console.log("");
+    await sleep(300);
   }
 }
