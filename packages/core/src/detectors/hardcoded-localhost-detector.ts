@@ -9,7 +9,18 @@ const LOCAL_NETWORK_HOST_REGEX = new RegExp(
 );
 
 function isCodeFile(filePath: string): boolean {
-  return CODE_FILE_EXTENSIONS.some((extension) => filePath.endsWith(extension));
+  if (!CODE_FILE_EXTENSIONS.some((extension) => filePath.endsWith(extension))) {
+    return false;
+  }
+
+  const normalizedPath = filePath.replace(/\\/g, "/");
+  const fileName = normalizedPath.split("/").pop() ?? normalizedPath;
+
+  return (
+    !normalizedPath.includes("/__tests__/") &&
+    !fileName.includes(".test.") &&
+    !fileName.includes(".spec.")
+  );
 }
 
 export class HardcodedLocalhostDetector implements Detector {
@@ -27,6 +38,10 @@ export class HardcodedLocalhostDetector implements Detector {
       }
 
       const content = await context.readFile(filePath);
+      if (!LOCAL_NETWORK_HOST_REGEX.test(content)) {
+        continue;
+      }
+
       const lines = content.split("\n");
 
       for (let i = 0; i < lines.length; i++) {

@@ -53,4 +53,18 @@ describe("HardcodedLocalhostDetector", () => {
 
     expect(findings).toHaveLength(0);
   });
+
+  it("should ignore localhost references in test files", async () => {
+    const context = createContext({
+      "src/api.test.ts": `const apiBaseUrl = "http://localhost:3000/api";`,
+      "src/api.spec.ts": `const apiBaseUrl = "http://127.0.0.1:3000/api";`,
+      "src/__tests__/api.ts": `const apiBaseUrl = "http://192.168.1.20:3000/api";`,
+      "src/api.ts": `const apiBaseUrl = "http://10.0.0.5:3000/api";`,
+    });
+
+    const findings = await detector.detect(context);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0].file).toBe("src/api.ts");
+  });
 });
