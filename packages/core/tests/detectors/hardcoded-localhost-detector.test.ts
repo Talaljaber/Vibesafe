@@ -32,12 +32,14 @@ describe("HardcodedLocalhostDetector", () => {
         export const officeApi = "http://192.168.1.20:8080";
         export const serviceApi = "http://10.0.0.5:8080";
         export const stagingApi = "http://172.16.4.10:8080";
+        export const ipv6Local = "http://[::1]:8080";
       `,
+      "src/server.mjs": `const db = "mongodb://localhost:27017";`,
     });
 
     const findings = await detector.detect(context);
 
-    expect(findings).toHaveLength(4);
+    expect(findings).toHaveLength(6);
     expect(findings.every((finding) => finding.ruleId === "code_quality/hardcoded-localhost")).toBe(
       true,
     );
@@ -59,6 +61,7 @@ describe("HardcodedLocalhostDetector", () => {
       "src/api.test.ts": `const apiBaseUrl = "http://localhost:3000/api";`,
       "src/api.spec.ts": `const apiBaseUrl = "http://127.0.0.1:3000/api";`,
       "src/__tests__/api.ts": `const apiBaseUrl = "http://192.168.1.20:3000/api";`,
+      "__tests__/api.ts": `const apiBaseUrl = "http://10.0.0.5:3000/api";`,
       "src/api.ts": `const apiBaseUrl = "http://10.0.0.5:3000/api";`,
     });
 

@@ -1,10 +1,10 @@
 import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
 import crypto from "crypto";
 
-const CODE_FILE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx"];
+const CODE_FILE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
 const OCTET = "(?:25[0-5]|2[0-4]\\d|1?\\d?\\d)";
 const LOCAL_NETWORK_HOST_REGEX = new RegExp(
-  `\\b(?:localhost|127\\.0\\.0\\.1|10\\.${OCTET}\\.${OCTET}\\.${OCTET}|192\\.168\\.${OCTET}\\.${OCTET}|172\\.(?:1[6-9]|2\\d|3[01])\\.${OCTET}\\.${OCTET})\\b`,
+  `(?<!\\w)(?:localhost|127\\.0\\.0\\.1|\\[?::1\\]?|10\\.${OCTET}\\.${OCTET}\\.${OCTET}|192\\.168\\.${OCTET}\\.${OCTET}|172\\.(?:1[6-9]|2\\d|3[01])\\.${OCTET}\\.${OCTET})(?!\\w)`,
   "i",
 );
 
@@ -17,7 +17,7 @@ function isCodeFile(filePath: string): boolean {
   const fileName = normalizedPath.split("/").pop() ?? normalizedPath;
 
   return (
-    !normalizedPath.includes("/__tests__/") &&
+    !normalizedPath.split("/").includes("__tests__") &&
     !fileName.includes(".test.") &&
     !fileName.includes(".spec.")
   );
