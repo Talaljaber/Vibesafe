@@ -21,9 +21,16 @@
 - **Before:** Secrets hardcoded, empty `.env.example`, missing dependency declarations.
 - **After:** Clean `.env.example`, safer configurations, and fewer obvious deployment risks.
 
+### Dashboard and CLI Reports
 
+<p align="center">
+  <img src="./packages/vscode/report.png" alt="VibeSafe Report Dashboard" width="45%">
+  <img src="./packages/vscode/report1.png" alt="VibeSafe Detail View" width="45%">
+</p>
 
----
+<p align="center">
+  <img src="./packages/vscode/Cli.png" alt="VibeSafe CLI Output" width="60%">
+</p>---
 
 ## 📦 Installation & Usage
 

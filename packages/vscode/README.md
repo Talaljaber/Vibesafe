@@ -12,6 +12,16 @@
 
 **VibeSafe** is your automated pre-deploy safety scanner. It acts as a safety net for developers using AI tools (Cursor, Copilot, Claude) to ensure that generated code doesn't leak secrets, break security best practices, or leave the codebase in a messy state.
 
+### VibeSafe in Action
+
+<p align="center">
+  <img src="./report.png" alt="VibeSafe Report Dashboard" width="45%">
+  <img src="./report1.png" alt="VibeSafe Detail View" width="45%">
+</p>
+
+<p align="center">
+  <img src="./Cli.png" alt="VibeSafe CLI Output" width="60%">
+</p>
 ## ✨ Key Features
 
 - 🕵️‍♂️ **Pre-Deploy Scanning**: Instantly scans your entire workspace for vulnerabilities, secrets, and code smells.
