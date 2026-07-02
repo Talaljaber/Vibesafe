@@ -1,6 +1,6 @@
 {
-  "name": "vibesafe",
-  "version": "0.1.4",
+  "name": "vibeguard-scanner",
+  "version": "0.1.6",
   "icon": "icon.png",
   "displayName": "VibeSafe by Talal Jaber",
   "description": "VibeSafe VS Code Extension — pre-deploy safety scanner for vibe-coded apps",

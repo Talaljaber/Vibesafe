@@ -24,12 +24,12 @@
 ### Dashboard and CLI Reports
 
 <p align="center">
-  <img src="./packages/vscode/report.png" alt="VibeSafe Report Dashboard" width="45%">
-  <img src="./packages/vscode/report1.png" alt="VibeSafe Detail View" width="45%">
+  <img src="https://raw.githubusercontent.com/Talaljaber/Vibeguard/main/packages/vscode/report.png" alt="VibeSafe Report Dashboard" width="45%">
+  <img src="https://raw.githubusercontent.com/Talaljaber/Vibeguard/main/packages/vscode/report1.png" alt="VibeSafe Detail View" width="45%">
 </p>
 
 <p align="center">
-  <img src="./packages/vscode/Cli.png" alt="VibeSafe CLI Output" width="60%">
+  <img src="https://raw.githubusercontent.com/Talaljaber/Vibeguard/main/packages/vscode/Cli.png" alt="VibeSafe CLI Output" width="60%">
 </p>---
 
 ## 📦 Installation & Usage

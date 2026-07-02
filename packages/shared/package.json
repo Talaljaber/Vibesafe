@@ -1,6 +1,6 @@
 {
   "name": "@vibesafe/shared",
-  "version": "0.1.0",
+  "version": "0.1.5",
   "description": "Shared types, constants, and enums for VibeSafe",
   "license": "MIT",
   "type": "module",
