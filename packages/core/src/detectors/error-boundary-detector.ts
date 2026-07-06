@@ -8,9 +8,32 @@ export class ErrorBoundaryDetector implements Detector {
   description = "Detects React applications that do not implement an Error Boundary.";
 
   async detect(context: ScanContext): Promise<Finding[]> {
-    const isReactProject =
-      context.files.some((file) => file.endsWith(".tsx")) ||
-      context.files.some((file) => file === "package.json");
+    let isReactProject = false;
+
+    // Check package.json for react dependency
+    const packageJsonPath = context.files.find(
+      (f) => f === "package.json" || f.endsWith("/package.json")
+    );
+    
+    if (packageJsonPath) {
+      try {
+        const raw = await context.readFile(packageJsonPath);
+        const pkg = JSON.parse(raw);
+        const deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
+        if (deps["react"]) {
+          isReactProject = true;
+        }
+      } catch {
+        // Ignore unparseable package.json
+      }
+    }
+
+    // Fallback: check if there are any .tsx or .jsx files
+    if (!isReactProject) {
+      isReactProject = context.files.some(
+        (file) => file.endsWith(".tsx") || file.endsWith(".jsx")
+      );
+    }
 
     if (!isReactProject) {
       return [];
