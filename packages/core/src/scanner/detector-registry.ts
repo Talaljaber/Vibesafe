@@ -9,6 +9,7 @@ import { DependencyDetector } from "../detectors/dependency-detector.js";
 import { CodebaseMessDetector } from "../detectors/codebase-mess-detector.js";
 import { ProjectStructureDetector } from "../detectors/project-structure-detector.js";
 import { HardcodedLocalhostDetector } from "../detectors/hardcoded-localhost-detector.js";
+import { ErrorBoundaryDetector } from "../detectors/error-boundary-detector.js";
 
 export function createDefaultRegistry(): DetectorRegistry {
   const registry = new DetectorRegistry();
@@ -21,6 +22,7 @@ export function createDefaultRegistry(): DetectorRegistry {
   registry.register(new CodebaseMessDetector());
   registry.register(new HardcodedLocalhostDetector());
   registry.register(new ProjectStructureDetector());
+  registry.register(new ErrorBoundaryDetector());
   return registry;
 }
 export class DetectorRegistry {
@@ -88,3 +90,4 @@ export class DetectorRegistry {
     return { findings, errors };
   }
 }
+
