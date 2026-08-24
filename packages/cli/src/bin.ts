@@ -26,6 +26,7 @@ program
   .option("--html", "Generate HTML report", false)
   .option("--open-report", "Automatically open the HTML report after scan", false)
   .option("-j, --json", "Output pure JSON without console formatting", false)
+  .option("--deep", "Also scan git history for leaked secrets (slower)", false)
   .action(async (dir, options) => {
     await runScan(dir, options);
   });

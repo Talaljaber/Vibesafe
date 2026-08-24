@@ -14,6 +14,7 @@ export interface ScanOptions {
   html?: boolean;
   openReport?: boolean;
   json?: boolean;
+  deep?: boolean;
 }
 
 export async function runScan(targetDir: string, options: ScanOptions = {}) {
@@ -42,6 +43,12 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
     await sleep(300);
   }
 
+  if (options.deep && !options.json) {
+    console.log(
+      chalk.yellow("Deep scan enabled: also inspecting git history for leaked secrets, this can take longer on large repos.\n"),
+    );
+  }
+
   try {
     const registry = createDefaultRegistry();
     const pipeline = new ScannerPipeline(registry);
@@ -60,7 +67,7 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
     }
 
     // Run the actual scan without updating the progress bar during execution
-    const result = await pipeline.scan({ rootPath });
+    const result = await pipeline.scan({ rootPath, deep: options.deep ?? false });
 
     // Animate the progress bar slowly to look cool
     if (!options.json) {
