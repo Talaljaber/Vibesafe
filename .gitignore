@@ -48,3 +48,6 @@ Plan.md
 context.md
 RELEASE_CHECKLIST.md
 docs/
+
+# Generated demo repo (scripts/create-demo-repo.mjs) - never commit its nested .git
+/demo-app/
