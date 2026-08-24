@@ -203,6 +203,13 @@ export interface ScanConfig {
 
   /** Optional list of relative file paths to scan (for targeted scans). */
   targetFiles?: string[] | undefined;
+
+  /**
+   * Opt-in to slower, deeper scans that inspect git history for secrets
+   * that were committed and later deleted from the working tree.
+   * Defaults to false — a default scan spawns zero git processes.
+   */
+  deep?: boolean | undefined;
 }
 
 // ─── Repair Plan ─────────────────────────────────────────────────────────────

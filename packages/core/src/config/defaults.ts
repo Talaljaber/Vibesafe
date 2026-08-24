@@ -21,6 +21,7 @@ export const DEFAULT_CONFIG: Omit<ScanConfig, "rootPath"> = {
   excludePatterns: [],
   maxFiles: DEFAULT_MAX_FILES,
   timeoutMs: DEFAULT_SCAN_TIMEOUT_MS,
+  deep: false,
 };
 
 /**
@@ -34,5 +35,6 @@ export function mergeConfig(rootPath: string, userConfig?: Partial<ScanConfig>):
     excludePatterns: userConfig?.excludePatterns ?? DEFAULT_CONFIG.excludePatterns,
     maxFiles: userConfig?.maxFiles ?? DEFAULT_CONFIG.maxFiles,
     timeoutMs: userConfig?.timeoutMs ?? DEFAULT_CONFIG.timeoutMs,
+    deep: userConfig?.deep ?? DEFAULT_CONFIG.deep,
   };
 }
