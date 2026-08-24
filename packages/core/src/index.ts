@@ -20,6 +20,7 @@ export { DependencyDetector } from "./detectors/dependency-detector.js";
 export { CodebaseMessDetector } from "./detectors/codebase-mess-detector.js";
 export { ProjectStructureDetector } from "./detectors/project-structure-detector.js";
 export { ErrorBoundaryDetector } from "./detectors/error-boundary-detector.js";
+export { GitHistoryDetector } from "./detectors/git-history-detector.js";
 
 // Fixers
 export * from "./fixers/index.js";
