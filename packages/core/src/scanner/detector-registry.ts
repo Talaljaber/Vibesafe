@@ -11,6 +11,7 @@ import { ProjectStructureDetector } from "../detectors/project-structure-detecto
 import { HardcodedLocalhostDetector } from "../detectors/hardcoded-localhost-detector.js";
 import { ErrorBoundaryDetector } from "../detectors/error-boundary-detector.js";
 import { GitHistoryDetector } from "../detectors/git-history-detector.js";
+import { DangerousHtmlDetector } from "../detectors/dangerous-html-detector.js";
 
 export function createDefaultRegistry(): DetectorRegistry {
   const registry = new DetectorRegistry();
@@ -25,6 +26,7 @@ export function createDefaultRegistry(): DetectorRegistry {
   registry.register(new ProjectStructureDetector());
   registry.register(new ErrorBoundaryDetector());
   registry.register(new GitHistoryDetector());
+  registry.register(new DangerousHtmlDetector());
   return registry;
 }
 export class DetectorRegistry {

@@ -19,7 +19,8 @@ export type FindingCategory =
   | "validation"
   | "dependency"
   | "code_quality"
-  | "structure";
+  | "structure"
+  | "xss";
 
 /** How confident is the detector in this finding? */
 export type Confidence = "high" | "medium" | "low";

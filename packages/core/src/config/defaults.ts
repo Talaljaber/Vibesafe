@@ -10,6 +10,7 @@ const ALL_CATEGORIES: FindingCategory[] = [
   "dependency",
   "code_quality",
   "structure",
+  "xss",
 ];
 
 /**

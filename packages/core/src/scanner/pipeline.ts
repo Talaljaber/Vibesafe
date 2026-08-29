@@ -191,6 +191,7 @@ export class ScannerPipeline {
         dependency: 0,
         code_quality: 0,
         structure: 0,
+        xss: 0,
       },
       filesScanned,
       linesScanned: 0, // We don't count lines in Phase 1-2 for simplicity
