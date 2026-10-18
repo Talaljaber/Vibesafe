@@ -14,6 +14,11 @@ const PUBLIC_SECRET_REGEX =
 const SERVER_ENV_REGEX = /process\.env(?:\.([A-Za-z_][A-Za-z0-9_]*)|\[\s*["']([A-Za-z_][A-Za-z0-9_]*)["']\s*\])/g;
 const SECRET_LOOKING_NAME = /SERVICE_ROLE|SECRET|PRIVATE|PASSWORD|TOKEN|API_KEY|APIKEY/i;
 const SERVICE_ROLE_REGEX = /SERVICE_ROLE_KEY|service_role/;
+/** firebase-admin (or a subpath) pulled in via import/require/dynamic import; `import type` is erased at build time. */
+const FIREBASE_ADMIN_REGEX =
+  /(?:from\s*|require\s*\(\s*|import\s*\(?\s*)["']firebase-admin(?:\/[^"']*)?["']/;
+const FIREBASE_ADMIN_TYPE_ONLY = /^\s*import\s+type/;
+const SERVICE_ACCOUNT_JSON_REGEX = /(?:service[-_.]?account|firebase[-_.]?adminsdk)[^"'/\]*\.json$/i;
 const IMPORT_REGEX = /(?:import|export)\s[^"';]*?from\s*["']([^"']+)["']|import\s*["']([^"']+)["']/g;
 
 /** Removes block and line comments, keeping line structure so line numbers stay valid. */
@@ -97,6 +102,11 @@ export class FrontendExposureDetector implements Detector {
           findings.push(this.serviceRoleFinding(filePath, i + 1, raw));
         }
 
+        // 2a. Firebase Admin SDK imported directly in client code
+        if (!FIREBASE_ADMIN_TYPE_ONLY.test(line) && FIREBASE_ADMIN_REGEX.test(line)) {
+          findings.push(this.firebaseAdminFinding(filePath, i + 1, raw));
+        }
+
         // 2. Public-prefixed variables with secret-looking names
         const match = PUBLIC_SECRET_REGEX.exec(line);
         if (match?.[0]) {
@@ -113,6 +123,10 @@ export class FrontendExposureDetector implements Detector {
         if (!spec) continue;
         const importLine = noBlock.slice(0, m.index).split("\n").length;
         if ((lines[importLine - 1] ?? "").trim() === "") continue; // commented-out import
+        if (SERVICE_ACCOUNT_JSON_REGEX.test(spec)) {
+          findings.push(this.firebaseAdminFinding(filePath, importLine, rawLines[importLine - 1] ?? "", spec));
+          continue;
+        }
         const target = resolveImport(filePath, spec);
         if (!target || target === filePath) continue;
 
@@ -120,6 +134,11 @@ export class FrontendExposureDetector implements Detector {
         if (/^\s*import\s+["']server-only["']/m.test(targetContent)) continue;
         const targetLines = stripComments(targetContent);
         const raw = rawLines[importLine - 1] ?? "";
+
+        if (targetLines.some((l) => !FIREBASE_ADMIN_TYPE_ONLY.test(l) && FIREBASE_ADMIN_REGEX.test(l))) {
+          findings.push(this.firebaseAdminFinding(filePath, importLine, raw, target));
+          continue;
+        }
 
         if (targetLines.some((l) => SERVICE_ROLE_REGEX.test(l))) {
           findings.push(this.serviceRoleFinding(filePath, importLine, raw, target));
@@ -170,6 +189,31 @@ export class FrontendExposureDetector implements Detector {
         "Never use service role keys in the browser.",
         "Use the regular anonymous/public key for the frontend client.",
         "If you need to perform admin actions, create a backend API route, do the action there, and call it from the frontend.",
+      ],
+      autoFixAvailable: false,
+    };
+  }
+
+  private firebaseAdminFinding(file: string, line: number, evidence: string, via?: string): Finding {
+    const where = via ? ` (via ${via})` : "";
+    return {
+      id: createFindingId(CATEGORY_PREFIX.frontend_exposure, "frontend_exposure/firebase-admin", file, line, via),
+      ruleId: "frontend_exposure/firebase-admin",
+      title: "Firebase Admin SDK or service account used in client code",
+      severity: "critical",
+      category: "frontend_exposure",
+      deployBlocking: true,
+      confidence: via ? "medium" : "high",
+      file,
+      line,
+      evidence: sanitizeEvidence(evidence),
+      plainEnglishProblem: `Client-side code uses the Firebase Admin SDK or a service account key${where}.`,
+      whyItMatters:
+        "The Firebase Admin SDK runs with full administrative privileges and needs a service account private key. Bundling it for the browser exposes those credentials or breaks the build.",
+      fixSteps: [
+        "Remove 'firebase-admin' and service account JSON imports from client components and pages.",
+        "Use the client Firebase SDK ('firebase/app', 'firebase/auth', 'firebase/firestore') in the browser.",
+        "Move administrative operations to a server-side API route or a Server Action marked with 'use server', and rotate the service account key if it was ever bundled.",
       ],
       autoFixAvailable: false,
     };

@@ -23,11 +23,21 @@ export function hasUseClientDirective(fileContent: string): boolean {
   return /^(["'])use client\1/.test(stripLeadingComments(fileContent));
 }
 
+/** True when the file starts with a `"use server"` directive (after comments/blank lines). */
+export function hasUseServerDirective(fileContent: string): boolean {
+  return /^(["'])use server/.test(stripLeadingComments(fileContent));
+}
+
 /**
  * Determines if a file is explicitly marked for the client-side
  * or typically exposed to the client in Next.js.
  */
 export function isClientFile(filePath: string, fileContent: string): boolean {
+  // A leading "use server" directive marks Server Actions: never bundled as client code
+  if (hasUseServerDirective(fileContent)) {
+    return false;
+  }
+
   // Next.js "use client" directive must be the first statement
   if (hasUseClientDirective(fileContent)) {
     return true;
