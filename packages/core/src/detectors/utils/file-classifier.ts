@@ -5,14 +5,21 @@ import path from "path";
  * or typically exposed to the client in Next.js.
  */
 export function isClientFile(filePath: string, fileContent: string): boolean {
+  if (fileContent.includes('"use server"') || fileContent.includes("'use server'")) {
+    return false;
+  }
+
   // Check for Next.js "use client" directive
   if (fileContent.includes('"use client"') || fileContent.includes("'use client'")) {
     return true;
   }
 
-  // Next.js Pages router: files in pages/ (except pages/api) are client-accessible by default
+  // Next.js Pages router: files in pages/ or src/pages/ (except pages/api / src/pages/api) are client-accessible by default
   const normalizedPath = filePath.replace(/\\/g, "/");
-  if (normalizedPath.startsWith("pages/") && !normalizedPath.startsWith("pages/api/")) {
+  if (
+    (normalizedPath.startsWith("pages/") && !normalizedPath.startsWith("pages/api/")) ||
+    (normalizedPath.startsWith("src/pages/") && !normalizedPath.startsWith("src/pages/api/"))
+  ) {
     return true;
   }
 
@@ -29,7 +36,12 @@ export function isServerFile(filePath: string, fileContent: string): boolean {
   }
 
   const normalizedPath = filePath.replace(/\\/g, "/");
-  if (normalizedPath.startsWith("app/api/") || normalizedPath.startsWith("pages/api/")) {
+  if (
+    normalizedPath.startsWith("app/api/") ||
+    normalizedPath.startsWith("src/app/api/") ||
+    normalizedPath.startsWith("pages/api/") ||
+    normalizedPath.startsWith("src/pages/api/")
+  ) {
     return true;
   }
 

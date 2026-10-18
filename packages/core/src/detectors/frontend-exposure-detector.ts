@@ -76,6 +76,31 @@ export class FrontendExposureDetector implements Detector {
             autoFixAvailable: false,
           });
         }
+
+        // 3. Detect Firebase Admin SDK imported in client code
+        const firebaseAdminRegex = /(?:from\s+|require\s*\(\s*|import\s*(?:\(\s*)?)['"]firebase-admin(?:\/[^'"]*)?['"]/i;
+        if (!/^\s*(?:\/\/|\/\*|\*|import\s+type\b)/.test(line) && firebaseAdminRegex.test(line)) {
+          findings.push({
+            id: `FE-${crypto.randomBytes(3).toString("hex")}`,
+            ruleId: "frontend_exposure/firebase-admin",
+            title: "Firebase Admin SDK imported in client code",
+            severity: "critical",
+            category: "frontend_exposure",
+            deployBlocking: true,
+            confidence: "high",
+            file: filePath,
+            line: i + 1,
+            evidence: line.trim(),
+            plainEnglishProblem: "You are importing the Firebase Admin SDK ('firebase-admin') in client-side code.",
+            whyItMatters: "The Firebase Admin SDK operates with full administrative privileges and expects a privileged environment. Importing it in frontend code can expose service account credentials and fails in browser bundles.",
+            fixSteps: [
+              "Remove 'firebase-admin' imports from client components and pages.",
+              "Use the client-side Firebase SDK ('firebase/app', 'firebase/auth', 'firebase/firestore') for browser interactions.",
+              "If you need administrative operations (e.g., verifying tokens or managing users), move that logic to a server-side API route (such as app/api/... or pages/api/...) or a Server Action marked with 'use server'."
+            ],
+            autoFixAvailable: false,
+          });
+        }
       }
     }
 
