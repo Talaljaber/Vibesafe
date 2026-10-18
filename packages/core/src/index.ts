@@ -22,6 +22,7 @@ export { ProjectStructureDetector } from "./detectors/project-structure-detector
 export { ErrorBoundaryDetector } from "./detectors/error-boundary-detector.js";
 export { GitHistoryDetector } from "./detectors/git-history-detector.js";
 export { DangerousHtmlDetector } from "./detectors/dangerous-html-detector.js";
+export { StripeWebhookDetector } from "./detectors/stripe-webhook-detector.js";
 
 // Fixers
 export * from "./fixers/index.js";

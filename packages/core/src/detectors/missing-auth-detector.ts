@@ -1,5 +1,6 @@
-import { Detector, Finding, ScanContext } from "@vibesafe/shared";
+import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
 import { isApiRoute, hasRiskyHttpMethods, hasAuthCheck, isRiskyRoutePattern } from "./utils/route-analyzer.js";
+import { isStripeWebhookRoute } from "./stripe-webhook-detector.js";
 import crypto from "crypto";
 
 export class MissingAuthDetector implements Detector {
@@ -17,6 +18,11 @@ export class MissingAuthDetector implements Detector {
       }
 
       const content = await context.readFile(filePath);
+
+      // Webhook routes require signature verification and are handled by specialized detectors
+      if (isStripeWebhookRoute(filePath, content)) {
+        continue;
+      }
 
       const isMutatingRoute = hasRiskyHttpMethods(content);
       const isSensitivePath = isRiskyRoutePattern(filePath);

@@ -8,7 +8,9 @@ export const AUTH_FUNCTION_SIGNATURES = [
   "jwt.verify",
   "requireAuth",
   "checkAuth",
-  "isAuthenticated"
+  "isAuthenticated",
+  "stripe.webhooks.constructEvent",
+  "constructEvent("
 ];
 
 export const RISKY_HTTP_METHODS = ["POST", "PUT", "PATCH", "DELETE"];
