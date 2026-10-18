@@ -82,6 +82,7 @@ export const CATEGORY_PREFIX: Record<FindingCategory, string> = {
   dependency: "DEP",
   code_quality: "QUAL",
   structure: "STRUCT",
+  xss: "XSS",
 };
 
 // ─── Version ──────────────────────────────────────────────────────────────────
