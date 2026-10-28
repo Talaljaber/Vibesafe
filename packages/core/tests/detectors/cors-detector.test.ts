@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+﻿import { describe, it, expect } from "vitest";
 import { CorsDetector } from "../../src/detectors/cors-detector";
 import type { ScanContext } from "@vibesafe/shared";
 
@@ -15,12 +15,12 @@ const ctx = (files: Record<string, string>): ScanContext => ({
 const run = (files: Record<string, string>) => detector.detect(ctx(files));
 
 describe("CorsDetector", () => {
-  it("flags origin '*' with credentials as high", async () => {
+  it("flags origin '*' with credentials as medium (browsers block it)", async () => {
     const f = await run({
       "server.ts": `import cors from "cors";\napp.use(cors({ origin: "*", credentials: true }));`,
     });
     expect(f).toHaveLength(1);
-    expect(f[0]?.severity).toBe("high");
+    expect(f[0]?.severity).toBe("medium");
     expect(f[0]?.ruleId).toBe("security_config/cors-wildcard-credentials");
     expect(f[0]?.category).toBe("security_config");
     expect(f[0]?.line).toBe(2);
@@ -87,12 +87,12 @@ describe("CorsDetector", () => {
     expect(f[0]?.ruleId).toBe("security_config/cors-wildcard-header");
   });
 
-  it("escalates wildcard header to high with Allow-Credentials true", async () => {
+  it("flags wildcard header with Allow-Credentials true as medium", async () => {
     const f = await run({
       "middleware.ts": `res.headers.set("Access-Control-Allow-Origin", "*");\nres.headers.set("Access-Control-Allow-Credentials", "true");`,
     });
     expect(f).toHaveLength(1);
-    expect(f[0]?.severity).toBe("high");
+    expect(f[0]?.severity).toBe("medium");
   });
 
   it("flags wildcard in next.config headers()", async () => {
@@ -135,6 +135,99 @@ describe("CorsDetector", () => {
     expect(f).toHaveLength(0);
   });
 
+  it("flags wildcard header in Express when credentials are allowed in the file", async () => {
+    const f = await run({
+      "server.js": `res.header("Access-Control-Allow-Origin", "*");\nres.header("Access-Control-Allow-Credentials", "true");`,
+    });
+    expect(f).toHaveLength(1);
+    expect(f[0]?.ruleId).toBe("security_config/cors-wildcard-header");
+  });
+
+  it("ignores commented-out options next to credentials", async () => {
+    const f = await run({
+      "a.ts": `import cors from "cors";\napp.use(cors({\n  // origin: "*",\n  origin: ["https://a.com"],\n  credentials: true,\n}));`,
+      "b.ts": `import cors from "cors";\napp.use(cors({\n  /* origin: true, */\n  origin: ["https://a.com"],\n  credentials: true,\n}));`,
+    });
+    expect(f).toHaveLength(0);
+  });
+
+  it("handles apostrophes in comments and quotes in regex literals inside the call", async () => {
+    const f = await run({
+      "a.ts": `import cors from "cors";\napp.use(cors({ // don't restrict\n  origin: true,\n  credentials: true,\n}));`,
+      "b.ts": `import cors from "cors";\napp.use(cors({ origin: /'x/, credentials: true }));\napp.use(cors({ origin: "*", credentials: true }));`,
+    });
+    expect(f.map((x) => x.file).sort()).toEqual(["a.ts", "b.ts"]);
+    expect(f.find((x) => x.file === "a.ts")?.severity).toBe("high");
+  });
+
+  it("follows aliased cors imports", async () => {
+    const f = await run({
+      "a.ts": `import corsMiddleware from "cors";\napp.use(corsMiddleware({ origin: true, credentials: true }));`,
+      "b.js": `const c = require("cors");\napp.use(c({ origin: true, credentials: true }));`,
+      "c.ts": `import * as expressCors from "cors";\napp.use(expressCors({ origin: true, credentials: true }));`,
+    });
+    expect(f).toHaveLength(3);
+  });
+
+  it("resolves an options identifier containing $", async () => {
+    const f = await run({
+      "a.ts": `import cors from "cors";\nconst $opts = { origin: true, credentials: true };\napp.use(cors($opts));`,
+    });
+    expect(f).toHaveLength(1);
+  });
+
+  it("does not flag explicit wildcard or true origin without credentials or cookies", async () => {
+    const f = await run({
+      "a.ts": `import cors from "cors";\napp.use(cors({ origin: "*" }));`,
+      "b.ts": `import cors from "cors";\napp.use(cors({ origin: true }));`,
+    });
+    expect(f).toHaveLength(0);
+  });
+
+  it("flags explicit wildcard origin without credentials in a cookie app", async () => {
+    const f = await run({
+      "a.ts": `import cors from "cors";\napp.use(cors({ origin: "*" }));`,
+      "s.ts": `import session from "express-session";`,
+    });
+    expect(f).toHaveLength(1);
+    expect(f[0]?.ruleId).toBe("security_config/cors-default-with-cookies");
+  });
+
+  it("flags a reflecting origin function without credentials", async () => {
+    const f = await run({
+      "a.ts": `import cors from "cors";\napp.use(cors({ origin: (o, cb) => cb(null, true) }));`,
+      "b.ts": `import cors from "cors";\napp.use(cors({ origin: (origin, cb) => cb(null, origin) }));`,
+    });
+    expect(f).toHaveLength(2);
+    expect(f.every((x) => x.ruleId === "security_config/cors-reflected-origin")).toBe(true);
+  });
+
+  it("detects reflected header split across lines", async () => {
+    const f = await run({
+      "server.js": `res.setHeader(\n  "Access-Control-Allow-Origin",\n  req.headers.origin\n);`,
+    });
+    expect(f).toHaveLength(1);
+    expect(f[0]?.line).toBe(2);
+  });
+
+  it("is not suppressed by an unrelated .test() call, but is by a check beyond 8 lines", async () => {
+    const unrelated = await run({
+      "server.js": `const ok = /abc/.test(name);\nres.setHeader("Access-Control-Allow-Origin", req.headers.origin);`,
+    });
+    expect(unrelated).toHaveLength(1);
+    const far = await run({
+      "server.js": `const origin = req.headers.origin;\nif (!allowed.includes(origin)) return;\n${"// pad\n".repeat(12)}res.setHeader("Access-Control-Allow-Origin", origin);`,
+    });
+    expect(far).toHaveLength(0);
+  });
+
+  it("ignores a commented-out Allow-Credentials header", async () => {
+    const f = await run({
+      "app/api/x/route.ts": `// res.headers.set("Access-Control-Allow-Credentials", "true");\nheaders.set("Access-Control-Allow-Origin", "*");`,
+    });
+    expect(f).toHaveLength(1);
+    expect(f[0]?.severity).toBe("medium");
+  });
   it("produces stable ids with the CFG prefix", async () => {
     const files = { "s.ts": `import cors from "cors";\napp.use(cors({ origin: "*", credentials: true }));` };
     const a = await run(files);
