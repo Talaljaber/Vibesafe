@@ -14,6 +14,7 @@ export interface ScanOptions {
   openReport?: boolean;
   json?: boolean;
   deep?: boolean;
+  includeTests?: boolean;
 }
 
 export async function runScan(targetDir: string, options: ScanOptions = {}) {
@@ -76,7 +77,10 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
 
     let result;
     try {
-      result = await pipeline.scan({ rootPath, deep: options.deep ?? false }, onProgress);
+      result = await pipeline.scan(
+        { rootPath, deep: options.deep ?? false, includeTests: options.includeTests ?? false },
+        onProgress,
+      );
     } finally {
       if (barStarted) {
         progressBar.stop();
@@ -93,6 +97,9 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
             `\n⚠️  ${result.errors.length} detector(s) failed. Scan may be incomplete.`,
           ),
         );
+      }
+      if (result.warnings && result.warnings.length > 0) {
+        for (const w of result.warnings) console.log(chalk.yellow(`⚠️  ${w}`));
       }
       await printScanResult(result);
     }
