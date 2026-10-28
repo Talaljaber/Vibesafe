@@ -7,6 +7,8 @@ const MAX_TOP_FINDINGS = 10;
 const MAX_DETAIL_FINDINGS = 50;
 const MAX_WARNINGS = 5;
 const MAX_TEXT_LENGTH = 300;
+/** GitHub rejects comment bodies over 65536 chars; stay well under. */
+const MAX_BODY_LENGTH = 60000;
 const ZWSP = "​";
 
 const SEVERITY_ORDER: Record<Severity, number> = { critical: 0, high: 1, medium: 2, low: 3 };
@@ -65,6 +67,11 @@ function bullet(f: Finding): string {
  * comment. Never includes finding evidence (it may contain secrets).
  */
 export function formatMarkdownReport(result: ScanResult): string {
+  const full = renderReport(result, true);
+  return full.length <= MAX_BODY_LENGTH ? full : renderReport(result, false);
+}
+
+function renderReport(result: ScanResult, withDetails: boolean): string {
   const s = result.summary;
   const lines: string[] = [];
 
@@ -96,24 +103,31 @@ export function formatMarkdownReport(result: ScanResult): string {
       lines.push(`...and ${sorted.length - top.length} more (see details below).`);
     }
 
-    lines.push("");
-    lines.push("<details>");
-    lines.push(`<summary>All findings (${sorted.length})</summary>`);
-    lines.push("");
-    for (const f of sorted.slice(0, MAX_DETAIL_FINDINGS)) {
-      lines.push(bullet(f));
-      lines.push(`  - ${escapeMarkdown(f.plainEnglishProblem)}`);
-      const first = f.fixSteps[0];
-      if (first) lines.push(`  - Fix: ${escapeMarkdown(first)}`);
-    }
-    if (sorted.length > MAX_DETAIL_FINDINGS) {
+    if (withDetails) {
+      lines.push("");
+      lines.push("<details>");
+      lines.push(`<summary>All findings (${sorted.length})</summary>`);
+      lines.push("");
+      for (const f of sorted.slice(0, MAX_DETAIL_FINDINGS)) {
+        lines.push(bullet(f));
+        lines.push(`  - ${escapeMarkdown(f.plainEnglishProblem)}`);
+        const first = f.fixSteps[0];
+        if (first) lines.push(`  - Fix: ${escapeMarkdown(first)}`);
+      }
+      if (sorted.length > MAX_DETAIL_FINDINGS) {
+        lines.push("");
+        lines.push(
+          `...${sorted.length - MAX_DETAIL_FINDINGS} more not shown. Run \`vibesafe scan\` locally for the full list.`,
+        );
+      }
+      lines.push("");
+      lines.push("</details>");
+    } else {
       lines.push("");
       lines.push(
-        `...${sorted.length - MAX_DETAIL_FINDINGS} more not shown. Run \`vibesafe scan\` locally for the full list.`,
+        "Details omitted because the report is too large. Run `vibesafe scan` locally for the full list.",
       );
     }
-    lines.push("");
-    lines.push("</details>");
   }
 
   if (result.errors && result.errors.length > 0) {

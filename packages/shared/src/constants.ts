@@ -144,7 +144,7 @@ export const CATEGORY_PREFIX: Record<FindingCategory, string> = {
 
 // ─── Version ──────────────────────────────────────────────────────────────────
 
-export const VIBESAFE_VERSION = "0.1.5";
+export const VIBESAFE_VERSION = "0.3.0";
 
 // ─── Branding ─────────────────────────────────────────────────────────────────
 

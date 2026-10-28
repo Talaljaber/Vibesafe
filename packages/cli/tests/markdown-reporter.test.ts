@@ -124,6 +124,18 @@ describe("formatMarkdownReport", () => {
     expect(md.match(/\*\*high\*\*:/g)).toHaveLength(60);
   });
 
+  it("drops the details block when the body would exceed GitHub's comment limit", () => {
+    const big = "*".repeat(400);
+    const many = Array.from({ length: 60 }, (_, i) =>
+      finding({ title: big, plainEnglishProblem: big, fixSteps: [big], line: i + 1 }),
+    );
+    const md = formatMarkdownReport(result(many));
+    expect(md.length).toBeLessThan(65536);
+    expect(md).not.toContain("<details>");
+    expect(md).toContain("Details omitted");
+    expect(md).toContain("<!-- vibesafe-status:");
+  });
+
   it("never includes evidence", () => {
     const md = formatMarkdownReport(result([finding({ evidence: "sk-SUPERSECRET123" })]));
     expect(md).not.toContain("SUPERSECRET");
@@ -261,8 +273,11 @@ describe("action.yml", () => {
     expect(action).toContain("-- \"$GITHUB_WORKSPACE/$VS_PATH\"");
   });
 
-  it("only updates bot comments that start with the marker", () => {
-    expect(action).toContain(".user.type == \"Bot\"");
+  it("only updates comments by the token's own login that start with the marker", () => {
+    expect(action).toContain("gh api user --jq .login");
+    expect(action).toContain(".user.login == $me");
+    expect(action).not.toContain(".user.type");
+    expect(action).not.toContain("0.1.5");
     expect(action).toContain("startswith($m)");
   });
 

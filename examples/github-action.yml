@@ -29,5 +29,5 @@ jobs:
           fail-on: blocker # blocker | danger | warning | none
           comment: "true"
           deep: "false"
-          version: 0.1.5 # pin a release that ships --format markdown
+          version: 0.3.0 # first release that ships --format markdown (not yet published; 0.2.0 and older lack it)
           github-token: ${{ github.token }}
