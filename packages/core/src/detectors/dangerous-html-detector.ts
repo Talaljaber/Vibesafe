@@ -1,5 +1,6 @@
 import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
 import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
+import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
 
 const SCANNABLE_SUFFIXES = [".tsx", ".jsx", ".js", ".mjs", ".cjs"] as const;
 
@@ -31,7 +32,7 @@ export class DangerousHtmlDetector implements Detector {
 
         const match = DANGEROUS_HTML_RE.exec(line);
         if (match && match[0]) {
-          findings.push(this.createFinding(filePath, i + 1, match[0]));
+          findings.push(this.createFinding(filePath, i + 1, sanitizeEvidence(match[0])));
         }
       }
     }

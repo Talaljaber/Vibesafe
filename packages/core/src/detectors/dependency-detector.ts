@@ -7,6 +7,7 @@
 
 import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
 import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
+import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
 
 /** Scripts that run automatically during npm install — a common supply-chain attack vector. */
 const RISKY_SCRIPT_KEYS = ["preinstall", "postinstall", "install"];
@@ -53,7 +54,7 @@ export class DependencyDetector implements Detector {
           deployBlocking: false,
           confidence: "medium",
           file: packageJsonPath,
-          evidence: `"${scriptKey}": "${scriptValue}"`,
+          evidence: sanitizeEvidence(`"${scriptKey}": "${scriptValue}"`),
           plainEnglishProblem: `Your package.json has a "${scriptKey}" script that runs automatically when someone installs your project.`,
           whyItMatters:
             "Malicious packages sometimes use install scripts to run harmful code on developer machines. Having your own install scripts also increases the attack surface.",
