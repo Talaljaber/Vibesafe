@@ -9,6 +9,7 @@ import {
   middlewareProtectsApi,
 } from "./utils/route-analyzer.js";
 import { RISKY_HTTP_METHODS } from "./patterns/auth-patterns.js";
+import { isStripeWebhookRoute } from "./stripe-webhook-detector.js";
 
 export class MissingAuthDetector implements Detector {
   id = "missing-auth-detector";
@@ -26,6 +27,11 @@ export class MissingAuthDetector implements Detector {
       }
 
       const content = await context.readFile(filePath);
+
+      // Webhook routes authenticate via signature verification, handled by StripeWebhookDetector
+      if (isStripeWebhookRoute(filePath, content)) {
+        continue;
+      }
 
       const riskyLine = findHandlerLine(content, RISKY_HTTP_METHODS);
       const isMutatingRoute = riskyLine !== undefined;
