@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { SECRET_PATTERNS, matchSecretPattern } from "../../src/detectors/patterns/secret-patterns";
+import type { ScanContext } from "@vibesafe/shared";
+import {
+  SECRET_PATTERNS,
+  isLikelyAwsSecretValue,
+  matchSecretPattern,
+} from "../../src/detectors/patterns/secret-patterns";
+import { SecretDetector } from "../../src/detectors/secret-detector";
 import { sanitizeEvidence } from "../../src/detectors/utils/sanitize-evidence";
 
 const SECRET = "q8Zr3KpL0vNx5TdW2yBc7HsJ4mUe9AfGaR1oXiQt";
@@ -45,10 +51,49 @@ describe("AWS secret access keys", () => {
     expect(hitsSecret(line)).toBe(true);
   });
 
-  it("redacts only the value in evidence", () => {
-    const out = sanitizeEvidence(`AWS_SECRET_ACCESS_KEY=${SECRET}`);
+  it.each([
+    ["env line", `AWS_SECRET_ACCESS_KEY=${SECRET}`, "AWS_SECRET_ACCESS_KEY="],
+    ["JSON", `  "secretAccessKey": "${SECRET}"`, "secretAccessKey"],
+    ["object literal", `  secretAccessKey: "${SECRET}",`, "secretAccessKey:"],
+    ["SDK credentials", `credentials: { accessKeyId: "${ACCESS_ID}", secretAccessKey: "${SECRET}" }`, "secretAccessKey"],
+  ])("redacts only the value in evidence (%s)", (_name, line, keyName) => {
+    const out = sanitizeEvidence(line);
     expect(out).not.toContain(SECRET);
-    expect(out).toContain("AWS_SECRET_ACCESS_KEY=");
+    expect(out).not.toContain(ACCESS_ID);
+    expect(out).toContain(keyName);
+  });
+
+  it("reports a real key that follows a placeholder on the same line", () => {
+    const line = `{"a": "AKIAIOSFODNN7EXAMPLE", "b": "${ACCESS_ID}"}`;
+    expect(matchSecretPattern(idPattern, line)?.[0]).toBe(ACCESS_ID);
+    const sec = `AWS_SECRET_ACCESS_KEY=${"x".repeat(40)} secretAccessKey=${SECRET}`;
+    expect(matchSecretPattern(secretPattern, sec)?.[2]).toBe(SECRET);
+  });
+
+  it("detects Ruby hash rockets, bare secret_key and Dockerfile ENV lines", () => {
+    expect(hitsSecret(`secret_access_key => "${SECRET}"`)).toBe(true);
+    expect(hitsSecret(`secret_key = "${SECRET}"`)).toBe(true);
+    expect(hitsSecret(`ENV AWS_SECRET_ACCESS_KEY ${SECRET}`)).toBe(true);
+  });
+
+  it("rejects a value with enough distinct characters but low entropy", () => {
+    const skewed = "a".repeat(26) + "bcdefghijk0123";
+    expect(new Set(skewed).size).toBeGreaterThanOrEqual(15);
+    expect(isLikelyAwsSecretValue(skewed)).toBe(false);
+    expect(isLikelyAwsSecretValue(SECRET)).toBe(true);
+  });
+
+  it("surfaces redacted evidence through SecretDetector", async () => {
+    const files: Record<string, string> = { "src/aws.ts": `const c = { secretAccessKey: "${SECRET}" };` };
+    const context = {
+      files: Object.keys(files),
+      readFile: async (f: string) => files[f] ?? "",
+    } as unknown as ScanContext;
+    const findings = await new SecretDetector().detect(context);
+    const finding = findings.find((f) => f.ruleId === "secret/sec-aws-secret-key");
+    expect(finding).toBeDefined();
+    expect(finding?.evidence).not.toContain(SECRET);
+    expect(finding?.evidence).toContain("secretAccessKey");
   });
 
   it("ignores the AWS documentation example", () => {
@@ -62,7 +107,7 @@ describe("AWS secret access keys", () => {
     ["low entropy", `AWS_SECRET_ACCESS_KEY=${"ab12".repeat(10)}`],
     ["all digits", `AWS_SECRET_ACCESS_KEY=${"1234567890".repeat(4)}`],
     ["all letters", `AWS_SECRET_ACCESS_KEY=${"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN"}`],
-    ["your-placeholder", `aws_secret_access_key = "your-aws-secret-access-key"`],
+    ["your-placeholder (fails length/charset)",`aws_secret_access_key = "your-aws-secret-access-key"`],
     ["env reference", `secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY`],
     ["too short", `AWS_SECRET_ACCESS_KEY=${SECRET.slice(0, 39)}`],
     ["too long", `AWS_SECRET_ACCESS_KEY=${SECRET}Z`],

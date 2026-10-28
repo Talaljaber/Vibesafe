@@ -30,20 +30,31 @@ export function decodeJwtRole(token: string): string | undefined {
   }
 }
 
-/** Runs a pattern against a line, returning the match only if it passes the pattern's validator. */
+/**
+ * Runs a pattern against a line and returns the first match that passes the pattern's validator.
+ * Every candidate on the line is considered, so a placeholder cannot shadow a real secret after it.
+ */
 export function matchSecretPattern(pattern: SecretPattern, line: string): RegExpExecArray | null {
-  const match = pattern.regex.exec(line);
-  if (!match || !match[0]) return null;
-  if (pattern.validate && !pattern.validate(match[0])) return null;
-  return match;
+  const flags = pattern.regex.flags.includes("g") ? pattern.regex.flags : pattern.regex.flags + "g";
+  const re = new RegExp(pattern.regex.source, flags);
+  for (const match of line.matchAll(re)) {
+    if (!match[0]) continue;
+    if (pattern.validate && !pattern.validate(match[0])) continue;
+    return match as RegExpExecArray;
+  }
+  return null;
 }
 
 const AWS_DOC_EXAMPLE_SECRET = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
 
-/** True for documentation examples and obvious placeholders (EXAMPLE, xxxx, your-..., etc.). */
+/**
+ * True for documentation examples and obvious placeholders (EXAMPLE, xxxx, changeme, etc.).
+ * Values like `your-aws-secret` never reach this check: they fail the length/charset constraints.
+ * The substring match is intentionally loose; a random real key containing "example" is negligible.
+ */
 function isPlaceholderValue(value: string): boolean {
   return (
-    /example|xxxx|your[-_ ]|changeme|placeholder|<[^>]*>/i.test(value) ||
+    /example|xxxx|changeme|placeholder|<[^>]*>/i.test(value) ||
     value === AWS_DOC_EXAMPLE_SECRET ||
     /^(.)\1+$/.test(value)
   );
@@ -114,10 +125,11 @@ export const SECRET_PATTERNS: SecretPattern[] = [
   {
     id: "sec-aws-secret-key",
     name: "AWS Secret Access Key",
-    // aws_secret_access_key / AWS_SECRET_ACCESS_KEY / secretAccessKey / awsSecretKey, as an
-    // assignment, object literal, JSON/YAML `key: value` or .env line. Group 2 is the value.
+    // aws_secret_access_key / AWS_SECRET_ACCESS_KEY / secretAccessKey / awsSecretKey / secret_key,
+    // as an assignment, object literal, JSON/YAML `key: value`, Ruby `key => value`, Dockerfile
+    // `ENV KEY value` or .env line. Group 2 is the value.
     regex:
-      /(aws[_-]?secret[_-]?(?:access[_-]?)?key|secret[_-]?access[_-]?key)["']?\s*[:=]\s*["']?([A-Za-z0-9/+=]{40})(?![A-Za-z0-9/+=])/i,
+      /(aws[_-]?secret[_-]?(?:access[_-]?)?key|secret[_-]?access[_-]?key|secret_key)["']?(?:\s*(?:=>|[:=])\s*|\s+)["']?([A-Za-z0-9/+=]{40})(?![A-Za-z0-9/+=])/i,
     validate: (match) => isLikelyAwsSecretValue(match.slice(-40)),
     valueGroup: 2,
     severity: "critical",
