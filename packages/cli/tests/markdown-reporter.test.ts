@@ -19,6 +19,7 @@ import {
   PR_COMMENT_MARKER,
 } from "../src/ui/markdown-reporter.js";
 import { runScan } from "../src/commands/scan.js";
+import { shouldPrintBanner } from "../src/ui/format-args.js";
 
 function finding(over: Partial<Finding> = {}): Finding {
   return {
@@ -135,6 +136,7 @@ describe("formatMarkdownReport", () => {
     expect(md).not.toContain("<script>");
     expect(md).toContain("\\<script\\>");
     expect(md).not.toContain("a`b");
+    expect(md).toContain("a'b.ts");
   });
 
   it("notes detector errors and scan warnings", () => {
@@ -152,6 +154,37 @@ describe("formatMarkdownReport", () => {
 describe("escapeMarkdown", () => {
   it("flattens newlines and escapes special characters", () => {
     expect(escapeMarkdown("a\nb *c* <d> & e")).toBe("a b \\*c\\* \\<d\\> &amp; e");
+  });
+});
+
+describe("escapeMarkdown hardening", () => {
+  it("defuses @mentions, autolinks and long values", () => {
+    const e = escapeMarkdown("@org/team https://evil.example www.evil.example ![x](y) ~~z~~");
+    expect(e).not.toContain("@org");
+    expect(e).toContain("@​org/team");
+    expect(e).not.toContain("https://");
+    expect(e).not.toContain("www.evil");
+    expect(e).toContain("\\!\\[x\\]\\(y\\)");
+    expect(escapeMarkdown("a".repeat(1000)).length).toBeLessThan(400);
+  });
+
+  it("caps rendered warnings", () => {
+    const warnings = Array.from({ length: 20 }, (_, i) => `warn${i}`);
+    const md = formatMarkdownReport(result([], { warnings }));
+    expect(md).toContain("warn4");
+    expect(md).not.toContain("warn5");
+    expect(md).toContain("15 more warning(s) not shown");
+  });
+});
+
+describe("shouldPrintBanner", () => {
+  it("suppresses the banner for json and any --format form", () => {
+    expect(shouldPrintBanner(["scan", "."])).toBe(true);
+    expect(shouldPrintBanner(["scan", ".", "--json"])).toBe(false);
+    expect(shouldPrintBanner(["scan", ".", "-j"])).toBe(false);
+    expect(shouldPrintBanner(["scan", ".", "--format", "markdown"])).toBe(false);
+    expect(shouldPrintBanner(["scan", ".", "--format=markdown"])).toBe(false);
+    expect(shouldPrintBanner(["scan", ".", "--format=xml"])).toBe(false);
   });
 });
 
@@ -207,6 +240,7 @@ describe("action.yml", () => {
     }
     expect(action).toContain('using: "composite"');
     expect(action).toContain("@vibesafe/cli@");
+    expect(action).not.toMatch(/default: "latest"/);
   });
 
   it("uses the same marker as the formatter and never interpolates inputs into shell", () => {
@@ -218,6 +252,18 @@ describe("action.yml", () => {
       .map((block) => block.split(/\n    - name:/)[0] ?? "");
     expect(scripts.length).toBe(3);
     for (const script of scripts) expect(script).not.toContain("${{");
+  });
+
+  it("runs npx outside the repo with its npm config ignored and ends options with --", () => {
+    expect(action).toContain("cd \"$cleandir\"");
+    expect(action).toContain("NPM_CONFIG_USERCONFIG");
+    expect(action).toContain("NPM_CONFIG_REGISTRY");
+    expect(action).toContain("-- \"$GITHUB_WORKSPACE/$VS_PATH\"");
+  });
+
+  it("only updates bot comments that start with the marker", () => {
+    expect(action).toContain(".user.type == \"Bot\"");
+    expect(action).toContain("startswith($m)");
   });
 
   it("ships a usage example referencing the action", () => {

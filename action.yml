@@ -27,9 +27,9 @@ inputs:
     required: false
     default: "false"
   version:
-    description: "Version of @vibesafe/cli to run via npx (for example 0.1.5 or latest)."
+    description: "Version of @vibesafe/cli to run via npx. Needs a release that ships --format markdown (0.1.5 or newer). Prefer a pinned version over latest."
     required: false
-    default: "latest"
+    default: "0.1.5"
   node-version:
     description: "Node.js version to use."
     required: false
@@ -63,19 +63,36 @@ runs:
           *) echo "::error::Invalid fail-on '$VS_FAIL_ON'. Use blocker, danger, warning or none."; exit 2 ;;
         esac
 
+        case "$VS_PATH" in
+          /*|..|../*|*/..|*/../*) echo "::error::Invalid path '$VS_PATH'. It must be relative and stay inside the workspace."; exit 2 ;;
+        esac
+
         report="$RUNNER_TEMP/vibesafe-report.md"
-        args=(scan "$VS_PATH" --format markdown)
+        errlog="$RUNNER_TEMP/vibesafe-stderr.log"
+        args=(scan --format markdown)
         if [ "$VS_DEEP" = "true" ]; then args+=(--deep); fi
+        args+=(-- "$GITHUB_WORKSPACE/$VS_PATH")
+
+        # Run npx from a clean directory with the repo's npm config ignored, so the
+        # (untrusted) scanned repo cannot redirect the registry and run its own code.
+        cleandir="$RUNNER_TEMP/vibesafe-npx"
+        mkdir -p "$cleandir"
+        : > "$cleandir/empty.npmrc"
+        cd "$cleandir"
+        export NPM_CONFIG_USERCONFIG="$cleandir/empty.npmrc"
+        export NPM_CONFIG_GLOBALCONFIG="$cleandir/empty.npmrc"
+        export NPM_CONFIG_REGISTRY="https://registry.npmjs.org/"
 
         # The CLI exits 1 on blocker/danger and 2 on a scan error; fail-on decides below.
         set +e
-        npx --yes "@vibesafe/cli@${VS_VERSION}" "${args[@]}" > "$report"
+        npx --yes "@vibesafe/cli@${VS_VERSION}" "${args[@]}" > "$report" 2> "$errlog"
         code=$?
         set -e
 
         status="$(sed -n 's/^<!-- vibesafe-status:\([a-z]*\) -->$/\1/p' "$report" | head -n 1)"
         if [ "$code" -ge 2 ] || [ -z "$status" ]; then
           echo "::error::VibeSafe scan failed to run (exit code $code)."
+          head -c 4000 "$errlog" || true
           exit 2
         fi
 
@@ -107,11 +124,17 @@ runs:
       run: |
         marker="<!-- vibesafe-pr-comment -->"
         # Comments cannot be written from fork PRs with a read-only token; do not fail the job for that.
-        id="$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
-          --jq ".[] | select(.body | contains(\"$marker\")) | .id" 2>/dev/null | head -n 1 || true)"
+        # Only adopt bot-written comments that start with the marker, never a user's quote of it.
+        id="$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate 2>/dev/null \
+          | jq -r --arg m "$marker" '.[] | select(.user.type == "Bot" and (.body | startswith($m))) | .id' 2>/dev/null \
+          | head -n 1 || true)"
 
-        if [ -n "$id" ] && gh api -X PATCH "repos/$REPO/issues/comments/$id" -F "body=@$REPORT" >/dev/null 2>&1; then
-          echo "Updated VibeSafe comment $id"
+        if [ -n "$id" ]; then
+          if gh api -X PATCH "repos/$REPO/issues/comments/$id" -F "body=@$REPORT" >/dev/null 2>&1; then
+            echo "Updated VibeSafe comment $id"
+          else
+            echo "::warning::Could not update VibeSafe comment $id. The report is in the job summary."
+          fi
         elif gh api -X POST "repos/$REPO/issues/$PR_NUMBER/comments" -F "body=@$REPORT" >/dev/null 2>&1; then
           echo "Posted VibeSafe comment"
         else

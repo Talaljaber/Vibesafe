@@ -5,6 +5,9 @@ export const PR_COMMENT_MARKER = "<!-- vibesafe-pr-comment -->";
 
 const MAX_TOP_FINDINGS = 10;
 const MAX_DETAIL_FINDINGS = 50;
+const MAX_WARNINGS = 5;
+const MAX_TEXT_LENGTH = 300;
+const ZWSP = "​";
 
 const SEVERITY_ORDER: Record<Severity, number> = { critical: 0, high: 1, medium: 2, low: 3 };
 const SEVERITY_ICON: Record<Severity, string> = {
@@ -20,12 +23,19 @@ const STATUS_LINE: Record<ScanResult["deployStatus"], string> = {
   safe: "✅ **Safe** - ready to deploy",
 };
 
-/** Neutralise characters that would break out of inline markdown, tables or HTML. */
+/**
+ * Neutralise characters that would break out of inline markdown, tables or HTML,
+ * and defuse @mentions and bare-URL autolinks. Input may be untrusted repo content.
+ */
 export function escapeMarkdown(text: string): string {
-  return text
-    .replace(/\r?\n/g, " ")
+  const flat = text.replace(/\r?\n/g, " ").trim();
+  const short = flat.length > MAX_TEXT_LENGTH ? `${flat.slice(0, MAX_TEXT_LENGTH)}...` : flat;
+  return short
     .replace(/&/g, "&amp;")
-    .replace(/[\\`*_{}[\]<>|#]/g, (c) => `\\${c}`)
+    .replace(/[\\`*_{}[\]<>|#~!()]/g, (c) => `\\${c}`)
+    .replace(/@/g, `@${ZWSP}`)
+    .replace(/:\/\//g, `:${ZWSP}//`)
+    .replace(/\bwww\./gi, `www${ZWSP}.`)
     .trim();
 }
 
@@ -111,9 +121,13 @@ export function formatMarkdownReport(result: ScanResult): string {
     lines.push(`> ⚠️ ${result.errors.length} detector(s) failed; results may be incomplete.`);
   }
   if (result.warnings && result.warnings.length > 0) {
-    for (const w of result.warnings) {
+    for (const w of result.warnings.slice(0, MAX_WARNINGS)) {
       lines.push("");
       lines.push(`> ⚠️ ${escapeMarkdown(w)}`);
+    }
+    if (result.warnings.length > MAX_WARNINGS) {
+      lines.push("");
+      lines.push(`> ${result.warnings.length - MAX_WARNINGS} more warning(s) not shown.`);
     }
   }
 

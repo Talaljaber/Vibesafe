@@ -3,6 +3,9 @@
 #
 # Inline line-by-line review comments are not supported; findings are listed
 # (with file:line) in a single PR comment and in the job summary.
+#
+# Security: use the plain pull_request trigger. Do not use pull_request_target
+# with a checkout of the PR head; it would run untrusted code with a write token.
 name: VibeSafe
 
 on:
@@ -26,5 +29,5 @@ jobs:
           fail-on: blocker # blocker | danger | warning | none
           comment: "true"
           deep: "false"
-          version: latest # or pin e.g. 0.1.5
+          version: 0.1.5 # pin a release that ships --format markdown
           github-token: ${{ github.token }}

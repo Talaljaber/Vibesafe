@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { printBanner } from "./ui/banner.js";
+import { shouldPrintBanner } from "./ui/format-args.js";
 import { runScan } from "./commands/scan.js";
 import { runFix } from "./commands/fix.js";
 import { createRequire } from "node:module";
@@ -10,12 +11,7 @@ const require = createRequire(import.meta.url);
 const { version: CLI_VERSION } = require("../package.json") as { version: string };
 
 // Print banner unless --json is used, but we need to parse args first.
-const argv = process.argv;
-const formatIdx = argv.indexOf("--format");
-const isMarkdown =
-  argv.includes("--format=markdown") || (formatIdx >= 0 && argv[formatIdx + 1] === "markdown");
-const isJson = argv.includes("--json") || argv.includes("-j") || isMarkdown;
-if (!isJson) {
+if (shouldPrintBanner(process.argv)) {
   printBanner();
 }
 

@@ -21,4 +21,14 @@ describe("vibesafe CLI (built binary)", () => {
     expect(["blocker", "danger"]).toContain(parsed.deployStatus);
     expect(parsed.findings.length).toBeGreaterThan(0);
   }, 30000);
+
+  it("scan --format markdown prints no banner and starts with the sticky marker", () => {
+    const res = spawnSync(process.execPath, [BIN, "scan", FIXTURE, "--format", "markdown"], {
+      encoding: "utf-8",
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    expect(res.status).toBe(1);
+    expect(res.stdout.startsWith("<!-- vibesafe-pr-comment -->")).toBe(true);
+    expect(res.stdout).toContain("<!-- vibesafe-status:");
+  }, 30000);
 });
