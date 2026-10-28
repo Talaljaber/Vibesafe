@@ -344,6 +344,46 @@ describe("RateLimitDetector", () => {
       expect(f).toEqual([]);
     });
 
+    it("express.json({ limit }) is a body size option, not a rate limiter", async () => {
+      const f = await run({
+        "server.js": `const express = require("express");\nconst app = express();\napp.use(express.json({ limit: "1mb" }));\napp.post("/login", (req, res) => {});`,
+      });
+      expect(f).toHaveLength(1);
+    });
+
+    it("bodyParser limit in the mounting file does not suppress a mounted router", async () => {
+      const f = await run({
+        "server.js": `const express = require("express");\nconst bodyParser = require("body-parser");\nconst auth = require("./routes/auth");\nconst app = express();\napp.use(bodyParser.urlencoded({ limit: "10mb" }));\napp.use(auth);`,
+        "routes/auth.js": `const express = require("express");\nconst router = express.Router();\nrouter.post("/login", (req, res) => {});`,
+      });
+      expect(f).toHaveLength(1);
+      expect(f[0]!.file).toBe("routes/auth.js");
+    });
+
+    it("a route-arg validate({ limit }) option is not a limiter", async () => {
+      const f = await run({
+        "server.js": `const express = require("express");\nconst app = express();\napp.post("/login", validate({ limit: 20 }), (req, res) => {});`,
+      });
+      expect(f).toHaveLength(1);
+    });
+
+    it("resolves relative imports against the importing directory, not any same-named file", async () => {
+      const f = await run({
+        "lib/utils.ts": `import { Ratelimit } from "@upstash/ratelimit";\nexport const x = 1;`,
+        "app/api/login/utils.ts": `export const y = 1;`,
+        "app/api/login/route.ts": `import { y } from "./utils";\nexport async function POST() { return Response.json({ y }); }`,
+      });
+      expect(f).toHaveLength(1);
+    });
+
+    it("still resolves a relative import to its real sibling", async () => {
+      const f = await run({
+        "app/api/login/limit.ts": `import { Ratelimit } from "@upstash/ratelimit";\nexport const rl = new Ratelimit({});`,
+        "app/api/login/route.ts": `import { rl } from "./limit";\nexport async function POST() { return Response.json({}); }`,
+      });
+      expect(f).toEqual([]);
+    });
+
     it("does not flag AI routes in a file that only imports the SDK for another route", async () => {
       const f = await run({
         "server.ts": `import express from "express";\nimport OpenAI from "openai";\nconst app = express();\napp.get("/health", (req, res) => res.send("ok"));`,

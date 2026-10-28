@@ -1,4 +1,5 @@
-﻿import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
+﻿import { posix } from "node:path";
+import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
 import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
 import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
 import { findAnyHandlerLine, isApiRoute, lineOfIndex, matcherCoversApi } from "./utils/route-analyzer.js";
@@ -30,7 +31,23 @@ const RATE_LIMIT_SIGNALS: RegExp[] = [
   /\bnew\s+RateLimiter\w*\s*\(/,
 ];
 
-const ARG_LIMITER_RE = /\b(?:rate-?limit\w*|\w*limiter\w*|slowDown|throttle\w*|\w*Limit)\b/i;
+// Limiter-shaped names only: a bare `limit` is the body-parser size option, not a rate limiter.
+const ARG_LIMITER_RE = /\b(?:rate-?limit\w*|\w*ratelimit\w*|\w*limiter\w*|slowDown|throttle\w*)\b/i;
+
+/** Drops object-literal contents so an option like `{ limiter: x }` is not mistaken for middleware. */
+function withoutObjects(text: string): string {
+  let prev: string;
+  let cur = text;
+  do {
+    prev = cur;
+    cur = cur.replace(/\{[^{}]*\}/g, "");
+  } while (cur !== prev);
+  return cur;
+}
+
+function argHasLimiter(text: string): boolean {
+  return ARG_LIMITER_RE.test(withoutObjects(text));
+}
 
 const AUTH_PATH_RE =
   /(?:^|[/\\._-])(?:log-?in|sign-?in|sign-?up|register|passwords?|forgot|reset|otp|verify|verification|2fa|mfa|magic-?link)(?:[/\\._-]|$)/i;
@@ -123,7 +140,16 @@ function importBindings(code: string): { names: string; spec: string }[] {
 /** Project sources that a local specifier (relative, `@/` or `~/`) may refer to. */
 function resolveSpec(spec: string, path: string, sources: Source[]): Source[] {
   if (!/^(?:\.{1,2}\/|@\/|~\/)/.test(spec)) return [];
-  const bareSpec = spec.replace(/^(?:\.{1,2}\/)+|^[@~]\//, "").replace(/\.(?:js|ts|mjs|cjs)$/, "");
+  const strip = (p: string) => p.replace(/\.(?:js|ts|mjs|cjs|tsx|jsx)$/, "");
+  if (spec.startsWith(".")) {
+    const target = strip(posix.join(posix.dirname(path), spec));
+    return sources.filter((s) => {
+      if (s.path === path) return false;
+      const bare = s.path.replace(/\.[a-z]+$/, "");
+      return bare === target || bare.replace(/\/index$/, "") === target;
+    });
+  }
+  const bareSpec = strip(spec.replace(/^[@~]\//, ""));
   return sources.filter((s) => {
     if (s.path === path) return false;
     const bare = s.path.replace(/\.[a-z]+$/, "").replace(/\/index$/, "");
@@ -153,7 +179,8 @@ function stripImports(code: string): string {
  * route middleware, or `use(limiter)` with no path (or a covering path) in the
  * same file or in a file that imports the route file.
  *
- * Limits: limits enforced outside the code (CDN/WAF/gateway) are invisible to a
+ * Limits: a path-scoped limiter (`app.use("/api", limiter)`) only covers routes in the
+ * file that declares it, not routers mounted from it; limits enforced outside the code (CDN/WAF/gateway) are invisible to a
  * static scan; Next.js server actions, NextAuth handlers, Hono/Fastify/Koa and
  * chained `router.route(p).post().get()` after the first method are not scanned;
  * a local module that mentions a limiter counts even if it never applies it.
@@ -234,7 +261,7 @@ export class RateLimitDetector implements Detector {
     const bindings = importBindings(code);
     for (const m of code.matchAll(/\b(?:app|router|server)\.use\s*\(/g)) {
       const { pathArgs, rest } = splitUseArgs(balanced(code, (m.index ?? 0) + m[0].length - 1));
-      let limiter = ARG_LIMITER_RE.test(rest) || hasSignal(rest);
+      let limiter = argHasLimiter(rest) || hasSignal(rest);
       // A limiter with an arbitrary name imported from a module that builds it.
       for (const id of limiter ? [] : (rest.match(/[A-Za-z_$][\w$]*/g) ?? [])) {
         const idRe = new RegExp(`\\b${id.replace(/\$/g, "\\$")}\\b`);
@@ -279,7 +306,7 @@ export class RateLimitDetector implements Detector {
       const segment = code.slice(r.index, routes[i + 1]?.index ?? code.length);
       const handlerAt = segment.search(/=>|\bfunction\b|\basync\b/);
       const args = segment.slice(r.len, handlerAt === -1 ? undefined : handlerAt);
-      if (ARG_LIMITER_RE.test(args) || hasSignal(args)) continue;
+      if (argHasLimiter(args) || hasSignal(args)) continue;
 
       const kinds = new Set<Kind>();
       // A GET on /login just renders a page; brute force needs a state-changing method.
