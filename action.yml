@@ -1,0 +1,129 @@
+name: "VibeSafe"
+description: "Scan a pull request for vibe-coding security and quality issues and post a sticky review comment."
+author: "Talal Jaber"
+branding:
+  icon: "shield"
+  color: "purple"
+
+inputs:
+  path:
+    description: "Directory to scan, relative to the repository root."
+    required: false
+    default: "."
+  fail-on:
+    description: "Fail the job at this deploy status or worse: blocker, danger, warning or none."
+    required: false
+    default: "blocker"
+  comment:
+    description: "Post or update a sticky pull request comment with the results (true or false)."
+    required: false
+    default: "true"
+  github-token:
+    description: "Token used to post the comment. Needs pull-requests: write."
+    required: false
+    default: ${{ github.token }}
+  deep:
+    description: "Also scan git history for leaked secrets (needs fetch-depth: 0 on checkout)."
+    required: false
+    default: "false"
+  version:
+    description: "Version of @vibesafe/cli to run via npx (for example 0.1.5 or latest)."
+    required: false
+    default: "latest"
+  node-version:
+    description: "Node.js version to use."
+    required: false
+    default: "20"
+
+outputs:
+  status:
+    description: "Deploy status: safe, warning, danger or blocker."
+    value: ${{ steps.scan.outputs.status }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Run VibeSafe scan
+      id: scan
+      shell: bash
+      env:
+        VS_PATH: ${{ inputs.path }}
+        VS_VERSION: ${{ inputs.version }}
+        VS_DEEP: ${{ inputs.deep }}
+        VS_FAIL_ON: ${{ inputs.fail-on }}
+      run: |
+        set -u
+        case "$VS_FAIL_ON" in
+          blocker|danger|warning|none) ;;
+          *) echo "::error::Invalid fail-on '$VS_FAIL_ON'. Use blocker, danger, warning or none."; exit 2 ;;
+        esac
+
+        report="$RUNNER_TEMP/vibesafe-report.md"
+        args=(scan "$VS_PATH" --format markdown)
+        if [ "$VS_DEEP" = "true" ]; then args+=(--deep); fi
+
+        # The CLI exits 1 on blocker/danger and 2 on a scan error; fail-on decides below.
+        set +e
+        npx --yes "@vibesafe/cli@${VS_VERSION}" "${args[@]}" > "$report"
+        code=$?
+        set -e
+
+        status="$(sed -n 's/^<!-- vibesafe-status:\([a-z]*\) -->$/\1/p' "$report" | head -n 1)"
+        if [ "$code" -ge 2 ] || [ -z "$status" ]; then
+          echo "::error::VibeSafe scan failed to run (exit code $code)."
+          exit 2
+        fi
+
+        echo "status=$status" >> "$GITHUB_OUTPUT"
+        echo "report=$report" >> "$GITHUB_OUTPUT"
+        cat "$report" >> "$GITHUB_STEP_SUMMARY"
+
+        # Rank statuses so fail-on means "this status or worse".
+        rank() { case "$1" in safe) echo 0 ;; warning) echo 1 ;; danger) echo 2 ;; blocker) echo 3 ;; esac; }
+        if [ "$VS_FAIL_ON" = "none" ]; then
+          threshold=99
+        else
+          threshold="$(rank "$VS_FAIL_ON")"
+        fi
+        if [ "$(rank "$status")" -ge "$threshold" ]; then
+          echo "fail=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "fail=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Post or update pull request comment
+      if: ${{ always() && inputs.comment == 'true' && github.event.pull_request.number && steps.scan.outputs.report }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPORT: ${{ steps.scan.outputs.report }}
+      run: |
+        marker="<!-- vibesafe-pr-comment -->"
+        # Comments cannot be written from fork PRs with a read-only token; do not fail the job for that.
+        id="$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
+          --jq ".[] | select(.body | contains(\"$marker\")) | .id" 2>/dev/null | head -n 1 || true)"
+
+        if [ -n "$id" ] && gh api -X PATCH "repos/$REPO/issues/comments/$id" -F "body=@$REPORT" >/dev/null 2>&1; then
+          echo "Updated VibeSafe comment $id"
+        elif gh api -X POST "repos/$REPO/issues/$PR_NUMBER/comments" -F "body=@$REPORT" >/dev/null 2>&1; then
+          echo "Posted VibeSafe comment"
+        else
+          echo "::warning::Could not post the VibeSafe comment (missing pull-requests: write, or a fork PR). The report is in the job summary."
+        fi
+
+    - name: Apply fail-on
+      if: ${{ steps.scan.outputs.fail == 'true' }}
+      shell: bash
+      env:
+        VS_STATUS: ${{ steps.scan.outputs.status }}
+        VS_FAIL_ON: ${{ inputs.fail-on }}
+      run: |
+        echo "::error::VibeSafe deploy status is '$VS_STATUS' (fail-on: $VS_FAIL_ON)."
+        exit 1

@@ -10,7 +10,11 @@ const require = createRequire(import.meta.url);
 const { version: CLI_VERSION } = require("../package.json") as { version: string };
 
 // Print banner unless --json is used, but we need to parse args first.
-const isJson = process.argv.includes("--json") || process.argv.includes("-j");
+const argv = process.argv;
+const formatIdx = argv.indexOf("--format");
+const isMarkdown =
+  argv.includes("--format=markdown") || (formatIdx >= 0 && argv[formatIdx + 1] === "markdown");
+const isJson = argv.includes("--json") || argv.includes("-j") || isMarkdown;
 if (!isJson) {
   printBanner();
 }
@@ -30,6 +34,7 @@ program
   .option("--html", "Generate HTML report", false)
   .option("--open-report", "Automatically open the HTML report after scan", false)
   .option("-j, --json", "Output pure JSON without console formatting", false)
+  .option("--format <format>", "Output format: markdown (concise PR-comment summary)")
   .option("--deep", "Also scan git history for leaked secrets (slower)", false)
   .option("--include-tests", "Also scan test files and fixtures (excluded by default)", false)
   .action(async (dir, options) => {
