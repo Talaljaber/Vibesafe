@@ -3,6 +3,7 @@ import { Command } from "commander";
 import { printBanner } from "./ui/banner.js";
 import { runScan } from "./commands/scan.js";
 import { runFix } from "./commands/fix.js";
+import { runWatch } from "./commands/watch.js";
 import { runFixWizard } from "./commands/fix-wizard.js";
 import { runFixAllCommand } from "./commands/fix-all.js";
 import { createRequire } from "node:module";
@@ -86,6 +87,23 @@ program
       return;
     }
     await runFix(first, second ?? ".", { yes: Boolean(options.yes) });
+  });
+
+program
+  .command("watch")
+  .description("Scan, then keep watching for changes and print what got better or worse")
+  .argument("[dir]", "Directory to watch", ".")
+  .option("-j, --json", "Emit NDJSON events (ready, change, error), one JSON object per line", false)
+  .option("--include-tests", "Also scan test files and fixtures (excluded by default)", false)
+  .action(async (dir, options) => {
+    const controller = new AbortController();
+    process.once("SIGINT", () => controller.abort());
+    process.once("SIGTERM", () => controller.abort());
+    await runWatch(dir, {
+      json: Boolean(options.json),
+      includeTests: Boolean(options.includeTests),
+      signal: controller.signal,
+    });
   });
 
 program.parse(process.argv);
