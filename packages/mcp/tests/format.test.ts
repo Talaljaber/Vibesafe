@@ -57,6 +57,8 @@ function makeScanResult(findings: Finding[]): ScanResult {
         dependency: 0,
         code_quality: 0,
         structure: 0,
+        xss: 0,
+        security_config: 0,
       },
       filesScanned: 42,
       linesScanned: 0,
