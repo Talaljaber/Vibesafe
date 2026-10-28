@@ -124,11 +124,17 @@ describe("constants", () => {
         "dependency",
         "code_quality",
         "structure",
+        "xss",
+        "security_config",
       ] as const;
 
       for (const cat of categories) {
         expect(CATEGORY_PREFIX[cat]).toBeTruthy();
       }
+    });
+
+    it("CFG prefix is used for security_config", () => {
+      expect(CATEGORY_PREFIX.security_config).toBe("CFG");
     });
 
     it("SEC prefix is used for secrets", () => {
