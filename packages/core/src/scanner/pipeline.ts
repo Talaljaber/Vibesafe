@@ -41,7 +41,10 @@ export class ScannerPipeline {
     const fileDiscovery = new FileDiscovery(config.rootPath);
     let files = config.targetFiles && config.targetFiles.length > 0 
       ? config.targetFiles 
-      : await fileDiscovery.discoverFiles(config.excludePatterns);
+      : await fileDiscovery.discoverFiles(config.excludePatterns, {
+          // Not in mergeConfig's defaults; undefined/false = exclude tests.
+          includeTests: userConfig.includeTests ?? config.includeTests,
+        });
     
     if (config.maxFiles && files.length > config.maxFiles) {
       // Trim to maxFiles if we exceed the limit to prevent out-of-memory or hanging
