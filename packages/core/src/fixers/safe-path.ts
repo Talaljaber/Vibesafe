@@ -30,8 +30,8 @@ export async function resolveInsideRoot(rootPath: string, relPath: string): Prom
     if (st.isSymbolicLink()) {
       throw new Error(`Refusing to follow symlink: ${relPath}`);
     }
-  } catch (error: any) {
-    if (error?.code !== "ENOENT") throw error;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") throw error;
     exists = false;
   }
 

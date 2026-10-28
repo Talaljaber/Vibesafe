@@ -31,8 +31,8 @@ export class GitignoreEnvFixer implements AutoFixer {
     const gitignorePath = await resolveInsideRoot(rootPath, ".gitignore");
     try {
       return { path: gitignorePath, content: await fs.readFile(gitignorePath, "utf-8") };
-    } catch (error: any) {
-      if (error?.code === "ENOENT") return { path: gitignorePath, content: null };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return { path: gitignorePath, content: null };
       throw error;
     }
   }
@@ -41,8 +41,8 @@ export class GitignoreEnvFixer implements AutoFixer {
     let content: string | null;
     try {
       content = (await this.read(rootPath)).content;
-    } catch (error: any) {
-      return { description: `Cannot update .gitignore: ${error.message}`, filesToModify: [], filesToCreate: [] };
+    } catch (error) {
+      return { description: `Cannot update .gitignore: ${(error as Error).message}`, filesToModify: [], filesToCreate: [] };
     }
     const exists = content !== null;
     const added = content !== null
@@ -87,13 +87,13 @@ export class GitignoreEnvFixer implements AutoFixer {
             : "Added .env to .gitignore."
           : ".env was already in .gitignore",
       };
-    } catch (error: any) {
+    } catch (error) {
       return {
         success: false,
         filesModified: [],
         filesCreated: [],
         message: "Failed to update .gitignore",
-        error: error.message,
+        error: (error as Error).message,
       };
     }
   }

@@ -30,9 +30,9 @@ export class EnvExampleFixer implements AutoFixer {
     try {
       await fs.lstat(await resolveInsideRoot(rootPath, ".env.example"));
       return true;
-    } catch (error: any) {
+    } catch (error) {
       // A rejected (e.g. symlinked) path is treated as "exists" so we never write to it.
-      return error?.code !== "ENOENT";
+      return (error as NodeJS.ErrnoException)?.code !== "ENOENT";
     }
   }
 
@@ -87,11 +87,11 @@ export class EnvExampleFixer implements AutoFixer {
         filesCreated: [".env.example"],
         message: `Generated .env.example from ${source.name}.`,
       };
-    } catch (error: any) {
-      if (error?.code === "EEXIST") {
-        return fail(".env.example already exists; not overwriting it.", error.message);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code === "EEXIST") {
+        return fail(".env.example already exists; not overwriting it.", (error as Error).message);
       }
-      return fail("Failed to create .env.example", error?.message);
+      return fail("Failed to create .env.example", (error as Error)?.message);
     }
   }
 
