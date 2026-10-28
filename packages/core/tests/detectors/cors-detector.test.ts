@@ -1,4 +1,4 @@
-﻿import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vitest";
 import { CorsDetector } from "../../src/detectors/cors-detector";
 import type { ScanContext } from "@vibesafe/shared";
 
@@ -210,7 +210,7 @@ describe("CorsDetector", () => {
     expect(f[0]?.line).toBe(2);
   });
 
-  it("is not suppressed by an unrelated .test() call, but is by a check beyond 8 lines", async () => {
+  it("is not suppressed by an unrelated .test() call, but is by a check within the 25-line window", async () => {
     const unrelated = await run({
       "server.js": `const ok = /abc/.test(name);\nres.setHeader("Access-Control-Allow-Origin", req.headers.origin);`,
     });
@@ -235,4 +235,25 @@ describe("CorsDetector", () => {
     expect(a[0]?.id).toBe(b[0]?.id);
     expect(a[0]?.id.startsWith("CFG-")).toBe(true);
   });
-});
+
+  it("is not confused by JSX closing tags on the same line as cors()", async () => {
+    const f = await run({
+      "server.tsx": `import cors from "cors";\nconst el = <div>hi</div>; app.use(cors({ origin: true, credentials: true }));`,
+    });
+    expect(f).toHaveLength(1);
+    expect(f[0]?.ruleId).toBe("security_config/cors-reflected-origin");
+  });
+
+  it("falls back to a bounded window when brackets are unbalanced", async () => {
+    const f = await run({
+      "server.ts": `import cors from "cors";\napp.use(cors({ origin: true, credentials: true`,
+    });
+    expect(f).toHaveLength(1);
+  });
+
+  it("recognises `import { default as x } from \"cors\"`", async () => {
+    const f = await run({
+      "server.ts": `import { default as corsMw } from "cors";\napp.use(corsMw({ origin: true, credentials: true }));`,
+    });
+    expect(f).toHaveLength(1);
+  });});

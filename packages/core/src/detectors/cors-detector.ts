@@ -1,4 +1,4 @@
-﻿import type { Detector, Finding, ScanContext, Severity } from "@vibesafe/shared";
+import type { Detector, Finding, ScanContext, Severity } from "@vibesafe/shared";
 import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
 import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
 
@@ -102,7 +102,7 @@ function stripNoise(src: string): string {
       }
       i = Math.min(j + 1, len);
       last = ch;
-    } else if (ch === "/" && (last === "" || "(,=:[!&|?{};+-*%<>~^".includes(last))) {
+    } else if (ch === "/" && (last === "" || "(,=:[!&|?+-*%~^;{".includes(last))) {
       let j = i + 1;
       let inClass = false;
       while (j < len) {
@@ -197,7 +197,7 @@ export class CorsDetector implements Detector {
     const findings: Finding[] = [];
     const paths = context.files.filter(isScannable);
 
-    // Pass 1: only the cookie-usage boolean is kept, so file contents are not held in memory.
+    // Pass 1: only the cookie-usage boolean is kept per file (the pipeline may still cache file contents).
     let projectUsesCookies = false;
     for (const filePath of paths) {
       const content = await context.readFile(filePath);
