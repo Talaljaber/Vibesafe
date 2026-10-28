@@ -17,7 +17,7 @@ import {
   isCoveredByExpressUse,
 } from "./utils/route-analyzer.js";
 import { RISKY_HTTP_METHODS, EXPRESS_PUBLIC_ROUTE_RE } from "./patterns/auth-patterns.js";
-import { isStripeWebhookRoute } from "./stripe-webhook-detector.js";
+import { isStripeWebhookRoute, isWebhookPath } from "./stripe-webhook-detector.js";
 
 /**
  * `app.all("*", ...)` / `app.all("/*", ...)` catch-alls (CORS headers, 404 handlers,
@@ -105,10 +105,14 @@ export class MissingAuthDetector implements Detector {
     const content = await context.readFile(filePath);
     if (!usesExpress(content, context.projectContext?.dependencies)) return [];
 
+    const stripeWebhookFile = isStripeWebhookRoute(filePath, content);
     const findings: Finding[] = [];
     for (const route of extractExpressRoutes(content)) {
       if (!isExpressMutatingMethod(route.method)) continue;
       if (EXPRESS_PUBLIC_ROUTE_RE.test(route.path)) continue;
+      // Stripe webhooks authenticate via signature verification; StripeWebhookDetector reports
+      // unsigned ones. Other routes in the same file stay covered.
+      if (stripeWebhookFile && isWebhookPath(route.path)) continue;
       if (isNonMutatingCatchAll(route)) continue;
       if (chainHasExpressAuth(route) || isCoveredByExpressUse(content, route)) continue;
 

@@ -27,6 +27,29 @@ describe("MissingValidationDetector", () => {
     expect(findings[0].ruleId).toBe("validation/missing-body-validation");
   });
 
+  it("skips a signature-verified App Router Stripe webhook but still flags other routes", async () => {
+    const context = createContext({
+      "app/api/webhooks/stripe/route.ts": `
+        import Stripe from "stripe";
+        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+        export async function POST(req: Request) {
+          const body = await req.text();
+          const sig = req.headers.get("stripe-signature")!;
+          const event = stripe.webhooks.constructEvent(body, sig, process.env.STRIPE_WEBHOOK_SECRET!);
+          return Response.json({ received: event.type });
+        }
+      `,
+      "app/api/notes/route.ts": `
+        export async function POST(req: Request) {
+          const body = await req.text();
+          return Response.json({ body });
+        }
+      `,
+    });
+    const findings = await detector.detect(context);
+    expect(findings.map((f) => f.file)).toEqual(["app/api/notes/route.ts"]);
+  });
+
   it("should not detect when zod is imported and parse is called", async () => {
     const context = createContext({
       "app/api/data/route.ts": `
