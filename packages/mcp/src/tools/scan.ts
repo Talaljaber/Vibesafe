@@ -18,6 +18,8 @@ const CATEGORIES = [
   "dependency",
   "code_quality",
   "structure",
+  "xss",
+  "security_config",
 ] as const;
 
 export const scanInputShape = {
