@@ -290,7 +290,7 @@ Prefer working entirely within your editor? Install the **VibeSafe** extension!
 3. Run **`VibeSafe: Scan Project`**.
 4. View issues in the sidebar and as inline diagnostics, hover a finding for its explanation and AI fix prompt, and apply safe auto-fixes from quick fixes.
 
-The extension applies a JSON config file but never runs script configs. Settings: `vibesafe.enabledCategories`, `vibesafe.minSeverity`, `vibesafe.scanOnOpen`, `vibesafe.scanOnSave` (see the [extension README](packages/vscode/README.md)).
+The extension applies a JSON config file but never runs script configs. Settings: `vibesafe.enabledCategories`, `vibesafe.minSeverity`, `vibesafe.scanOnOpen`, `vibesafe.scanOnSave`, `vibesafe.focusProblemsOnScan` (see the [extension README](packages/vscode/README.md)).
 
 ---
 

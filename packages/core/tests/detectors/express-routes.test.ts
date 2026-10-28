@@ -393,7 +393,9 @@ app.post("/webhooks/stripe", express.json(), (req, res) => {
 
     it("does not flag a signature-verified webhook for auth or validation", async () => {
       const authLines = (await auth.detect(ctx({ "server.js": signed }))).map((f) => f.line);
-      const validationLines = (await validation.detect(ctx({ "server.js": signed }))).map((f) => f.line);
+      const validationLines = (await validation.detect(ctx({ "server.js": signed }))).map(
+        (f) => f.line,
+      );
       expect(authLines).toEqual([12]);
       expect(validationLines).toEqual([13]);
       expect(await stripe.detect(ctx({ "server.js": signed }))).toHaveLength(0);

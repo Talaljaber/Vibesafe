@@ -22,6 +22,7 @@
 <p align="center">
   <img src="https://raw.githubusercontent.com/Talaljaber/Vibesafe/main/packages/vscode/Cli.png" alt="VibeSafe CLI Output" width="60%">
 </p>
+
 ## ✨ Key Features
 
 - 🕵️‍♂️ **Pre-Deploy Scanning**: Instantly scans your entire workspace for vulnerabilities, secrets, and code smells.
@@ -54,12 +55,13 @@ Open the **Command Palette** (`Ctrl+Shift+P` or `Cmd+Shift+P`) and type `VibeSaf
 
 Customize VibeSafe behavior in your `settings.json` or the VS Code Settings UI:
 
-| Setting                      | Description                                                                                                                                                              | Default     |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------- |
-| `vibesafe.enabledCategories` | Which rule categories to run (`secret`, `auth`, `authorization`, `frontend_exposure`, `validation`, `dependency`, `code_quality`, `structure`, `xss`, `security_config`) | All enabled |
-| `vibesafe.minSeverity`       | Minimum severity level to report (`critical`, `high`, `medium`, `low`)                                                                                                   | `low`       |
-| `vibesafe.scanOnOpen`        | Automatically run a scan when opening a workspace                                                                                                                        | `false`     |
-| `vibesafe.scanOnSave`        | Automatically run VibeSafe whenever you save a file                                                                                                                      | `false`     |
+| Setting                        | Description                                                                                                                                                              | Default     |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------- |
+| `vibesafe.enabledCategories`   | Which rule categories to run (`secret`, `auth`, `authorization`, `frontend_exposure`, `validation`, `dependency`, `code_quality`, `structure`, `xss`, `security_config`) | All enabled |
+| `vibesafe.minSeverity`         | Minimum severity level to report (`critical`, `high`, `medium`, `low`)                                                                                                   | `low`       |
+| `vibesafe.scanOnOpen`          | Automatically run a scan when opening a workspace                                                                                                                        | `false`     |
+| `vibesafe.scanOnSave`          | Automatically run VibeSafe whenever you save a file                                                                                                                      | `false`     |
+| `vibesafe.focusProblemsOnScan` | Focus the Problems panel after a scan that finds issues                                                                                                                  | `false`     |
 
 ## 🤝 Open Source
 
