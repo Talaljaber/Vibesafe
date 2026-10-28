@@ -1,9 +1,11 @@
+import type { ProjectContext } from "@vibesafe/shared";
+
 /**
  * Strips leading whitespace, `//` line comments and block comments so the first
  * real statement of a file can be inspected.
  */
 function stripLeadingComments(content: string): string {
-  let rest = content.replace(/^﻿/, "");
+  let rest = content.replace(/^ï»¿/, "");
   for (;;) {
     const trimmed = rest.replace(/^\s+/, "");
     if (trimmed.startsWith("//")) {
@@ -23,19 +25,46 @@ export function hasUseClientDirective(fileContent: string): boolean {
   return /^(["'])use client\1/.test(stripLeadingComments(fileContent));
 }
 
+/** True for `vite.config.{ts,mts,js,mjs,cjs}` (any directory). */
+export function isViteConfigFile(filePath: string): boolean {
+  return /(^|\/)vite\.config\.(ts|mts|js|mjs|cjs)$/.test(filePath.replace(/\\/g, "/"));
+}
+
+/**
+ * In a Vite project everything under `src/` is bundled for the browser, except the
+ * Vite config itself and files that are clearly server-side (`server/`, `api/`, `*.server.*`).
+ */
+function isViteClientPath(normalizedPath: string): boolean {
+  if (!/(^|\/)src\//.test(normalizedPath)) return false;
+  if (!/\.(ts|tsx|js|jsx)$/.test(normalizedPath)) return false;
+  if (isViteConfigFile(normalizedPath)) return false;
+  if (/(^|\/)(server|api)\//.test(normalizedPath)) return false;
+  if (/\.server\.[^/]+$/.test(normalizedPath)) return false;
+  return true;
+}
+
 /**
  * Determines if a file is explicitly marked for the client-side
- * or typically exposed to the client in Next.js.
+ * or typically exposed to the client (Next.js conventions, or any `src/` code in a Vite project).
  */
-export function isClientFile(filePath: string, fileContent: string): boolean {
+export function isClientFile(
+  filePath: string,
+  fileContent: string,
+  projectContext?: Pick<ProjectContext, "framework">,
+): boolean {
   // Next.js "use client" directive must be the first statement
   if (hasUseClientDirective(fileContent)) {
     return true;
   }
 
-  // Next.js Pages router: files in pages/ or src/pages/ (except pages/api) are client-accessible
   const normalizedPath = filePath.replace(/\\/g, "/");
+
+  // Next.js Pages router: files in pages/ or src/pages/ (except pages/api) are client-accessible
   if (/(^|\/)(src\/)?pages\//.test(normalizedPath) && !/(^|\/)(src\/)?pages\/api\//.test(normalizedPath)) {
+    return true;
+  }
+
+  if (projectContext?.framework === "vite" && isViteClientPath(normalizedPath)) {
     return true;
   }
 
