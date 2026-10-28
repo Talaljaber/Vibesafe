@@ -8,29 +8,8 @@
 // package go to console.error (stderr) — never console.log / process.stdout.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { createScanState } from "./state.js";
-import { registerScanTool } from "./tools/scan.js";
-import { registerExplainTool } from "./tools/explain.js";
-import { registerRepairPlanTool } from "./tools/repair-plan.js";
-import { registerFixTool } from "./tools/fix.js";
-
-export async function createServer(): Promise<McpServer> {
-  const server = new McpServer({
-    name: "vibesafe",
-    version: "0.1.0",
-  });
-
-  const state = createScanState();
-
-  registerScanTool(server, state);
-  registerExplainTool(server, state);
-  registerRepairPlanTool(server, state);
-  registerFixTool(server, state);
-
-  return server;
-}
+import { createServer } from "./server.js";
 
 async function main(): Promise<void> {
   const server = await createServer();

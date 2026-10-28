@@ -29,6 +29,12 @@ export const scanInputShape = {
     .enum(CATEGORIES)
     .optional()
     .describe("Restrict the scan to a single finding category instead of running all detectors."),
+  deep: z
+    .boolean()
+    .optional()
+    .describe(
+      "Also scan git history for leaked secrets. Slower, especially on large repositories. Defaults to false.",
+    ),
 };
 
 export function registerScanTool(server: McpServer, state: ScanState): void {
@@ -43,7 +49,7 @@ export function registerScanTool(server: McpServer, state: ScanState): void {
         "the prioritized fix order.",
       inputSchema: scanInputShape,
     },
-    async ({ path: targetPath, minSeverity, category }) => {
+    async ({ path: targetPath, minSeverity, category, deep }) => {
       const rootPath = path.resolve(process.cwd(), targetPath);
 
       let result;
@@ -54,6 +60,7 @@ export function registerScanTool(server: McpServer, state: ScanState): void {
         // to stdout, which would corrupt the stdio JSON-RPC stream.
         result = await pipeline.scan({
           rootPath,
+          deep: deep ?? false,
           minSeverity: minSeverity as Severity | undefined,
           enabledCategories: category ? ([category] as FindingCategory[]) : undefined,
         });
