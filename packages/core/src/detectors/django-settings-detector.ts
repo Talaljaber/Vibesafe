@@ -11,7 +11,7 @@ interface DjangoRule {
   devSeverity?: Severity;
   /** Settings rules only run in settings modules; view rules run in any .py file. */
   scope: "settings" | "any";
-  /** Matched against the logical statement (bracketed continuation lines joined). */
+  /** Settings rules match the logical statement (bracketed lines joined); "any" rules the physical line. */
   regex: RegExp;
   problem: string;
   why: string;
@@ -24,7 +24,7 @@ interface DjangoRule {
  *  - Only bracket continuation is joined; backslash continuation is not.
  *  - Values built by concatenation, helper functions or other variables are not followed.
  *  - Multi-line triple-quoted SECRET_KEY values are only checked on their first line.
- *  - Settings split across modules via `from .base import *` are scanned per file.
+ *  - A second positional string argument of 8+ chars in a SECRET_KEY call is treated as a fallback\n *    key (medium confidence), e.g. get_secret("key", "utf-8-encoding") is a false positive.\n *  - A line that closes a triple-quoted string is skipped, even if code follows the closing quotes.\n *  - A second positional string argument of 8+ chars in a SECRET_KEY call is treated as a fallback\n *    key (medium confidence), e.g. get_secret("key", "utf-8-encoding") is a false positive.\n *  - A line that closes a triple-quoted string is skipped, even if code follows the closing quotes.\n *  - Settings split across modules via `from .base import *` are scanned per file.
  */
 const RULES: DjangoRule[] = [
   {
@@ -125,14 +125,18 @@ const SECRET_KEY_FALLBACK_RULE = {
 const stringLiteral = (q: number) =>
   "([rbfuRBFU]{0,2})(\"\"\"|'''|\"|')((?:\\\\.|(?!\\" + q + ")[^\\\\])*)";
 /** `SECRET_KEY = 'literal'` (optionally parenthesised, prefixed or triple-quoted). */
-const SECRET_KEY_REGEX = new RegExp(String.raw`^(\s*SECRET_KEY\s*=\s*\(?\s*)` + stringLiteral(3), "s");
+const SECRET_KEY_REGEX = new RegExp(
+  String.raw`^(\s*SECRET_KEY\s*=\s*\(?\s*)` + stringLiteral(3),
+  "s",
+);
 /** `SECRET_KEY = f(...)`: group 1 is everything from the first argument on. */
 const SECRET_KEY_CALL_REGEX = /^\s*SECRET_KEY\s*=\s*\(?\s*\w+(?:\.\w+)*\(([\s\S]*)$/;
 /** Second positional argument or default=/fallback= keyword that is a string literal. */
 const FALLBACK_LITERAL_REGEX = new RegExp(
   String.raw`(?:\b(?:default|fallback)\s*=\s*|,\s*)` + stringLiteral(2),
   "gs",
-);const MIN_FALLBACK_LENGTH = 8;
+);
+const MIN_FALLBACK_LENGTH = 8;
 
 /** `settings.py`, `settings_prod.py`, or any module inside a `settings/` package. */
 function isSettingsFile(filePath: string): boolean {
@@ -159,7 +163,10 @@ interface ScannedLine {
 }
 
 /** Tokenises one line, tracking triple-quoted strings across lines. */
-function scanLine(line: string, tripleState: string | null): { scanned: ScannedLine; state: string | null } {
+function scanLine(
+  line: string,
+  tripleState: string | null,
+): { scanned: ScannedLine; state: string | null } {
   const startsInString = tripleState !== null;
   let state = tripleState;
   let quote: string | null = null;
@@ -226,6 +233,8 @@ export class DjangoSettingsDetector implements Detector {
         state = r.state;
       }
 
+      let continuedUntil = -1; // last line index consumed as continuation
+
       for (let i = 0; i < lines.length; i++) {
         const first = lines[i]!;
         if (first.startsInString) continue;
@@ -235,14 +244,20 @@ export class DjangoSettingsDetector implements Detector {
         // Join bracketed continuation lines into one logical statement.
         let stmt = line;
         let depth = first.delta;
+        let end = i;
         for (let j = i + 1; depth > 0 && j < lines.length && j - i < MAX_STATEMENT_LINES; j++) {
           const next = lines[j]!;
           if (next.startsInString) break;
           stmt += " " + next.code.trim();
           depth += next.delta;
+          end = j;
         }
 
-        if (settings) {
+        const isContinuation = i <= continuedUntil;
+
+        if (end > continuedUntil) continuedUntil = end;
+
+        if (settings && !isContinuation) {
           const secret = this.matchSecretKey(stmt);
           if (secret) {
             findings.push(this.secretKeyFinding(filePath, i + 1, secret));
@@ -252,7 +267,10 @@ export class DjangoSettingsDetector implements Detector {
 
         for (const rule of RULES) {
           if (rule.scope === "settings" && !settings) continue;
-          if (!rule.regex.test(stmt)) continue;
+          // Settings rules read the joined statement (and skip continuation lines, so keyword
+          // arguments are not mistaken for assignments); view rules read the physical line.
+          if (rule.scope === "settings" && isContinuation) continue;
+          if (!rule.regex.test(rule.scope === "settings" ? stmt : line)) continue;
           findings.push(this.ruleFinding(rule, filePath, i + 1, line));
           break;
         }
@@ -325,7 +343,9 @@ export class DjangoSettingsDetector implements Detector {
       confidence: fallback ? "medium" : "high",
       file: filePath,
       line: lineNo,
-      evidence: sanitizeEvidence(`${m.head.replace(/\s+/g, " ")}"${redactSecret(m.value)}"${fallback ? ", ...)" : ""}`),
+      evidence: sanitizeEvidence(
+        `${m.head.replace(/\s+/g, " ")}"${redactSecret(m.value)}"${fallback ? ", ...)" : ""}`,
+      ),
       plainEnglishProblem: fallback
         ? "Django's SECRET_KEY falls back to a key written directly in your settings file when the environment variable is not set."
         : "Django's SECRET_KEY is written directly in your settings file instead of being read from the environment.",

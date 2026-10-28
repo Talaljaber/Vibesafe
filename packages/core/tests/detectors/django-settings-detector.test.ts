@@ -25,6 +25,19 @@ const run = (files: Record<string, string>) => detector.detect(ctx(files));
 const ruleIds = (f: { ruleId: string }[]) => f.map((x) => x.ruleId);
 
 describe("DjangoSettingsDetector", () => {
+  it("reports csrf_exempt in a multi-line urlpatterns list once, at the inner line", async () => {
+    const f = await run({
+      "app/urls.py": 'urlpatterns = [\n    path("hook/", csrf_exempt(hook_view)),\n]\n',
+    });
+    expect(f).toHaveLength(1);
+    expect(f[0]!.ruleId).toBe("security_config/django-csrf-exempt");
+    expect(f[0]!.line).toBe(2);
+  });
+
+  it("does not treat keyword arguments inside a call as settings assignments", async () => {
+    const f = await run({ "mysite/settings.py": "X = foo(\n    DEBUG = True,\n)\n" });
+    expect(f).toHaveLength(0);
+  });
   it("flags DEBUG = True as high in a production settings file", async () => {
     const f = await run({ "mysite/settings.py": "DEBUG = True\n" });
     expect(f).toHaveLength(1);
@@ -168,14 +181,18 @@ describe("DjangoSettingsDetector", () => {
 describe("secret patterns on .py files", () => {
   it("SecretDetector flags a known key in a Python file", async () => {
     const key = "sk_live_" + "a1B2c3D4e5F6g7H8i9J0k1L2";
-    const f = await new SecretDetector().detect(ctx({ "app/payments.py": `STRIPE_KEY = "${key}"` }));
+    const f = await new SecretDetector().detect(
+      ctx({ "app/payments.py": `STRIPE_KEY = "${key}"` }),
+    );
     expect(f).toHaveLength(1);
     expect(f[0]!.ruleId).toBe("secret/sec-stripe-live-secret");
     expect(f[0]!.file).toBe("app/payments.py");
   });
 
   it("SecretDetector does not double-report a hardcoded SECRET_KEY", async () => {
-    const files = { "mysite/settings.py": "SECRET_KEY = \"django-insecure-abcdefghijklmnopqrstuvwxyz0123456789\"" };
+    const files = {
+      "mysite/settings.py": 'SECRET_KEY = "django-insecure-abcdefghijklmnopqrstuvwxyz0123456789"',
+    };
     expect(await new SecretDetector().detect(ctx(files))).toHaveLength(0);
     expect(ruleIds(await run(files))).toEqual(["secret/django-secret-key"]);
   });
@@ -201,7 +218,9 @@ describe("Django project detection", () => {
   });
 
   it("detects django in requirements.txt and pyproject.toml", async () => {
-    expect((await project({ "requirements.txt": "Django==4.2\npsycopg2" })).framework).toBe("django");
+    expect((await project({ "requirements.txt": "Django==4.2\npsycopg2" })).framework).toBe(
+      "django",
+    );
     expect(
       (await project({ "pyproject.toml": '[project]\ndependencies = ["django>=4.2"]' })).framework,
     ).toBe("django");
@@ -261,10 +280,14 @@ describe("DjangoSettingsDetector, real-world forms", () => {
   });
 
   it("flags a multi-line ALLOWED_HOSTS wildcard, not a commented one", async () => {
-    const bad = await run({ "a/settings.py": "ALLOWED_HOSTS = [\n    'example.com',\n    '*',\n]\n" });
+    const bad = await run({
+      "a/settings.py": "ALLOWED_HOSTS = [\n    'example.com',\n    '*',\n]\n",
+    });
     expect(ruleIds(bad)).toEqual(["security_config/django-allowed-hosts-wildcard"]);
     expect(bad[0]!.line).toBe(1);
-    const ok = await run({ "a/settings.py": "ALLOWED_HOSTS = [\n    'example.com',\n    # '*',\n]\nX = ['*']\n" });
+    const ok = await run({
+      "a/settings.py": "ALLOWED_HOSTS = [\n    'example.com',\n    # '*',\n]\nX = ['*']\n",
+    });
     expect(ok).toHaveLength(0);
   });
 
@@ -371,7 +394,9 @@ describe("Django project detection, extra cases", () => {
   });
 
   it("ignores django mentioned only in a comment", async () => {
-    expect((await project({ "requirements.txt": "# django is not used\nflask" })).framework).toBe("unknown");
+    expect((await project({ "requirements.txt": "# django is not used\nflask" })).framework).toBe(
+      "unknown",
+    );
   });
 
   it("uses language python for Django, even next to a non-TS package.json", async () => {
