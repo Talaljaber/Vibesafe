@@ -26,6 +26,7 @@ export const SCANNABLE_EXTENSIONS = [
   ".mjs",
   ".cjs",
   ".json",
+  ".py",
 ] as const;
 
 /** File name patterns that are always included regardless of extension. */
@@ -59,6 +60,13 @@ export const ALWAYS_EXCLUDED_ANYWHERE_DIRS = [
   ".nyc_output",
   "storybook-static",
   ".cache",
+  "__pycache__",
+  ".venv",
+  "venv",
+  "site-packages",
+  ".tox",
+  ".mypy_cache",
+  ".pytest_cache",
 ] as const;
 
 /**
@@ -140,6 +148,7 @@ export const CATEGORY_PREFIX: Record<FindingCategory, string> = {
   code_quality: "QUAL",
   structure: "STRUCT",
   xss: "XSS",
+  security_config: "CFG",
 };
 
 // ─── Version ──────────────────────────────────────────────────────────────────

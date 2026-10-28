@@ -23,6 +23,7 @@ export { ErrorBoundaryDetector } from "./detectors/error-boundary-detector.js";
 export { GitHistoryDetector } from "./detectors/git-history-detector.js";
 export { HardcodedLocalhostDetector } from "./detectors/hardcoded-localhost-detector.js";
 export { DangerousHtmlDetector } from "./detectors/dangerous-html-detector.js";
+export { DjangoSettingsDetector } from "./detectors/django-settings-detector.js";
 
 // Fixers
 export * from "./fixers/index.js";

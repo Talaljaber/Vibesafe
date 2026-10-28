@@ -20,7 +20,8 @@ export type FindingCategory =
   | "dependency"
   | "code_quality"
   | "structure"
-  | "xss";
+  | "xss"
+  | "security_config";
 
 /** How confident is the detector in this finding? */
 export type Confidence = "high" | "medium" | "low";
@@ -167,8 +168,8 @@ export interface ScanResult {
  * tsconfig.json, and file structure analysis.
  */
 export interface ProjectContext {
-  framework: "nextjs" | "vite" | "express" | "unknown";
-  language: "typescript" | "javascript" | "mixed";
+  framework: "nextjs" | "vite" | "express" | "django" | "unknown";
+  language: "typescript" | "javascript" | "python" | "mixed";
   hasTypeScript: boolean;
   packageManager: "npm" | "pnpm" | "yarn" | "unknown";
   /** Direct dependencies from package.json. */

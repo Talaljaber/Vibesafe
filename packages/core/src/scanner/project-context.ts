@@ -38,11 +38,14 @@ export class ProjectContextBuilder {
     if (dependencies["next"]) framework = "nextjs";
     else if (devDependencies["vite"] || dependencies["vite"]) framework = "vite";
     else if (dependencies["express"]) framework = "express";
+    else if (await this.isDjangoProject()) framework = "django";
 
     // Language detection
     let language: ProjectContext["language"] = "mixed";
     if (hasTypeScript) {
       language = "typescript";
+    } else if (framework === "django" && !packageJson) {
+      language = "python";
     } else {
       language = "javascript"; // Simplified: assume JS if no TS config
     }
@@ -68,6 +71,31 @@ export class ProjectContextBuilder {
       nextjsVersion: dependencies["next"]?.replace(/[\^~]/g, ""),
       nodeVersion: packageJson?.engines?.node,
     };
+  }
+
+  /** A Django project has manage.py, or a Python manifest that lists django. */
+  private async isDjangoProject(): Promise<boolean> {
+    if (await this.fileExists(path.join(this.rootPath, "manage.py"))) return true;
+
+    let entries: string[] = [];
+    try {
+      entries = await fs.readdir(this.rootPath);
+    } catch {
+      return false;
+    }
+    const manifests = entries.filter(
+      (name) =>
+        /^requirements[\w.-]*\.txt$/i.test(name) || name === "pyproject.toml" || name === "Pipfile",
+    );
+    for (const name of manifests) {
+      try {
+        const content = await fs.readFile(path.join(this.rootPath, name), "utf-8");
+        if (/(^|[\s"'[,])django(?![\w-])/im.test(content)) return true;
+      } catch {
+        // unreadable manifest: ignore
+      }
+    }
+    return false;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
