@@ -12,13 +12,19 @@ import {
 import type { Finding } from "@vibesafe/shared";
 import { createBatcher } from "../watch/batcher.js";
 import { computeDelta, type ResultDelta, type Snapshot } from "../watch/delta.js";
+import { buildScanOptions } from "./scan-options.js";
 
 export const DEFAULT_DEBOUNCE_MS = 300;
 
 export interface WatchOptions {
   /** Emit NDJSON events (one JSON object per line) instead of formatted text. */
   json?: boolean;
-  includeTests?: boolean;
+  /** --include-tests / --no-include-tests; undefined = take the config file value. */
+  includeTests?: boolean | undefined;
+  /** commander sets this to false for --no-config. */
+  config?: boolean | undefined;
+  /** --trust-config: allow executing .ts/.js config files. */
+  trustConfig?: boolean | undefined;
   debounceMs?: number;
   /** Aborting stops the watcher and resolves runWatch. */
   signal?: AbortSignal;
@@ -75,17 +81,43 @@ export function isRelevantPath(p: string): boolean {
 }
 
 /**
+ * Scan options for every watch scan. The config file is re-read on each scan (so editing
+ * `.vibesafe.config.json` takes effect on the next rescan), but git history is never scanned:
+ * `deep` is forced off because rerunning a history scan on every save is too slow.
+ */
+export function buildWatchScanOptions(
+  rootPath: string,
+  options: Pick<WatchOptions, "includeTests" | "config" | "trustConfig">,
+) {
+  return {
+    ...buildScanOptions(rootPath, {
+      includeTests: options.includeTests,
+      config: options.config,
+      trustConfig: options.trustConfig,
+    }),
+    deep: false,
+  };
+}
+
+/**
  * Runs an initial scan, then rescans changed files (debounced) and prints the
  * delta. Resolves once stopped via `options.signal`. In --json mode every
  * output line is one NDJSON event: ready | change | error.
  */
 export async function runWatch(targetDir: string, options: WatchOptions = {}): Promise<void> {
   const rootPath = path.resolve(process.cwd(), targetDir);
-  const includeTests = options.includeTests ?? false;
+  const scanOptions = buildWatchScanOptions(rootPath, options);
   const out = options.write ?? ((line: string) => console.log(line));
   const emit = (event: Record<string, unknown>) => out(JSON.stringify(event));
   const say = (line: string) => {
     if (!options.json) out(line);
+  };
+  // Scan warnings (e.g. "Applied config file ...") are printed in text mode only when they first
+  // appear, so a rescan does not repeat them; NDJSON events always carry the full list.
+  let shownWarnings = new Set<string>();
+  const sayNewWarnings = (warnings: string[]) => {
+    for (const w of warnings) if (!shownWarnings.has(w)) say(chalk.yellow(`Warning: ${stripControl(w)}`));
+    shownWarnings = new Set(warnings);
   };
 
   const pipeline = new ScannerPipeline(createDefaultRegistry());
@@ -105,7 +137,9 @@ export async function runWatch(targetDir: string, options: WatchOptions = {}): P
       // using other files, so a partial scan yields false or missed findings.
       // computeDelta then reports only what actually changed.
       if (!files.some(isRelevantPath)) return; // nothing scannable changed
-      const findings = (await pipeline.scan({ rootPath, includeTests })).findings;
+      const scanned = await pipeline.scan(scanOptions);
+      const findings = scanned.findings;
+      const warnings = scanned.warnings ?? [];
       if (stopped) return;
 
       const next: Snapshot = { findings, ...pipeline.calculateScore(findings) };
@@ -123,8 +157,10 @@ export async function runWatch(targetDir: string, options: WatchOptions = {}): P
           scoreChange: delta.scoreChange,
           deployStatus: delta.statusAfter,
           totalFindings: findings.length,
+          warnings,
         });
       } else {
+        sayNewWarnings(warnings);
         for (const line of formatDelta(delta, files)) out(line);
       }
     } catch (error: unknown) {
@@ -166,9 +202,11 @@ export async function runWatch(targetDir: string, options: WatchOptions = {}): P
   });
   chain = (async () => {
     await watcherReady;
+    let initialWarnings: string[] = [];
     try {
-      const initial = await pipeline.scan({ rootPath, includeTests });
+      const initial = await pipeline.scan(scanOptions);
       snapshot = { findings: initial.findings, ...pipeline.calculateScore(initial.findings) };
+      initialWarnings = initial.warnings ?? [];
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       if (options.json) emit({ type: "error", message });
@@ -185,8 +223,10 @@ export async function runWatch(targetDir: string, options: WatchOptions = {}): P
         deployStatus: snapshot.deployStatus,
         totalFindings: snapshot.findings.length,
         findings: snapshot.findings,
+        warnings: initialWarnings,
       });
     } else {
+      sayNewWarnings(initialWarnings);
       say(
         `Initial scan: score ${snapshot.score}, status ${snapshot.deployStatus}, ${snapshot.findings.length} finding(s).`,
       );

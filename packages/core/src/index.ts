@@ -3,7 +3,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 export { DEFAULT_CONFIG, mergeConfig } from "./config/defaults.js";
-export { validateConfig } from "./config/schema.js";
+export { validateConfig, validateUserConfig } from "./config/schema.js";
+export { defineConfig } from "./config/user-config.js";
+export type { VibeSafeConfig } from "./config/user-config.js";
+export { loadUserConfig, CONFIG_FILE_NAMES, ConfigLoadError } from "./config/load-config.js";
+export type { LoadedUserConfig, LoadUserConfigOptions } from "./config/load-config.js";
+export { applyRuleOverrides } from "./scanner/rule-overrides.js";
 
 export { DetectorRegistry, createDefaultRegistry } from "./scanner/detector-registry.js";
 export { FileDiscovery } from "./scanner/file-discovery.js";

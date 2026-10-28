@@ -3,10 +3,13 @@ import chalk from "chalk";
 import { ScannerPipeline, createDefaultRegistry, createDefaultFixRegistry } from "@vibesafe/core";
 import { select } from "@inquirer/prompts";
 import type { Finding, FixPreview, ScanResult } from "@vibesafe/shared";
+import { buildScanOptions, type ScanFlagOptions } from "./scan-options.js";
 
-export interface WizardOptions {
-  deep?: boolean | undefined;
-  includeTests?: boolean | undefined;
+/**
+ * Scan flags (deep, includeTests, --no-config, --trust-config) are used for the wizard's own
+ * scan and its final rescan; unset flags fall back to the `.vibesafe.config.*` values.
+ */
+export interface WizardOptions extends ScanFlagOptions {
   /** Reuse an existing scan instead of scanning again (used by `scan -i`). */
   initialResult?: ScanResult | undefined;
 }
@@ -99,12 +102,13 @@ export async function runFixWizard(
 
   const rootPath = path.resolve(process.cwd(), targetDir);
   const pipeline = new ScannerPipeline(createDefaultRegistry());
-  const scanOpts = { rootPath, deep: options.deep ?? false, includeTests: options.includeTests ?? false };
+  const scanOpts = buildScanOptions(rootPath, options);
 
   let result = options.initialResult;
   if (!result) {
     console.log(chalk.gray(`Scanning ${rootPath}...`));
     result = await pipeline.scan(scanOpts);
+    for (const w of result.warnings ?? []) console.log(chalk.yellow(`⚠️  ${sanitizeTerminal(w)}`));
   }
 
   const byId = new Map(result.findings.map((f) => [f.id, f]));

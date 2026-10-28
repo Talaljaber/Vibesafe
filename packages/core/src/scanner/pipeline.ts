@@ -15,6 +15,8 @@ import { ProjectContextBuilder } from "./project-context.js";
 import type { DetectorRegistry } from "./detector-registry.js";
 import { mergeConfig } from "../config/defaults.js";
 import { validateConfig } from "../config/schema.js";
+import { loadUserConfig, findScriptConfig } from "../config/load-config.js";
+import { applyRuleOverridesWithStats } from "./rule-overrides.js";
 
 export class ScannerPipeline {
   private registry: DetectorRegistry;
@@ -29,7 +31,32 @@ export class ScannerPipeline {
   async scan(userConfig: Partial<ScanConfig> & { rootPath: string }, onProgress?: (message: string, current: number, total: number) => void): Promise<ScanResult> {
     const startTime = Date.now();
     const warnings: string[] = [];
-    const config = mergeConfig(userConfig.rootPath, userConfig);
+    // Config file values are the base; explicit (defined) options win.
+    let effective: Partial<ScanConfig> = userConfig;
+    let appliedConfigName: string | undefined;
+    if (userConfig.useConfigFile !== false) {
+      const allowScripts = userConfig.trustConfigScripts === true;
+      const loaded = await loadUserConfig(userConfig.rootPath, { allowScripts });
+      if (loaded) {
+        const explicit = Object.fromEntries(
+          Object.entries(userConfig).filter(([, v]) => v !== undefined),
+        );
+        effective = { ...loaded.scanConfig, ...explicit };
+        appliedConfigName = path.basename(loaded.filePath);
+        warnings.push(
+          `Applied config file ${appliedConfigName}; it can hide or reclassify findings. Review it if you do not trust this project.`,
+        );
+      }
+      if (!allowScripts) {
+        const skipped = await findScriptConfig(userConfig.rootPath);
+        if (skipped) {
+          warnings.push(
+            `Ignored ${skipped}: executable config files run code from the scanned project and are only loaded when explicitly trusted (CLI --trust-config / API trustConfigScripts). Use a .json config instead.`,
+          );
+        }
+      }
+    }
+    const config = mergeConfig(userConfig.rootPath, effective);
     
     // Validate config
     const errors = validateConfig(config);
@@ -43,7 +70,7 @@ export class ScannerPipeline {
       ? config.targetFiles 
       : await fileDiscovery.discoverFiles(config.excludePatterns, {
           // Not in mergeConfig's defaults; undefined/false = exclude tests.
-          includeTests: userConfig.includeTests ?? config.includeTests,
+          includeTests: config.includeTests,
         });
     
     if (config.maxFiles && files.length > config.maxFiles) {
@@ -89,6 +116,17 @@ export class ScannerPipeline {
       }
     };
 
+    // Typos in disabledDetectors would otherwise silently leave a detector running.
+    if (config.disabledDetectors && config.disabledDetectors.length > 0) {
+      const known = new Set(this.registry.getDetectors().map((d) => d.id));
+      const unknown = config.disabledDetectors.filter((id) => !known.has(id));
+      if (unknown.length > 0) {
+        warnings.push(
+          `Unknown detector id(s) in disabledDetectors: ${unknown.join(", ")} (known: ${[...known].join(", ")}).`,
+        );
+      }
+    }
+
     // 4. Run detectors
     const runResult = await this.registry.runAll(scanContext, onProgress);
     const detectorErrors = runResult.errors;
@@ -96,6 +134,15 @@ export class ScannerPipeline {
 
     // 4.5. Apply inline ignores
     findings = await applyInlineIgnores(findings, scanContext.readFile);
+
+    // 4.6. Apply rule overrides ("off" drops; severity changes are scored/sorted below)
+    const overridden = applyRuleOverridesWithStats(findings, config.ruleOverrides);
+    findings = overridden.findings;
+    if (overridden.suppressed > 0 || overridden.reclassified > 0) {
+      warnings.push(
+        `Rule overrides${appliedConfigName ? ` (${appliedConfigName})` : ""} suppressed ${overridden.suppressed} finding(s) and changed the severity of ${overridden.reclassified}.`,
+      );
+    }
 
     // 5. Score BEFORE the minSeverity filter. minSeverity only controls which
     // findings are displayed; filtering must not inflate the score or hide a
