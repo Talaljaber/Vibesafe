@@ -3,6 +3,7 @@ import { Command } from "commander";
 import { printBanner } from "./ui/banner.js";
 import { runScan } from "./commands/scan.js";
 import { runFix } from "./commands/fix.js";
+import { runFixWizard } from "./commands/fix-wizard.js";
 import { runFixAllCommand } from "./commands/fix-all.js";
 import { createRequire } from "node:module";
 
@@ -27,7 +28,7 @@ program
   .command("scan")
   .description("Scan a directory for vibe-coding security and quality issues")
   .argument("[dir]", "Directory to scan", ".")
-  .option("-i, --interactive", "Prompt for confirmation before scanning", false)
+  .option("-i, --interactive", "After the scan, offer to walk through the fixes interactively", false)
   .option("--html", "Generate HTML report", false)
   .option("--open-report", "Automatically open the HTML report after scan", false)
   .option("-j, --json", "Output pure JSON without console formatting", false)
@@ -39,28 +40,52 @@ program
 
 program
   .command("fix")
-  .description("Automatically apply a safe fix for a finding or rule ID, or for all auto-fixable findings with --all")
-  .argument("[finding-id]", "The ID of the finding or rule to fix (omit with --all)")
-  .argument("[dir]", "Directory to run the fix in", ".")
+  .description(
+    "Automatically apply a safe fix for a finding or rule ID, all auto-fixable findings with --all, or walk through fixes with -i",
+  )
+  .argument("[finding-id]", "The ID of the finding or rule to fix (with --all or -i: optional directory instead)")
+  .argument("[dir]", "Directory to run the fix in (default: .)")
   .option("-a, --all", "Preview and apply every auto-fixable finding with a single confirmation (the one positional is then the directory)", false)
+  .option("-i, --interactive", "Scan, then walk through the fixes one by one", false)
   .option("-y, --yes", "Skip confirmation (single fix: needs an exact finding id or a single match)", false)
-  .action(async (findingId: string | undefined, dir: string, options) => {
+  .action(async (first: string | undefined, second: string | undefined, options) => {
+    if (options.all && options.interactive) {
+      console.error("error: --all and --interactive cannot be used together");
+      process.exitCode = 1;
+      return;
+    }
     if (options.all) {
       // With --all there is no finding id, so `vibesafe fix --all ./app` puts the dir in the first positional.
-      if (findingId && dir !== ".") {
+      if (first !== undefined && second !== undefined) {
         console.error("error: --all takes no finding id; pass only the directory (vibesafe fix --all [dir])");
         process.exitCode = 1;
         return;
       }
-      await runFixAllCommand(findingId ?? dir, { yes: Boolean(options.yes) });
+      await runFixAllCommand(first ?? ".", { yes: Boolean(options.yes) });
       return;
     }
-    if (!findingId) {
-      console.error("error: missing required argument 'finding-id' (or use --all)");
+    if (options.interactive) {
+      if (first !== undefined && second !== undefined) {
+        console.error(
+          "error: --interactive takes an optional directory, not a finding id. Use `vibesafe fix -i [dir]`.",
+        );
+        process.exitCode = 1;
+        return;
+      }
+      try {
+        await runFixWizard(first ?? ".");
+      } catch (err) {
+        console.error(`Error during fix wizard: ${err instanceof Error ? err.message : String(err)}`);
+        process.exitCode = 1;
+      }
+      return;
+    }
+    if (first === undefined) {
+      console.error("error: missing required argument 'finding-id' (or use --all / --interactive)");
       process.exitCode = 1;
       return;
     }
-    await runFix(findingId, dir, { yes: Boolean(options.yes) });
+    await runFix(first, second ?? ".", { yes: Boolean(options.yes) });
   });
 
 program.parse(process.argv);

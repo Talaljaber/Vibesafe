@@ -6,6 +6,7 @@ import { confirm } from "@inquirer/prompts";
 import cliProgress from "cli-progress";
 import { generateHtmlReport } from "../ui/html-reporter.js";
 import open from "open";
+import { runFixWizard } from "./fix-wizard.js";
 import { pathToFileURL } from "node:url";
 
 export interface ScanOptions {
@@ -22,19 +23,6 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
 
   if (!options.json) {
     console.log(chalk.cyan(`Ready to scan directory: ${rootPath}`));
-  }
-
-  if (options.interactive) {
-    const proceed = await confirm({
-      message: chalk.magenta.bold("Ready to scan your codebase for security, code mess, and more?"),
-      default: true,
-    });
-
-    if (!proceed) {
-      if (!options.json) console.log(chalk.gray("Scan cancelled."));
-      process.exitCode = 0;
-      return;
-    }
   }
 
   if (!options.json) {
@@ -131,6 +119,36 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
     } else {
       if (!options.json) console.log(chalk.green.bold("\n✅ Scan passed! You are clear to deploy."));
       process.exitCode = 0;
+    }
+
+    // Interactive mode: offer the fix wizard once the results are on screen.
+    // Skipped without a TTY or when there is nothing to fix.
+    if (options.interactive && !options.json && process.stdin.isTTY && result.findings.length > 0) {
+      let start = false;
+      try {
+        start = await confirm({
+          message: chalk.magenta.bold("Walk through the fixes now?"),
+          default: true,
+        });
+      } catch (err) {
+        if (!(err instanceof Error && err.name === "ExitPromptError")) throw err;
+      }
+      if (start) {
+        const scanExitCode = process.exitCode;
+        try {
+          await runFixWizard(rootPath, {
+            initialResult: result,
+            deep: options.deep ?? false,
+            includeTests: options.includeTests ?? false,
+          });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error(chalk.red.bold(`\n\u274c Error during fix wizard: ${message}`));
+        } finally {
+          // The wizard must not mask the scan's CI exit code.
+          process.exitCode = scanExitCode;
+        }
+      }
     }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
