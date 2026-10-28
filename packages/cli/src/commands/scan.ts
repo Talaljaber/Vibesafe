@@ -12,7 +12,7 @@ import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import { OUTPUT_FORMAT_NAMES, isOutputFormat, renderOutput, type OutputFormat } from "../formatters/index.js";
 import { buildScanOptions } from "./scan-options.js";
-import { sanitizeTerminal } from "./fix-all.js";
+import { sanitizeTerminal } from "../ui/sanitize.js";
 
 // Both dist/commands/scan.js and src/commands/scan.ts sit two levels below package.json.
 const require = createRequire(import.meta.url);

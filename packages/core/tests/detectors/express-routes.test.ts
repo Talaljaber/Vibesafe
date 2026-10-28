@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { ScanContext } from "@vibesafe/shared";
 import { MissingAuthDetector } from "../../src/detectors/missing-auth-detector";
 import { MissingValidationDetector } from "../../src/detectors/missing-validation-detector";
+import { StripeWebhookDetector } from "../../src/detectors/stripe-webhook-detector";
 import {
   extractExpressRoutes,
   isExpressCandidateFile,
@@ -324,6 +325,60 @@ router.post("/admin/x", h);`;
   it("accepts template-literal paths", async () => {
     const src = "app.post(`/items`, (req, res) => res.send(1));";
     expect(await auth.detect(ctx({ "a.js": src }))).toHaveLength(1);
+  });
+
+  describe("Stripe webhook routes", () => {
+    const stripe = new StripeWebhookDetector();
+    const signed = `const express = require("express");
+const Stripe = require("stripe");
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const app = express();
+
+app.post("/webhooks/stripe", express.raw({ type: "application/json" }), (req, res) => {
+  const sig = req.headers["stripe-signature"];
+  const event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+  res.json({ received: event.type });
+});
+
+app.post("/orders", express.json(), (req, res) => {
+  res.json({ total: req.body.total });
+});`;
+    const unsigned = `const express = require("express");
+const Stripe = require("stripe");
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const app = express();
+
+app.post("/webhooks/stripe", express.json(), (req, res) => {
+  const event = req.body;
+  if (event.type === "checkout.session.completed") grantAccess(event.data.object);
+  res.json({ received: true });
+});`;
+
+    it("does not flag a signature-verified webhook for auth or validation", async () => {
+      const authLines = (await auth.detect(ctx({ "server.js": signed }))).map((f) => f.line);
+      const validationLines = (await validation.detect(ctx({ "server.js": signed }))).map((f) => f.line);
+      expect(authLines).toEqual([12]);
+      expect(validationLines).toEqual([13]);
+      expect(await stripe.detect(ctx({ "server.js": signed }))).toHaveLength(0);
+    });
+
+    it("still flags other routes in the same file", async () => {
+      const findings = await auth.detect(ctx({ "server.js": signed }));
+      expect(findings).toHaveLength(1);
+      expect(findings[0]!.plainEnglishProblem).toContain("POST /orders");
+    });
+
+    it("leaves an unsigned webhook to the Stripe detector, which reports it", async () => {
+      expect(await auth.detect(ctx({ "server.js": unsigned }))).toHaveLength(0);
+      const findings = await stripe.detect(ctx({ "server.js": unsigned }));
+      expect(findings.map((f) => f.ruleId)).toEqual(["auth/stripe-webhook-unsigned"]);
+    });
+
+    it("keeps webhook-looking routes covered in files that are not Stripe webhooks", async () => {
+      const src = `app.post("/webhooks/github", (req, res) => res.json(req.body));`;
+      expect(await auth.detect(ctx({ "server.js": src }))).toHaveLength(1);
+      expect(await validation.detect(ctx({ "server.js": src }))).toHaveLength(1);
+    });
   });
 
   it("leaves Next.js API route files on the non-Express branch", async () => {

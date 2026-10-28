@@ -22,6 +22,7 @@ import {
   VALIDATION_LIB_CALL_REGEX,
   INPUT_READ_REGEXES,
 } from "./patterns/validation-patterns.js";
+import { isStripeWebhookRoute, isWebhookPath } from "./stripe-webhook-detector.js";
 
 export class MissingValidationDetector implements Detector {
   id = "missing-validation-detector";
@@ -42,7 +43,11 @@ export class MissingValidationDetector implements Detector {
       }
 
       const content = await context.readFile(filePath);
-      
+
+      // Webhook routes read the raw body for signature verification, handled by StripeWebhookDetector
+      if (isStripeWebhookRoute(filePath, content)) {
+        continue;
+      }
 
       let inputIndex = -1;
       for (const re of INPUT_READ_REGEXES) {
@@ -99,9 +104,12 @@ export class MissingValidationDetector implements Detector {
 
     const hasImport = VALIDATION_LIB_IMPORT_REGEX.test(content);
     const hasExpressValidator = EXPRESS_VALIDATOR_IMPORT_REGEX.test(content);
+    const stripeWebhookFile = isStripeWebhookRoute(filePath, content);
     const findings: Finding[] = [];
 
     for (const route of extractExpressRoutes(content)) {
+      // Stripe webhooks pass the raw body to constructEvent; StripeWebhookDetector covers them.
+      if (stripeWebhookFile && isWebhookPath(route.path)) continue;
       const chain = route.chainCode;
       let input = EXPRESS_BODY_READ_REGEX.exec(chain);
       let severity: "high" | "medium" = "high";

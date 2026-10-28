@@ -4,6 +4,7 @@ import { ScannerPipeline, createDefaultRegistry, createDefaultFixRegistry } from
 import { select } from "@inquirer/prompts";
 import type { Finding, FixPreview, ScanResult } from "@vibesafe/shared";
 import { buildScanOptions, type ScanFlagOptions } from "./scan-options.js";
+import { sanitizeTerminal } from "../ui/sanitize.js";
 
 /**
  * Scan flags (deep, includeTests, --no-config, --trust-config) are used for the wizard's own
@@ -25,22 +26,6 @@ export interface WizardSummary {
 
 function isPromptAbort(err: unknown): boolean {
   return err instanceof Error && err.name === "ExitPromptError";
-}
-
-/**
- * Strips ANSI/OSC escape sequences and control characters from untrusted text
- * (file contents, names) so it cannot rewrite the terminal. Keeps \n and \t.
- */
-export function sanitizeTerminal(text: string): string {
-  return (
-    text
-      // eslint-disable-next-line no-control-regex
-      .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "")
-      // eslint-disable-next-line no-control-regex
-      .replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)?/g, "")
-      // eslint-disable-next-line no-control-regex
-      .replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, "")
-  );
 }
 
 function location(f: Finding): string {

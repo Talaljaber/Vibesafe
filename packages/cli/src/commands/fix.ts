@@ -4,7 +4,7 @@ import { ScannerPipeline, createDefaultRegistry, createDefaultFixRegistry } from
 import { confirm, select } from "@inquirer/prompts";
 import type { Finding } from "@vibesafe/shared";
 import { buildScanOptions } from "./scan-options.js";
-import { sanitizeTerminal } from "./fix-all.js";
+import { sanitizeTerminal } from "../ui/sanitize.js";
 
 export interface FixOptions {
   /** Skip confirmation prompts. Requires an exact finding id or a single ruleId match. */
