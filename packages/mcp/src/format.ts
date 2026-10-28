@@ -33,6 +33,8 @@ export interface ScanSummaryPayload {
   durationMs: number;
   topFindings: TopFinding[];
   truncatedCount: number;
+  /** Scan caveats (e.g. file-limit truncation, skipped large files). Present only when non-empty. */
+  warnings?: string[];
 }
 
 function locationOf(f: { file?: string | undefined; line?: number | undefined }): string {
@@ -66,6 +68,7 @@ export function summarizeScanResult(
       location: locationOf(f),
     })),
     truncatedCount: Math.max(0, result.findings.length - top.length),
+    ...(result.warnings && result.warnings.length > 0 ? { warnings: result.warnings } : {}),
   };
 }
 
@@ -90,6 +93,10 @@ export function formatScanSummaryText(payload: ScanSummaryPayload): string {
     if (payload.truncatedCount > 0) {
       lines.push(`...and ${payload.truncatedCount} more finding(s) not shown.`);
     }
+  }
+
+  if (payload.warnings && payload.warnings.length > 0) {
+    lines.push("", "Warnings:", ...payload.warnings.map((w) => `  - ${w}`));
   }
 
   lines.push("");
