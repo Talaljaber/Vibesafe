@@ -16,7 +16,8 @@ vi.mock("@vibesafe/core", () => ({
   },
 }));
 
-import { runFixWizard, sanitizeTerminal } from "../src/commands/fix-wizard.js";
+import { runFixWizard } from "../src/commands/fix-wizard.js";
+import { sanitizeTerminal } from "../src/ui/sanitize.js";
 
 function finding(id: string, ruleId: string, autoFix: boolean) {
   return {
