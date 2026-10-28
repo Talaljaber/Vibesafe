@@ -117,6 +117,13 @@ Found 7 issues needing your attention. Expected fix time: ~70 mins.
 
 Finding IDs are only valid until the next `vibesafe_scan`.
 
+**Scan roots and writes.** By default `vibesafe_scan` only accepts directories inside the server's working directory, and `vibesafe_fix` with `dryRun: false` only returns a preview. Change this with server arguments or environment variables:
+
+| Setting | Effect |
+| --- | --- |
+| `--root <dir>` (repeatable) or `VIBESAFE_MCP_ROOTS` (separated by the OS path delimiter) | Directories that may be scanned (subtrees). |
+| `--allow-fix` or `VIBESAFE_MCP_ALLOW_FIX=1` | Allow `vibesafe_fix` to write files when `dryRun: false`. |
+
 **Build step.** The server runs from `dist/`, so build first (from the repo root):
 
 ```bash
