@@ -72,6 +72,7 @@ export const ALWAYS_EXCLUDED_ANYWHERE_DIRS = [
   ".mypy_cache",
   ".pytest_cache",
   ".ruff_cache",
+  ".eggs",
 ] as const;
 
 /**
