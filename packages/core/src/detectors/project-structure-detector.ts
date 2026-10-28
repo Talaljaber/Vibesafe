@@ -6,6 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
+import { CATEGORY_PREFIX } from "@vibesafe/shared";
 import crypto from "crypto";
 
 export class ProjectStructureDetector implements Detector {
@@ -20,7 +21,7 @@ export class ProjectStructureDetector implements Detector {
     // 1. Missing .gitignore
     if (!context.projectContext.hasGitignore) {
       findings.push({
-        id: `STRUCT-${crypto.randomBytes(3).toString("hex")}`,
+        id: `${CATEGORY_PREFIX.structure}-${crypto.randomBytes(3).toString("hex")}`,
         ruleId: "structure/missing-gitignore",
         title: "Missing .gitignore file",
         severity: "high",
@@ -40,7 +41,7 @@ export class ProjectStructureDetector implements Detector {
     // 2. Missing README
     if (!context.projectContext.hasReadme) {
       findings.push({
-        id: `STRUCT-${crypto.randomBytes(3).toString("hex")}`,
+        id: `${CATEGORY_PREFIX.structure}-${crypto.randomBytes(3).toString("hex")}`,
         ruleId: "structure/missing-readme",
         title: "Missing README.md",
         severity: "low",
@@ -61,7 +62,7 @@ export class ProjectStructureDetector implements Detector {
     // 3. Missing .env.example
     if (context.projectContext.hasEnvFile && !context.projectContext.hasEnvExample) {
       findings.push({
-        id: `STRUCT-${crypto.randomBytes(3).toString("hex")}`,
+        id: `${CATEGORY_PREFIX.structure}-${crypto.randomBytes(3).toString("hex")}`,
         ruleId: "structure/missing-env-example",
         title: "Missing .env.example file",
         severity: "low",
@@ -81,7 +82,7 @@ export class ProjectStructureDetector implements Detector {
     // 4. No tests
     if (!context.projectContext.hasTests) {
       findings.push({
-        id: `STRUCT-${crypto.randomBytes(3).toString("hex")}`,
+        id: `${CATEGORY_PREFIX.structure}-${crypto.randomBytes(3).toString("hex")}`,
         ruleId: "structure/missing-tests",
         title: "No tests found",
         severity: "low",

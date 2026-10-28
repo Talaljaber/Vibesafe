@@ -6,6 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
+import { CATEGORY_PREFIX } from "@vibesafe/shared";
 import crypto from "crypto";
 
 /** Scripts that run automatically during npm install — a common supply-chain attack vector. */
@@ -45,7 +46,7 @@ export class DependencyDetector implements Detector {
       if (scriptKey in scripts) {
         const scriptValue = scripts[scriptKey];
         findings.push({
-          id: `DEP-${crypto.randomBytes(3).toString("hex")}`,
+          id: `${CATEGORY_PREFIX.dependency}-${crypto.randomBytes(3).toString("hex")}`,
           ruleId: "dependency/risky-install-script",
           title: `Risky lifecycle script: "${scriptKey}"`,
           severity: "high",
@@ -70,7 +71,7 @@ export class DependencyDetector implements Detector {
     const directDepCount = Object.keys(deps).length;
     if (directDepCount > MAX_DIRECT_DEPS) {
       findings.push({
-        id: `DEP-${crypto.randomBytes(3).toString("hex")}`,
+        id: `${CATEGORY_PREFIX.dependency}-${crypto.randomBytes(3).toString("hex")}`,
         ruleId: "dependency/excessive-dependencies",
         title: `High dependency count: ${directDepCount} direct dependencies`,
         severity: "low",

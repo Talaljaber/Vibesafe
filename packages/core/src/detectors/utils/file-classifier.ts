@@ -21,16 +21,3 @@ export function isClientFile(filePath: string, fileContent: string): boolean {
 
   return false;
 }
-
-export function isServerFile(filePath: string, fileContent: string): boolean {
-  if (fileContent.includes('"use server"') || fileContent.includes("'use server'")) {
-    return true;
-  }
-
-  const normalizedPath = filePath.replace(/\\/g, "/");
-  if (normalizedPath.startsWith("app/api/") || normalizedPath.startsWith("pages/api/")) {
-    return true;
-  }
-
-  return false;
-}
