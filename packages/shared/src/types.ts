@@ -169,8 +169,8 @@ export interface ScanResult {
  * tsconfig.json, and file structure analysis.
  */
 export interface ProjectContext {
-  framework: "nextjs" | "vite" | "express" | "unknown";
-  language: "typescript" | "javascript" | "mixed";
+  framework: "nextjs" | "vite" | "express" | "django" | "unknown";
+  language: "typescript" | "javascript" | "python" | "mixed";
   hasTypeScript: boolean;
   packageManager: "npm" | "pnpm" | "yarn" | "unknown";
   /** Direct dependencies from package.json. */
