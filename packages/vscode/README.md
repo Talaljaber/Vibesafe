@@ -28,7 +28,8 @@
 - 📋 **Detailed Repair Plans**: Get step-by-step repair plans with exact file locations and line numbers natively inside VS Code.
 - 🤖 **AI Fix Prompts**: For every issue, VibeSafe generates a highly specific, copy-pasteable prompt. Drop it straight into Copilot or Cursor to let AI fix the AI's mistakes.
 - 🛠️ **Auto-Fix Capabilities**: Safely apply fixes to your codebase with a single click natively through the extension.
-- 📊 **Detailed Dashboards**: Companion CLI generates clean, interactive HTML dashboards summarizing your code health.
+- 💬 **Editor Hovers**: Hover a highlighted line to see the problem, why it matters, the fix steps and the AI fix prompt.
+- 📊 **Dashboard**: `VibeSafe: Open Dashboard` shows the score, deploy status and repair plan; the companion CLI can write an HTML report with `--html`.
 
 ## 🚀 Installation & Usage
 
@@ -37,13 +38,14 @@
 1. Open the Extensions view in VS Code (`Ctrl+Shift+X` or `Cmd+Shift+X`).
 2. Search for **VibeSafe**.
 3. Click **Install**.
-4. (Optional but recommended) Run `npm install -D @vibesafe/cli` in your project to use the companion CLI.
+4. (Optional) Build the companion CLI from source to get the HTML dashboard, SARIF / markdown output and watch mode (see the [main README](https://github.com/Talaljaber/Vibesafe#readme)). It is not published to npm yet.
 
 ### Available Commands
 
 Open the **Command Palette** (`Ctrl+Shift+P` or `Cmd+Shift+P`) and type `VibeSafe`:
 
 - **`VibeSafe: Scan Project`**: Triggers a full workspace scan and populates the VibeSafe side panel with issues.
+- **`VibeSafe: Open Dashboard`**: Opens the dashboard with the score, deploy status and repair plan.
 - **`VibeSafe: Re-scan`**: Refreshes the scan results for the current project.
 - **`VibeSafe: Copy Fix Prompt`**: (Contextual) Copies the AI prompt to your clipboard to paste into your AI chat assistant.
 - **`VibeSafe: Apply Safe Fix`**: (Contextual) Applies an automated fix to an identified issue.
