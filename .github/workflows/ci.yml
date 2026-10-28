@@ -40,6 +40,9 @@ jobs:
       - name: Format check
         run: pnpm format:check
 
+      - name: Version check
+        run: pnpm version:check
+
       - name: Typecheck
         run: pnpm typecheck
 
