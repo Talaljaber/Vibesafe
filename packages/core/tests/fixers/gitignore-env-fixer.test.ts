@@ -56,6 +56,37 @@ describe("GitignoreEnvFixer", () => {
     expect(content).toContain("node_modules\n.env\n.env.*");
   });
 
+  it("adds !.env.example so the example file stays tracked", async () => {
+    await fs.writeFile(path.join(tempDir, ".gitignore"), "node_modules");
+    await fixer.apply(finding, tempDir);
+    expect(await fs.readFile(path.join(tempDir, ".gitignore"), "utf-8")).toBe(
+      "node_modules\n.env\n.env.*\n!.env.example\n"
+    );
+  });
+
+  it("adds the negation when .env.* is already ignored, and is idempotent", async () => {
+    await fs.writeFile(path.join(tempDir, ".gitignore"), ".env\n.env.*\n");
+    await fixer.apply(finding, tempDir);
+    await fixer.apply(finding, tempDir);
+    expect(await fs.readFile(path.join(tempDir, ".gitignore"), "utf-8")).toBe(".env\n.env.*\n!.env.example\n");
+  });
+
+  it("does not overwrite or follow a symlinked .gitignore", async (ctx) => {
+    const target = path.join(tempDir, "..", `target-${path.basename(tempDir)}`);
+    await fs.writeFile(target, "orig\n");
+    try {
+      await fs.symlink(target, path.join(tempDir, ".gitignore"), "file");
+    } catch {
+      await fs.rm(target, { force: true });
+      ctx.skip();
+      return;
+    }
+    const result = await fixer.apply(finding, tempDir);
+    expect(result.success).toBe(false);
+    expect(await fs.readFile(target, "utf-8")).toBe("orig\n");
+    await fs.rm(target, { force: true });
+  });
+
   it("should not append .env if it already exists", async () => {
     await fs.writeFile(path.join(tempDir, ".gitignore"), "node_modules\n.env\n");
     

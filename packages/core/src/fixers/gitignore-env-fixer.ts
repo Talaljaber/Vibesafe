@@ -1,69 +1,91 @@
 import type { AutoFixer, Finding, FixPreview, FixResult } from "@vibesafe/shared";
 import fs from "node:fs/promises";
-import path from "node:path";
+import { resolveInsideRoot } from "./safe-path.js";
+
+const NEW_GITIGNORE = "node_modules\n.env\n.env.*\n!.env.example\n";
 
 export class GitignoreEnvFixer implements AutoFixer {
   // We can handle both missing gitignore and env not ignored
-  ruleId = "secret/env-not-ignored"; 
-  description = "Safely adds .env to .gitignore to prevent committing secrets.";
+  ruleId = "secret/env-not-ignored";
+  description =
+    "Safely adds .env and .env.* to .gitignore (keeping .env.example tracked) to prevent committing secrets.";
 
   canFix(finding: Finding): boolean {
     return finding.ruleId === "secret/env-not-ignored" || finding.ruleId === "structure/missing-gitignore";
   }
 
-  async preview(finding: Finding, rootPath: string): Promise<FixPreview> {
-    const gitignorePath = path.join(rootPath, ".gitignore");
-    let exists = true;
-    try {
-      await fs.access(gitignorePath);
-    } catch {
-      exists = false;
-    }
+  private plan(content: string): { hasEnv: boolean; append: string } {
+    const lines = content.split(/\r?\n/).map((l) => l.trim());
+    const hasEnv = lines.includes(".env");
+    const hasWildcard = lines.includes(".env.*");
+    const hasNegation = lines.includes("!.env.example");
 
+    let append = "";
+    if (!hasEnv) append += ".env\n.env.*\n!.env.example\n";
+    else if (hasWildcard && !hasNegation) append += "!.env.example\n";
+    if (append && content.length > 0 && !content.endsWith("\n")) append = "\n" + append;
+    return { hasEnv, append };
+  }
+
+  private async read(rootPath: string): Promise<{ path: string; content: string | null }> {
+    const gitignorePath = await resolveInsideRoot(rootPath, ".gitignore");
+    try {
+      return { path: gitignorePath, content: await fs.readFile(gitignorePath, "utf-8") };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return { path: gitignorePath, content: null };
+      throw error;
+    }
+  }
+
+  async preview(_finding: Finding, rootPath: string): Promise<FixPreview> {
+    let content: string | null;
+    try {
+      content = (await this.read(rootPath)).content;
+    } catch (error) {
+      return { description: `Cannot update .gitignore: ${(error as Error).message}`, filesToModify: [], filesToCreate: [] };
+    }
+    const exists = content !== null;
+    const added = content !== null
+      ? this.plan(content)
+          .append.split("\n")
+          .filter(Boolean)
+          .map((l) => `+ ${l}`)
+          .join("\n") + "\n"
+      : "";
     return {
-      description: "Appends `.env` and `.env.*` to .gitignore to protect secrets.",
+      description: "Appends `.env`, `.env.*` and `!.env.example` to .gitignore to protect secrets.",
       filesToModify: exists ? [".gitignore"] : [],
       filesToCreate: exists ? [] : [".gitignore"],
-      diff: exists ? "+ .env\n+ .env.*\n" : "Created .gitignore with:\nnode_modules\n.env\n.env.*\n"
+      diff: exists ? added : `Created .gitignore with:\n${NEW_GITIGNORE}`,
     };
   }
 
-  async apply(finding: Finding, rootPath: string): Promise<FixResult> {
-    const gitignorePath = path.join(rootPath, ".gitignore");
-    let exists = true;
-    let content = "";
+  async apply(_finding: Finding, rootPath: string): Promise<FixResult> {
     try {
-      content = await fs.readFile(gitignorePath, "utf-8");
-    } catch {
-      exists = false;
-    }
+      const { path: gitignorePath, content } = await this.read(rootPath);
 
-    try {
-      if (!exists) {
-        await fs.writeFile(gitignorePath, "node_modules\n.env\n.env.*\n", "utf-8");
+      if (content === null) {
+        await fs.writeFile(gitignorePath, NEW_GITIGNORE, { encoding: "utf-8", flag: "wx" });
         return {
           success: true,
           filesModified: [],
           filesCreated: [".gitignore"],
-          message: "Created .gitignore and added .env protections."
+          message: "Created .gitignore and added .env protections.",
         };
       }
 
-      // Check if it already has .env
-      const lines = content.split("\n");
-      const hasEnv = lines.some(line => line.trim() === ".env");
-      
-      let toAppend = "";
-      if (!hasEnv) {
-        toAppend += (content.endsWith("\n") || content.length === 0 ? "" : "\n") + ".env\n.env.*\n";
-        await fs.appendFile(gitignorePath, toAppend, "utf-8");
-      }
+      const { hasEnv, append } = this.plan(content);
+      if (append) await fs.appendFile(gitignorePath, append, "utf-8");
 
       return {
         success: true,
-        filesModified: [".gitignore"],
+        filesModified: append ? [".gitignore"] : [],
         filesCreated: [],
-        message: hasEnv ? ".env was already in .gitignore" : "Added .env to .gitignore."
+        message: append
+          ? hasEnv
+            ? "Added !.env.example to .gitignore."
+            : "Added .env to .gitignore."
+          : ".env was already in .gitignore",
       };
     } catch (error) {
       return {
@@ -71,7 +93,7 @@ export class GitignoreEnvFixer implements AutoFixer {
         filesModified: [],
         filesCreated: [],
         message: "Failed to update .gitignore",
-        error: error instanceof Error ? error.message : String(error)
+        error: (error as Error).message,
       };
     }
   }

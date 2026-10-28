@@ -46,6 +46,55 @@ describe("EnvExampleFixer", () => {
     expect(content).not.toContain("12345");
   });
 
+  it("does not leak values from CRLF files, comments or multi-line values", async () => {
+    const env =
+      'API_KEY=sk_live_abc\r\n# OLD_KEY=sk_live_old\r\n# plain note\r\nexport TOKEN=tok_123\r\nPEM="-----BEGIN KEY-----\r\nMIIEsecret\r\n-----END KEY-----"\r\nlast=1\r\njunk line sk_live_zzz\r\n';
+    await fs.writeFile(path.join(tempDir, ".env"), env);
+
+    const result = await fixer.apply(finding, tempDir);
+    expect(result.success).toBe(true);
+
+    const content = await fs.readFile(path.join(tempDir, ".env.example"), "utf-8");
+    expect(content).toBe("API_KEY=\r\n# plain note\r\nexport TOKEN=\r\nPEM=\r\nlast=\r\n");
+    for (const leaked of ["sk_live", "tok_123", "MIIE", "BEGIN", "junk"]) {
+      expect(content).not.toContain(leaked);
+    }
+  });
+
+  it("falls back to .env.local", async () => {
+    await fs.writeFile(path.join(tempDir, ".env.local"), "SECRET=abc\n");
+    const result = await fixer.apply(finding, tempDir);
+    expect(result.success).toBe(true);
+    expect(await fs.readFile(path.join(tempDir, ".env.example"), "utf-8")).toBe("SECRET=\n");
+  });
+
+  it("refuses to overwrite an existing .env.example", async () => {
+    await fs.writeFile(path.join(tempDir, ".env"), "A=secret\n");
+    await fs.writeFile(path.join(tempDir, ".env.example"), "HAND_WRITTEN=\n");
+    const preview = await fixer.preview(finding, tempDir);
+    expect(preview.filesToCreate).toEqual([]);
+    const result = await fixer.apply(finding, tempDir);
+    expect(result.success).toBe(false);
+    expect(await fs.readFile(path.join(tempDir, ".env.example"), "utf-8")).toBe("HAND_WRITTEN=\n");
+  });
+
+  it("does not write through a symlinked .env.example", async (ctx) => {
+    await fs.writeFile(path.join(tempDir, ".env"), "A=secret\n");
+    const target = path.join(tempDir, "..", `target-${path.basename(tempDir)}`);
+    await fs.writeFile(target, "orig");
+    try {
+      await fs.symlink(target, path.join(tempDir, ".env.example"), "file");
+    } catch {
+      await fs.rm(target, { force: true });
+      ctx.skip();
+      return;
+    }
+    const result = await fixer.apply(finding, tempDir);
+    expect(result.success).toBe(false);
+    expect(await fs.readFile(target, "utf-8")).toBe("orig");
+    await fs.rm(target, { force: true });
+  });
+
   it("should fail gracefully if .env doesn't exist", async () => {
     const result = await fixer.apply(finding, tempDir);
     expect(result.success).toBe(false);
