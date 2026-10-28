@@ -169,6 +169,20 @@ Create `.vibesafe.config.json` (or `vibesafe.config.json`) in the project root. 
 
 > **Security:** `.ts/.mts/.js/.mjs/.cjs` configs run code from the scanned directory (loaded with [jiti](https://github.com/unjs/jiti)). Because VibeSafe is meant to scan untrusted repos, they are **ignored by default** (a warning is added to the scan). Opt in only for projects you trust: `vibesafe scan --trust-config` or `trustConfigScripts: true` in the API. The MCP server and VS Code extension never run script configs. A config file can also hide findings, so every scan that applies one reports it, and how many findings it suppressed, in the scan warnings.
 
+```json
+{
+  "rules": { "code_quality/*": "off", "secret/hardcoded-api-key": "high" },
+  "disabledDetectors": ["git-history"],
+  "categories": ["secret", "auth"],
+  "exclude": ["legacy/**"],
+  "includeTests": false,
+  "minSeverity": "medium",
+  "deep": false
+}
+```
+
+TypeScript variant (`.vibesafe.config.ts`, only loaded with `--trust-config`; `vibesafe fix` accepts `--no-config` / `--trust-config` too):
+
 ```ts
 import { defineConfig } from "@vibesafe/core";
 

@@ -33,6 +33,9 @@ const resultsByFolder = new Map<string, ScanResult>();
 /** The result shown in the single-project views (most recently updated folder). */
 let primaryResult: ScanResult | null = null;
 
+/** Folders whose config file failed to load; warned once, reset when the config file changes. */
+const brokenConfigRoots = new Set<string>();
+
 const CODE_LANGUAGES = ["javascript", "javascriptreact", "typescript", "typescriptreact"];
 
 function scanOptions() {
@@ -54,10 +57,14 @@ function refreshViews(result: ScanResult): void {
  * is shown. Script configs are never executed here (trustConfigScripts is unset).
  */
 async function scanWithConfigFallback(opts: Parameters<ScannerPipeline["scan"]>[0]): Promise<ScanResult> {
+  const root = opts.rootPath;
+  // Already known broken for this folder: skip the failing load (and the repeat warning).
+  if (brokenConfigRoots.has(root)) return pipeline.scan({ ...opts, useConfigFile: false });
   try {
     return await pipeline.scan(opts);
   } catch (error) {
     if (error instanceof Error && error.name === "ConfigLoadError") {
+      brokenConfigRoots.add(root);
       vscode.window.showWarningMessage(`VibeSafe: ${error.message} Scanning without the config file.`);
       return pipeline.scan({ ...opts, useConfigFile: false });
     }
@@ -126,6 +133,14 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Initialize the core scanner
   pipeline = new ScannerPipeline(createDefaultRegistry());
+
+  // A changed config file may now be valid: forget the fallback and warn again if still broken.
+  const configWatcher = vscode.workspace.createFileSystemWatcher("**/{.vibesafe.config,vibesafe.config}.*");
+  const resetBroken = () => brokenConfigRoots.clear();
+  configWatcher.onDidChange(resetBroken);
+  configWatcher.onDidCreate(resetBroken);
+  configWatcher.onDidDelete(resetBroken);
+  context.subscriptions.push(configWatcher);
 
   // Initialize UI components
   statusBar = new VibeSafeStatusBar();

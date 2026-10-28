@@ -3,10 +3,14 @@ import chalk from "chalk";
 import { ScannerPipeline, createDefaultRegistry, createDefaultFixRegistry } from "@vibesafe/core";
 import { confirm, select } from "@inquirer/prompts";
 import type { Finding } from "@vibesafe/shared";
+import { buildScanOptions } from "./scan.js";
 
 export interface FixOptions {
   /** Skip confirmation prompts. Requires an exact finding id or a single ruleId match. */
   yes?: boolean | undefined;
+  /** commander sets this to false for --no-config. */
+  config?: boolean;
+  trustConfig?: boolean;
 }
 
 function describeFinding(f: Finding): string {
@@ -33,7 +37,7 @@ export async function runFix(findingId: string, targetDir: string, options: FixO
 
   const registry = createDefaultRegistry();
   const pipeline = new ScannerPipeline(registry);
-  const result = await pipeline.scan({ rootPath });
+  const result = await pipeline.scan(buildScanOptions(rootPath, options));
 
   let finding: Finding | undefined = result.findings.find((f) => f.id === findingId);
 
@@ -136,7 +140,7 @@ export async function runFix(findingId: string, targetDir: string, options: FixO
     
     // Fix verification (rescan)
     console.log(chalk.gray("\nVerifying fix..."));
-    const verifyResult = await pipeline.scan({ rootPath });
+    const verifyResult = await pipeline.scan(buildScanOptions(rootPath, options));
     const stillExists = verifyResult.findings.some(f => 
       f.ruleId === finding.ruleId && f.file === finding.file && f.line === finding.line
     );

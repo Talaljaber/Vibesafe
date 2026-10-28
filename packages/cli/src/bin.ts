@@ -49,8 +49,14 @@ program
   .argument("<finding-id>", "The ID of the finding or rule to fix")
   .argument("[dir]", "Directory to run the fix in", ".")
   .option("-y, --yes", "Skip confirmation (needs an exact finding id or a single match)", false)
+  .option("--no-config", "Ignore any .vibesafe.config file")
+  .option("--trust-config", "Execute .ts/.js config files from the directory (runs that code; trusted projects only)")
   .action(async (findingId, dir, options) => {
-    await runFix(findingId, dir, { yes: Boolean(options.yes) });
+    await runFix(findingId, dir, {
+      yes: Boolean(options.yes),
+      ...(options.config === false ? { config: false } : {}),
+      trustConfig: Boolean(options.trustConfig),
+    });
   });
 
 program.parse(process.argv);
