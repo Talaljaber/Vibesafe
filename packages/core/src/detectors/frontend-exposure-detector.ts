@@ -2,7 +2,12 @@ import path from "node:path";
 import { type Detector, type Finding, type ScanContext } from "@vibesafe/shared";
 import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
 import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
-import { hasUseServerDirective, isClientFile, usesServerSideDataFetching } from "./utils/file-classifier.js";
+import {
+  hasUseServerDirective,
+  isClientFile,
+  isViteConfigFile,
+  usesServerSideDataFetching,
+} from "./utils/file-classifier.js";
 
 const CODE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx"];
 const PUBLIC_PREFIXES = ["NEXT_PUBLIC_", "VITE_", "REACT_APP_", "EXPO_PUBLIC_", "NUXT_PUBLIC_", "PUBLIC_"];
@@ -10,6 +15,18 @@ const PUBLIC_PREFIXES = ["NEXT_PUBLIC_", "VITE_", "REACT_APP_", "EXPO_PUBLIC_", 
 /** A public-prefixed variable whose name looks like a secret (not preceded by another name char). */
 const PUBLIC_SECRET_REGEX =
   /(?<![A-Z0-9_])(?:NEXT_PUBLIC|VITE|REACT_APP|EXPO_PUBLIC|NUXT_PUBLIC|PUBLIC)_[A-Z0-9_]*(?:SECRET|PRIVATE|PASSWORD|SERVICE_ROLE)[A-Z0-9_]*/i;
+
+/**
+ * Inside a vite.config `define` block: `"process.env": process.env` (optionally wrapped in
+ * JSON.stringify, or followed by a TS cast such as `as any`), or a spread of process.env.
+ * Member access (`process.env.FOO`, `process.env["FOO"]`) is safe and not matched.
+ */
+const VITE_DEFINE_LEAK_REGEX =
+  /\.\.\.\s*process\.env(?![\w$.[(?])|["'`]?process\.env["'`]?\s*:\s*(?:JSON\.stringify\(\s*)?process\.env(?![\w$.[(?])/;
+
+/** `const env = process.env` or `const env = loadEnv(mode, cwd, "")` (empty prefix leaks every variable). */
+const ENV_ALIAS_REGEX =
+  /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:process\.env(?![\w$.[(?])|loadEnv\((?:[^()]|\([^()]*\))*,\s*(?:""|'')\s*\))/g;
 
 const SERVER_ENV_REGEX = /process\.env(?:\.([A-Za-z_][A-Za-z0-9_]*)|\[\s*["']([A-Za-z_][A-Za-z0-9_]*)["']\s*\])/g;
 const SECRET_LOOKING_NAME = /SERVICE_ROLE|SECRET|PRIVATE|PASSWORD|TOKEN|API_KEY|APIKEY/i;
@@ -102,10 +119,15 @@ export class FrontendExposureDetector implements Detector {
         continue;
       }
 
+      if (isViteConfigFile(filePath)) {
+        findings.push(...this.detectViteDefineLeak(filePath, await context.readFile(filePath)));
+        continue;
+      }
+
       if (!CODE_EXTENSIONS.some((e) => filePath.endsWith(e))) continue;
 
       const content = await context.readFile(filePath);
-      if (!isClientFile(filePath, content)) continue;
+      if (!isClientFile(filePath, content, context.projectContext)) continue;
 
       const rawLines = content.split("\n");
       const lines = stripComments(content);
@@ -193,6 +215,73 @@ export class FrontendExposureDetector implements Detector {
     }
 
     return findings;
+  }
+
+  /**
+   * Flags `define` blocks in vite.config that inline the whole of process.env into the bundle.
+   * vite.config is intentionally excluded from the other frontend-exposure checks.
+   * Limitations: braces inside template-literal interpolations are not tracked, and a `define`
+   * value that is a variable (`define: envDefine`) is not followed.
+   */
+  private detectViteDefineLeak(file: string, content: string): Finding[] {
+    const code = stripComments(content).join("\n");
+    const rawLines = content.split("\n");
+    const out: Finding[] = [];
+    const aliases = [...code.matchAll(ENV_ALIAS_REGEX)].map((a) => (a[1] ?? "").replace(/\$/g, "\\$"));
+    const aliasRe = aliases.length
+      ? new RegExp(
+          `\\.\\.\\.\\s*(?:${aliases.join("|")})(?![\\w$.[(?])|["'\`]?process\\.env["'\`]?\\s*:\\s*(?:JSON\\.stringify\\(\\s*)?(?:${aliases.join("|")})(?![\\w$.[(?])`,
+        )
+      : null;
+    const defineRe = /["']?\bdefine["']?\s*:\s*\{/g;
+    let m: RegExpExecArray | null;
+    while ((m = defineRe.exec(code)) !== null) {
+      const start = m.index + m[0].length;
+      let depth = 1;
+      let end = start;
+      let quote: string | null = null;
+      while (end < code.length && depth > 0) {
+        const ch = code[end];
+        if (quote) {
+          if (ch === "\\") end++;
+          else if (ch === quote) quote = null;
+        } else if (ch === '"' || ch === "'" || ch === "`") quote = ch;
+        else if (ch === "{") depth++;
+        else if (ch === "}") depth--;
+        end++;
+      }
+      const body = code.slice(start, end);
+      const leak = VITE_DEFINE_LEAK_REGEX.exec(body) ?? aliasRe?.exec(body) ?? null;
+      if (!leak) continue;
+      const line = code.slice(0, start + leak.index).split("\n").length;
+      out.push(this.viteDefineFinding(file, line, rawLines[line - 1] ?? ""));
+    }
+    return out;
+  }
+
+  private viteDefineFinding(file: string, line: number, evidence: string): Finding {
+    return {
+      id: createFindingId(CATEGORY_PREFIX.frontend_exposure, "frontend_exposure/vite-define-process-env", file, line),
+      ruleId: "frontend_exposure/vite-define-process-env",
+      title: "vite.config exposes all environment variables to the browser",
+      severity: "critical",
+      category: "frontend_exposure",
+      deployBlocking: true,
+      confidence: "high",
+      file,
+      line,
+      evidence: sanitizeEvidence(evidence),
+      plainEnglishProblem:
+        "Your Vite `define` config copies the whole of process.env into the client bundle, including every secret on the machine that builds it.",
+      whyItMatters:
+        "Vite replaces these expressions with literal values in the JavaScript sent to browsers. Anyone can read API keys, database passwords and tokens from the bundle.",
+      fixSteps: [
+        "Remove `process.env` from `define` (or the spread of it).",
+        "Expose only specific, non-secret values, using the VITE_ prefix and import.meta.env.",
+        "Rotate any secret that was present in the environment of a build that has already been deployed.",
+      ],
+      autoFixAvailable: false,
+    };
   }
 
   private serviceRoleFinding(file: string, line: number, evidence: string, importedFile?: string): Finding {
