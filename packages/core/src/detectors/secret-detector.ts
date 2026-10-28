@@ -1,4 +1,4 @@
-import { Detector, Finding, ScanContext, redactSecret } from "@vibesafe/shared";
+import { type Detector, type Finding, type ScanContext, redactSecret } from "@vibesafe/shared";
 import { SECRET_PATTERNS } from "./patterns/secret-patterns.js";
 import path from "path";
 import crypto from "crypto";
@@ -75,7 +75,7 @@ export class SecretDetector implements Detector {
     }
   }
 
-  private createGitignoreFinding(context: ScanContext): Finding {
+  private createGitignoreFinding(_context: ScanContext): Finding {
     return {
       id: `SEC-${crypto.randomBytes(3).toString("hex")}`,
       ruleId: "secret/env-not-ignored",

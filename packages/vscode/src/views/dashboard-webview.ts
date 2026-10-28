@@ -137,7 +137,7 @@ function getHtmlForResult(result: ScanResult) {
       <div class="error-banner">
         <h3>Some detectors failed. Results may be incomplete.</h3>
         <ul>
-          ${result.errors.map((e: any) => `<li>${escapeHtml(e.detector)}: ${escapeHtml(e.message)}</li>`).join('')}
+          ${result.errors.map((e) => `<li>${escapeHtml(e.detectorName)}: ${escapeHtml(e.message)}</li>`).join('')}
         </ul>
       </div>
     `;
@@ -152,7 +152,7 @@ function getHtmlForResult(result: ScanResult) {
       </div>
     `;
   } else {
-    stepsHtml = result.repairPlan.steps.map((step: any) => {
+    stepsHtml = result.repairPlan.steps.map((step) => {
       const sevClass = step.severity.toLowerCase();
       return `
         <div class="issue-card" data-severity="${sevClass}">
@@ -480,39 +480,39 @@ function getHtmlForResult(result: ScanResult) {
         <h1>VibeSafe Report</h1>
         <div class="subtitle">Pre-deploy safety scan</div>
         <div class="meta-info">
-          Project: \${escapeHtml(result.projectPath)}
+          Project: ${escapeHtml(result.projectPath)}
         </div>
       </div>
       <div>
-        <div class="status-pill \${statusClass}">\${escapeHtml(result.deployStatus)}</div>
+        <div class="status-pill ${statusClass}">${escapeHtml(result.deployStatus)}</div>
       </div>
     </header>
 
-    \${errorsHtml}
+    ${errorsHtml}
 
     <div class="panel decision-panel">
       <div class="decision-title">
-        Deploy Status: <span class="\${critical > 0 ? 'critical-color' : (high > 0 ? 'high-color' : 'low-color')}">\${escapeHtml(result.deployStatus)}</span>
+        Deploy Status: <span class="${critical > 0 ? 'critical-color' : (high > 0 ? 'high-color' : 'low-color')}">${escapeHtml(result.deployStatus)}</span>
       </div>
-      <div class="decision-reason">\${escapeHtml(reason)}</div>
-      <div class="decision-action">\${escapeHtml(nextAction)}</div>
+      <div class="decision-reason">${escapeHtml(reason)}</div>
+      <div class="decision-action">${escapeHtml(nextAction)}</div>
     </div>
 
     <div class="metrics-grid">
       <div class="metric-card">
-        <div class="metric-value" style="color: \${result.score > 80 ? 'var(--low)' : result.score > 50 ? 'var(--medium)' : 'var(--critical)'}">\${result.score}</div>
+        <div class="metric-value" style="color: ${result.score > 80 ? 'var(--low)' : result.score > 50 ? 'var(--medium)' : 'var(--critical)'}">${result.score}</div>
         <div class="metric-label">Score / 100</div>
       </div>
       <div class="metric-card">
-        <div class="metric-value">\${totalFindings}</div>
+        <div class="metric-value">${totalFindings}</div>
         <div class="metric-label">Total Findings</div>
       </div>
       <div class="metric-card">
-        <div class="metric-value critical-color">\${critical}</div>
+        <div class="metric-value critical-color">${critical}</div>
         <div class="metric-label">Critical</div>
       </div>
       <div class="metric-card">
-        <div class="metric-value high-color">\${high}</div>
+        <div class="metric-value high-color">${high}</div>
         <div class="metric-label">High</div>
       </div>
     </div>
@@ -521,16 +521,16 @@ function getHtmlForResult(result: ScanResult) {
       <div class="panel-header">Severity Breakdown</div>
       <div class="chart-container">
         <div class="chart-bar">
-          <div class="chart-segment" style="width: \${critPct}%; background: var(--critical)"></div>
-          <div class="chart-segment" style="width: \${highPct}%; background: var(--high)"></div>
-          <div class="chart-segment" style="width: \${medPct}%; background: var(--medium)"></div>
-          <div class="chart-segment" style="width: \${lowPct}%; background: var(--low)"></div>
+          <div class="chart-segment" style="width: ${critPct}%; background: var(--critical)"></div>
+          <div class="chart-segment" style="width: ${highPct}%; background: var(--high)"></div>
+          <div class="chart-segment" style="width: ${medPct}%; background: var(--medium)"></div>
+          <div class="chart-segment" style="width: ${lowPct}%; background: var(--low)"></div>
         </div>
         <div class="chart-legend">
-          <div class="legend-item"><div class="legend-dot" style="background: var(--critical)"></div> \${critical} Critical</div>
-          <div class="legend-item"><div class="legend-dot" style="background: var(--high)"></div> \${high} High</div>
-          <div class="legend-item"><div class="legend-dot" style="background: var(--medium)"></div> \${medium} Medium</div>
-          <div class="legend-item"><div class="legend-dot" style="background: var(--low)"></div> \${low} Low</div>
+          <div class="legend-item"><div class="legend-dot" style="background: var(--critical)"></div> ${critical} Critical</div>
+          <div class="legend-item"><div class="legend-dot" style="background: var(--high)"></div> ${high} High</div>
+          <div class="legend-item"><div class="legend-dot" style="background: var(--medium)"></div> ${medium} Medium</div>
+          <div class="legend-item"><div class="legend-dot" style="background: var(--low)"></div> ${low} Low</div>
         </div>
       </div>
     </div>
@@ -549,7 +549,7 @@ function getHtmlForResult(result: ScanResult) {
       </div>
       
       <div id="repair-steps">
-        \${stepsHtml}
+        ${stepsHtml}
       </div>
     </div>
   </div>

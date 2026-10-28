@@ -1,4 +1,4 @@
-import { Detector, Finding, ScanContext, redactSecret } from "@vibesafe/shared";
+import { type Detector, type Finding, type ScanContext, redactSecret } from "@vibesafe/shared";
 import { SECRET_PATTERNS } from "./patterns/secret-patterns.js";
 import {
   getHistoricalAddedLines,

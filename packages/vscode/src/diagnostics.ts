@@ -1,6 +1,9 @@
 import * as vscode from "vscode";
 import type { Finding, Severity } from "@vibesafe/shared";
 
+/** A VS Code diagnostic carrying the originating VibeSafe finding. */
+export type DiagnosticWithFinding = vscode.Diagnostic & { vibesafeFinding?: Finding };
+
 // Map VibeSafe severity to VS Code DiagnosticSeverity
 function mapSeverity(severity: Severity): vscode.DiagnosticSeverity {
   switch (severity) {
@@ -62,7 +65,7 @@ export function updateDiagnostics(
     diagnostic.code = finding.ruleId;
 
     // Attach the finding data so our CodeActionProvider can read it later
-    (diagnostic as any).vibesafeFinding = finding;
+    (diagnostic as DiagnosticWithFinding).vibesafeFinding = finding;
 
     diagnostics.push(diagnostic);
   }
@@ -117,7 +120,7 @@ export function updateAllDiagnostics(
       
       diagnostic.source = "VibeSafe";
       diagnostic.code = finding.ruleId;
-      (diagnostic as any).vibesafeFinding = finding;
+      (diagnostic as DiagnosticWithFinding).vibesafeFinding = finding;
       
       diagnostics.push(diagnostic);
     }

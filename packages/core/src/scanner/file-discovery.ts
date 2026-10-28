@@ -54,12 +54,12 @@ export class FileDiscovery {
       const ext = path.extname(file);
 
       // Check if it's a specific scannable filename (e.g. .env)
-      if (SCANNABLE_FILENAMES.includes(basename as any)) {
+      if ((SCANNABLE_FILENAMES as readonly string[]).includes(basename)) {
         return true;
       }
 
       // Check if it has a scannable extension (e.g. .ts, .tsx)
-      if (SCANNABLE_EXTENSIONS.includes(ext as any)) {
+      if ((SCANNABLE_EXTENSIONS as readonly string[]).includes(ext)) {
         return true;
       }
 
@@ -74,7 +74,7 @@ export class FileDiscovery {
     try {
       const content = await fs.readFile(gitignorePath, "utf-8");
       this.ig.add(content);
-    } catch (error) {
+    } catch {
       // It's okay if .gitignore doesn't exist
     }
   }

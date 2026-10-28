@@ -106,7 +106,7 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
         try {
           const fileUrl = pathToFileURL(htmlReportPath).href;
           await open(fileUrl);
-        } catch (e) {
+        } catch {
           if (!options.json) console.log(chalk.gray("Could not automatically open the report in your browser."));
         }
       }
@@ -121,8 +121,8 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
       if (!options.json) console.log(chalk.green.bold("\n✅ Scan passed! You are clear to deploy."));
       process.exit(0);
     }
-  } catch (error: any) {
-    if (!options.json) console.error(chalk.red.bold(`\n❌ Error during scan: ${error.message}`));
+  } catch (error) {
+    if (!options.json) console.error(chalk.red.bold(`\n❌ Error during scan: ${(error instanceof Error ? error.message : String(error))}`));
     process.exit(2);
   }
 }

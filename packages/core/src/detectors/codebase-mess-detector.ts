@@ -9,7 +9,6 @@ import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
 import crypto from "crypto";
 
 const MAX_FILE_LINES = 500;
-const MAX_REACT_COMPONENT_LINES = 300;
 
 export class CodebaseMessDetector implements Detector {
   id = "codebase-mess-detector";

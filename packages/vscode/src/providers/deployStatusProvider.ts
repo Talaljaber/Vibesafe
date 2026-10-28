@@ -1,4 +1,4 @@
-import * as vscode from "vscode";
+import type * as vscode from "vscode";
 import type { ScanResult } from "@vibesafe/shared";
 
 export class VibeSafeDeployStatusProvider implements vscode.WebviewViewProvider {
@@ -10,7 +10,7 @@ export class VibeSafeDeployStatusProvider implements vscode.WebviewViewProvider 
 
   public resolveWebviewView(
     webviewView: vscode.WebviewView,
-    context: vscode.WebviewViewResolveContext,
+    _context: vscode.WebviewViewResolveContext,
     _token: vscode.CancellationToken
   ) {
     this._view = webviewView;
@@ -30,7 +30,7 @@ export class VibeSafeDeployStatusProvider implements vscode.WebviewViewProvider 
     }
   }
 
-  private _getHtmlForWebview(webview: vscode.Webview) {
+  private _getHtmlForWebview(_webview: vscode.Webview) {
     if (!this._latestResult) {
       return this._getEmptyHtml();
     }

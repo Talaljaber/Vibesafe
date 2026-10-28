@@ -51,3 +51,6 @@ docs/
 
 # Generated demo repo (scripts/create-demo-repo.mjs) - never commit its nested .git
 /demo-app/
+
+# Fixture exception: intentionally committed fake .env for scanner tests
+!fixtures/**/.env

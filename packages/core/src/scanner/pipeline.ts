@@ -4,7 +4,7 @@ import type { ScanConfig, ScanResult, ScanContext, Finding, ScanSummary, RepairP
 import { getDeployStatus, isMoreSevere, SEVERITY_WEIGHTS, CATEGORY_MULTIPLIERS } from "@vibesafe/shared";
 import { FileDiscovery } from "./file-discovery.js";
 import { ProjectContextBuilder } from "./project-context.js";
-import { DetectorRegistry } from "./detector-registry.js";
+import { type DetectorRegistry } from "./detector-registry.js";
 import { mergeConfig } from "../config/defaults.js";
 import { validateConfig } from "../config/schema.js";
 
@@ -67,7 +67,9 @@ export class ScannerPipeline {
     };
 
     // 4. Run detectors
-    let { findings, errors: detectorErrors } = await this.registry.runAll(scanContext, onProgress);
+    const runResult = await this.registry.runAll(scanContext, onProgress);
+    let findings = runResult.findings;
+    const detectorErrors = runResult.errors;
 
     // 4.5. Apply inline ignores
     findings = await this.applyInlineIgnores(findings, scanContext);

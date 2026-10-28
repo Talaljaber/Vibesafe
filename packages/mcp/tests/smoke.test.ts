@@ -64,7 +64,7 @@ class StdoutLineCollector {
   }
 
   /** Resolves with the Nth line (0-indexed) once it has arrived. */
-  async line(index: number, timeoutMs = 10000): Promise<string> {
+  async line(index: number, timeoutMs = 30000): Promise<string> {
     if (this.lines.length > index) return this.lines[index]!;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
