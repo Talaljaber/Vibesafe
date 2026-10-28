@@ -166,8 +166,8 @@ export class ConsoleLogFixer implements AutoFixer {
         filesToCreate: [],
         diff: edit.before.map((l) => `- ${l}`).join("\n") + "\n" + edit.after.map((l) => `+ ${l}`).join("\n"),
       };
-    } catch (error: any) {
-      return none(`Cannot read file: ${error.message}`);
+    } catch (error) {
+      return none(`Cannot read file: ${(error as Error).message}`);
     }
   }
 
@@ -197,8 +197,8 @@ export class ConsoleLogFixer implements AutoFixer {
         filesCreated: [],
         message: `Commented out console.log on line ${finding.line}.`,
       };
-    } catch (error: any) {
-      return fail("Failed to apply fix.", error?.message);
+    } catch (error) {
+      return fail("Failed to apply fix.", (error as Error)?.message);
     }
   }
 }
