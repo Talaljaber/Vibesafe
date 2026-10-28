@@ -3,7 +3,7 @@
   <p><strong>The Pre-Deploy Safety Scanner for Vibe-Coded Apps</strong></p>
   <p>
     <a href="https://www.npmjs.com/package/@vibesafe/cli"><img src="https://img.shields.io/npm/v/@vibesafe/cli?style=flat-square&color=blue" alt="NPM Version"></a>
-    <a href="https://marketplace.visualstudio.com/items?itemName=talaljaber.vibesafe"><img src="https://img.shields.io/visual-studio-marketplace/v/talaljaber.vibesafe?style=flat-square&color=blueviolet" alt="VS Code Marketplace"></a>
+    <a href="https://marketplace.visualstudio.com/items?itemName=talaljaber.vibeguard-scanner"><img src="https://img.shields.io/visual-studio-marketplace/v/talaljaber.vibeguard-scanner?style=flat-square&color=blueviolet" alt="VS Code Marketplace"></a>
     <img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="License">
   </p>
 </div>
@@ -24,13 +24,15 @@
 ### Dashboard and CLI Reports
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Talaljaber/Vibeguard/main/packages/vscode/report.png" alt="VibeSafe Report Dashboard" width="45%">
-  <img src="https://raw.githubusercontent.com/Talaljaber/Vibeguard/main/packages/vscode/report1.png" alt="VibeSafe Detail View" width="45%">
+  <img src="packages/vscode/report.png" alt="VibeSafe Report Dashboard" width="45%">
+  <img src="packages/vscode/report1.png" alt="VibeSafe Detail View" width="45%">
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Talaljaber/Vibeguard/main/packages/vscode/Cli.png" alt="VibeSafe CLI Output" width="60%">
-</p>---
+  <img src="packages/vscode/Cli.png" alt="VibeSafe CLI Output" width="60%">
+</p>
+
+---
 
 ## 📦 Installation & Usage
 
@@ -73,7 +75,17 @@ npx vibesafe scan .
 - `npx @vibesafe/cli scan .` - Scans the current directory and outputs a detailed **Repair Plan** to your terminal.
 - `npx @vibesafe/cli scan . --html` - Scans the directory and generates a beautiful `vibesafe-report.html` dashboard.
 - `npx @vibesafe/cli scan . --open-report` - Generates the HTML dashboard and opens it in your default browser automatically.
+- `npx @vibesafe/cli scan . --format json|sarif|markdown` - Machine-readable output on stdout (`--json` is an alias of `--format json`). Add `--output <file>` to write it to a file.
+- `npx @vibesafe/cli scan . --deep` - Also scans git history for leaked secrets (slower).
+- `npx @vibesafe/cli scan . --include-tests` - Also scans test files and fixtures, which are excluded by default.
+- `npx @vibesafe/cli scan . --no-config` / `--trust-config` - Ignore the config file, or allow script configs (`.ts` / `.js`) to run. See Configuration below.
+- `npx @vibesafe/cli watch .` - Scans once, then re-scans on every file change and prints what is new or resolved (`--json` emits NDJSON events).
+- `npx @vibesafe/cli fix <finding-id> .` - Previews and applies a safe auto-fix for one finding (`--yes` skips the confirmation).
+- `npx @vibesafe/cli fix --all .` - Previews and applies every available auto-fix after a single confirmation.
+- `npx @vibesafe/cli fix --interactive .` - Walks through the repair plan step by step (apply, skip or quit). `scan -i` offers the same walkthrough after a scan.
 - `npx @vibesafe/cli --help` - Shows all available options and commands.
+
+The CLI exits with a non-zero code when the deploy status is a blocker or danger, so it can gate CI.
 
 ```text
 ╭────────────────────────────────────────────────────────────────────────╮
@@ -102,6 +114,81 @@ Found 7 issues needing your attention. Expected fix time: ~70 mins.
 ...
 ```
 
+### 🔍 What VibeSafe detects
+
+| Area | Checks |
+| --- | --- |
+| Secrets | Hardcoded API keys and tokens (OpenAI, Anthropic, Stripe, AWS access key ids and secret keys, Supabase, JWTs) with per-pattern severity, placeholder filtering and redacted evidence; optional git history scan with `--deep` |
+| Frontend exposure | Server secrets reachable from client code (all public env prefixes, import following), Firebase Admin SDK in client code, Vite `define` blocks that leak `process.env` |
+| Auth and authorization | Unprotected Next.js API routes and Express routes, missing role checks, Stripe webhook handlers without signature verification |
+| Validation | Raw request input used without validation (Zod, express-validator, celebrate, ...) in Next.js and Express |
+| Security configuration | Insecure CORS (reflected origins, wildcard with credentials), missing helmet / security headers, missing rate limiting on login, AI and email endpoints, Supabase tables without Row Level Security |
+| Python / Django | Django project detection, `.py` file scanning and insecure Django settings |
+| XSS | `dangerouslySetInnerHTML` with dynamic content |
+| Dependencies | Suspicious install scripts, excessive dependencies |
+| Code quality | Large files and components, excessive `any`, leftover `console.log`, hardcoded localhost URLs, missing React error boundaries |
+| Project structure | Missing `.env.example`, `.gitignore` and `README.md` |
+
+Test and fixture paths (for example `**/*.test.*`, `__tests__`, `fixtures`) are excluded by default; pass `--include-tests` to scan them.
+
+### 🔇 Ignoring findings
+
+Suppress a finding with an inline comment. Without rule ids a directive applies to every rule; with one or more comma-separated rule ids it only applies to those rules.
+
+```ts
+const key = "..."; // vibesafe-disable-line secret/hardcoded-api-key
+// vibesafe-disable-next-line auth/missing-route-auth, validation/missing-body-validation
+export async function POST(req: Request) {}
+// vibesafe-disable-file code_quality/console-log
+```
+
+### ⚙️ Configuration
+
+Create `.vibesafe.config.json` (or `vibesafe.config.json`) in the project root:
+
+```json
+{
+  "minSeverity": "medium",
+  "includeTests": false,
+  "deep": false,
+  "exclude": ["legacy/**"],
+  "rules": { "code_quality/*": "off", "secret/hardcoded-api-key": "high" },
+  "disabledDetectors": ["git-history"]
+}
+```
+
+- `rules` maps rule ids (exact or glob) to a severity or `"off"`; an exact id wins over a glob.
+- Script configs (`vibesafe.config.ts`, `.js`, `.mjs`, ...) execute code and are therefore ignored unless you pass `--trust-config`. The MCP server and the VS Code extension never run script configs.
+- CLI flags win over the config file; `--no-config` ignores it.
+- Every scan that applied a config reports it as a scan warning, including how many findings were suppressed.
+
+### 🤖 GitHub Action
+
+The repository ships a composite action (`action.yml`) that runs the CLI on pull requests, posts or updates one sticky PR comment with the markdown report, and fails the job according to `fail-on` (`blocker`, `danger`, `warning` or `none`).
+
+```yaml
+name: VibeSafe
+on: pull_request
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  vibesafe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Talaljaber/Vibesafe@main
+        with:
+          fail-on: danger
+```
+
+Inputs: `path`, `fail-on`, `comment`, `github-token`, `deep`, `version`, `node-version`. See `examples/github-action.yml`.
+
+### 📄 SARIF and code scanning
+
+`vibesafe scan . --format sarif --output vibesafe.sarif` writes SARIF 2.1.0 that you can upload with `github/codeql-action/upload-sarif` to see findings in GitHub code scanning.
+
+
 ### 🤖 MCP server
 
 `@vibesafe/mcp` is a stdio [Model Context Protocol](https://modelcontextprotocol.io) server that lets AI assistants (Claude Code, Claude Desktop, ...) run VibeSafe scans.
@@ -110,7 +197,7 @@ Found 7 issues needing your attention. Expected fix time: ~70 mins.
 
 | Tool | What it does |
 | --- | --- |
-| `vibesafe_scan` | Scan a directory (`path`, optional `minSeverity`, `category`, and `deep` to also inspect git history for leaked secrets; `deep` is slower). Returns score, deploy status and the top findings. |
+| `vibesafe_scan` | Scan a directory (`path`, optional `minSeverity`, `category`, `includeTests`, and `deep` to also inspect git history for leaked secrets; `deep` is slower). Returns score, deploy status, scan warnings and the top findings. |
 | `vibesafe_explain` | Full explanation, fix steps and AI fix prompt for a finding ID from the last scan. |
 | `vibesafe_repair_plan` | The ordered repair plan from the last scan. |
 | `vibesafe_fix` | Preview (default, `dryRun: true`) or apply a safe auto-fix for a finding. |
@@ -156,17 +243,18 @@ claude mcp add vibesafe -- node /absolute/path/to/Vibesafe/packages/mcp/dist/ind
 
 Prefer working entirely within your editor? Install the **VibeSafe** extension!
 
-1. Search for **VibeSafe** in the VS Code Extensions marketplace and click Install.
+1. Search for **VibeSafe by Talal Jaber** (`talaljaber.vibeguard-scanner`) in the VS Code Extensions marketplace and click Install.
 2. Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`).
 3. Run **`VibeSafe: Scan Project`**.
 4. View issues natively in the sidebar, get AI fix prompts, and apply automated safe fixes right from your editor.
 
 ---
 
-## ⚠️ Known Limitations (v0.1)
+## ⚠️ Known Limitations
 
-VibeSafe is currently in early release (v0.1) and is meant to catch the most common "vibe-coding" mistakes. Please be aware of the following:
-- **Rule Engine Scope:** The built-in detectors currently cover a core set of issues (secrets, `.env` mismatches, basic codebase mess). Advanced static analysis or data flow tracking is not yet implemented.
+VibeSafe is in early release and is meant to catch the most common "vibe-coding" mistakes. Please be aware of the following:
+- **Rule Engine Scope:** Detectors are heuristic (regex and light structural analysis). Cross-file data flow tracking is not implemented, so some findings can be false positives or misses.
+- **Frameworks:** Best coverage is for Next.js, Vite and Express; Django/Python support is an early slice.
 - **Auto-fixes:** Some auto-fixes might require manual review to ensure they don't alter intended app logic.
 - **Performance:** Scanning very large monorepos with hundreds of thousands of lines of code may take longer than expected. We are actively working on performance optimizations.
 
@@ -174,9 +262,9 @@ VibeSafe is currently in early release (v0.1) and is meant to catch the most com
 
 ## 🗺️ Roadmap
 
-- [ ] **v0.2:** Expanding the core ruleset to cover more frontend framework-specific pitfalls (Next.js, Vue, Svelte).
-- [ ] **v0.3:** Support for custom, user-defined rules and configurations (`vibesafe.config.js`).
-- [ ] **v0.4:** Integration with SARIF and GitHub Actions for automated PR reviews.
+- [x] Config file, SARIF and markdown output, watch mode, batch and interactive fixes, GitHub Action.
+- [ ] More framework-specific rules (Vue, Svelte, Python frameworks beyond Django).
+- [ ] Custom, user-defined rules.
 - [ ] **v1.0:** Stable release with comprehensive reporting and enterprise-grade speed.
 
 ---
@@ -191,10 +279,13 @@ Please see our [Contributing Guide](CONTRIBUTING.md) for details on how to get s
 
 This project is structured as a `pnpm` monorepo:
 
-- `packages/core`: The main scanning engine and detectors (secrets, auth, codebase mess).
-- `packages/shared`: Shared types, interfaces, and configurations.
-- `packages/cli`: The interactive command-line interface.
-- `packages/vscode`: The Visual Studio Code extension.
+- `packages/core`: The main scanning engine, detectors and fixers.
+- `packages/shared`: Shared types, constants and finding id helpers.
+- `packages/cli`: The command-line interface (`@vibesafe/cli`).
+- `packages/mcp`: The stdio MCP server (`@vibesafe/mcp`).
+- `packages/vscode`: The Visual Studio Code extension (published as `talaljaber.vibeguard-scanner`).
+
+Package versions are kept aligned with `node scripts/sync-versions.mjs` (see [CONTRIBUTING](CONTRIBUTING.md#versioning)).
 
 ## 🛠️ Local Development
 
@@ -202,8 +293,8 @@ To run VibeSafe locally:
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/talaljaber/vibesafe.git
-   cd vibesafe
+   git clone https://github.com/Talaljaber/Vibesafe.git
+   cd Vibesafe
    ```
 
 2. Install dependencies using `pnpm`:

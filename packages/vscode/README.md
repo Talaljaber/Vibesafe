@@ -2,9 +2,9 @@
   <h1>🛡️ VibeSafe for VS Code</h1>
   <p><strong>Catch security flaws and exposed secrets from AI "vibe coding" before you ship.</strong></p>
   <p>
-    <a href="https://marketplace.visualstudio.com/items?itemName=talaljaber.vibesafe"><img src="https://img.shields.io/visual-studio-marketplace/v/talaljaber.vibesafe?style=flat-square&color=blueviolet" alt="VS Code Marketplace"></a>
-    <a href="https://marketplace.visualstudio.com/items?itemName=talaljaber.vibesafe"><img src="https://img.shields.io/visual-studio-marketplace/i/talaljaber.vibesafe?style=flat-square&color=success" alt="Installs"></a>
-    <a href="https://github.com/talaljaber/vibesafe"><img src="https://img.shields.io/badge/GitHub-Source-blue?style=flat-square&logo=github" alt="GitHub"></a>
+    <a href="https://marketplace.visualstudio.com/items?itemName=talaljaber.vibeguard-scanner"><img src="https://img.shields.io/visual-studio-marketplace/v/talaljaber.vibeguard-scanner?style=flat-square&color=blueviolet" alt="VS Code Marketplace"></a>
+    <a href="https://marketplace.visualstudio.com/items?itemName=talaljaber.vibeguard-scanner"><img src="https://img.shields.io/visual-studio-marketplace/i/talaljaber.vibeguard-scanner?style=flat-square&color=success" alt="Installs"></a>
+    <a href="https://github.com/Talaljaber/Vibesafe"><img src="https://img.shields.io/badge/GitHub-Source-blue?style=flat-square&logo=github" alt="GitHub"></a>
   </p>
 </div>
 
@@ -15,12 +15,12 @@
 ### VibeSafe in Action
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Talaljaber/Vibeguard/main/packages/vscode/report.png" alt="VibeSafe Report Dashboard" width="45%">
-  <img src="https://raw.githubusercontent.com/Talaljaber/Vibeguard/main/packages/vscode/report1.png" alt="VibeSafe Detail View" width="45%">
+  <img src="https://raw.githubusercontent.com/Talaljaber/Vibesafe/main/packages/vscode/report.png" alt="VibeSafe Report Dashboard" width="45%">
+  <img src="https://raw.githubusercontent.com/Talaljaber/Vibesafe/main/packages/vscode/report1.png" alt="VibeSafe Detail View" width="45%">
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Talaljaber/Vibeguard/main/packages/vscode/Cli.png" alt="VibeSafe CLI Output" width="60%">
+  <img src="https://raw.githubusercontent.com/Talaljaber/Vibesafe/main/packages/vscode/Cli.png" alt="VibeSafe CLI Output" width="60%">
 </p>
 ## ✨ Key Features
 
@@ -58,7 +58,7 @@ Customize VibeSafe behavior in your `settings.json` or the VS Code Settings UI:
 | `vibesafe.scanOnSave` | Automatically run VibeSafe whenever you save a file | `false` |
 
 ## 🤝 Open Source
-VibeSafe is open source! Feel free to contribute, report issues, or suggest features on our [GitHub Repository](https://github.com/talaljaber/vibesafe).
+VibeSafe is open source! Feel free to contribute, report issues, or suggest features on our [GitHub Repository](https://github.com/Talaljaber/Vibesafe).
 
 ## 📄 License
 [MIT](LICENSE)

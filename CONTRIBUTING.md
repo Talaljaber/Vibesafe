@@ -18,8 +18,8 @@ VibeSafe is a monorepo using `pnpm`.
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/talaljaber/vibesafe.git
-   cd vibesafe
+   git clone https://github.com/Talaljaber/Vibesafe.git
+   cd Vibesafe
    ```
 
 2. Install dependencies:
@@ -54,6 +54,10 @@ At this point, you should switch back to your master branch and make sure it's u
 
 Then push your branch to GitHub and create a Pull Request against the main `vibesafe` repository.
 
-## 6. Keeping it Honest
+## 6. Versioning
+
+All workspace packages (and `VIBESAFE_VERSION` in `@vibesafe/shared`) share one version. Run `node scripts/sync-versions.mjs <version>` to align them (omit the version to use the highest current one) and `node scripts/sync-versions.mjs --check` to verify. Run `pnpm format:check` before pushing; `pnpm format` fixes formatting.
+
+## 7. Keeping it Honest
 
 VibeSafe is currently in its v0.1 stage. We aim to keep our documentation and claims honest. When adding features, do not overhype them. Be transparent about known limitations!
