@@ -20,7 +20,8 @@ export type FindingCategory =
   | "dependency"
   | "code_quality"
   | "structure"
-  | "xss";
+  | "xss"
+  | "security_config";
 
 /** How confident is the detector in this finding? */
 export type Confidence = "high" | "medium" | "low";
