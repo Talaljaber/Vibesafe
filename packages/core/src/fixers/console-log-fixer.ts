@@ -66,13 +66,13 @@ export class ConsoleLogFixer implements AutoFixer {
       } else {
         return { success: false, filesModified: [], filesCreated: [], message: "Invalid line." };
       }
-    } catch (error: any) {
+    } catch (error) {
       return {
         success: false,
         filesModified: [],
         filesCreated: [],
         message: "Failed to apply fix.",
-        error: error.message
+        error: error instanceof Error ? error.message : String(error)
       };
     }
   }

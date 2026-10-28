@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import type { Finding } from "@vibesafe/shared";
+import type { DiagnosticWithFinding } from "./diagnostics.js";
 
 /**
  * Provides Quick Fixes for VibeSafe diagnostics.
@@ -13,7 +14,7 @@ export class VibeSafeCodeActionProvider implements vscode.CodeActionProvider {
     document: vscode.TextDocument,
     range: vscode.Range | vscode.Selection,
     context: vscode.CodeActionContext,
-    token: vscode.CancellationToken
+    _token: vscode.CancellationToken
   ): vscode.CodeAction[] {
     const actions: vscode.CodeAction[] = [];
 
@@ -23,7 +24,7 @@ export class VibeSafeCodeActionProvider implements vscode.CodeActionProvider {
     );
 
     for (const diagnostic of vibesafeDiagnostics) {
-      const finding: Finding | undefined = (diagnostic as any).vibesafeFinding;
+      const finding: Finding | undefined = (diagnostic as DiagnosticWithFinding).vibesafeFinding;
 
       if (!finding) {
         continue;

@@ -65,13 +65,13 @@ export class GitignoreEnvFixer implements AutoFixer {
         filesCreated: [],
         message: hasEnv ? ".env was already in .gitignore" : "Added .env to .gitignore."
       };
-    } catch (error: any) {
+    } catch (error) {
       return {
         success: false,
         filesModified: [],
         filesCreated: [],
         message: "Failed to update .gitignore",
-        error: error.message
+        error: error instanceof Error ? error.message : String(error)
       };
     }
   }

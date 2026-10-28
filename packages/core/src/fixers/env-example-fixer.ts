@@ -48,13 +48,13 @@ export class EnvExampleFixer implements AutoFixer {
         filesCreated: [".env.example"],
         message: "Generated .env.example successfully."
       };
-    } catch (error: any) {
+    } catch (error) {
       return {
         success: false,
         filesModified: [],
         filesCreated: [],
         message: "Failed to create .env.example",
-        error: error.message
+        error: error instanceof Error ? error.message : String(error)
       };
     }
   }

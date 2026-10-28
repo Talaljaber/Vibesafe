@@ -46,7 +46,7 @@ export async function generateHtmlReport(result: ScanResult): Promise<string> {
       <div class="error-banner">
         <h3>Some detectors failed. Results may be incomplete.</h3>
         <ul>
-          ${result.errors.map((e: any) => `<li>${escapeHtml(e.detector)}: ${escapeHtml(e.message)}</li>`).join('')}
+          ${result.errors.map((e) => `<li>${escapeHtml(e.detectorName)}: ${escapeHtml(e.message)}</li>`).join('')}
         </ul>
       </div>
     `;
@@ -61,7 +61,7 @@ export async function generateHtmlReport(result: ScanResult): Promise<string> {
       </div>
     `;
   } else {
-    stepsHtml = result.repairPlan.steps.map((step: any) => {
+    stepsHtml = result.repairPlan.steps.map((step) => {
       const sevClass = step.severity.toLowerCase();
       return `
         <div class="issue-card" data-severity="${sevClass}">

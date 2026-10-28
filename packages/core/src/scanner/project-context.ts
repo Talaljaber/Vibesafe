@@ -70,6 +70,7 @@ export class ProjectContextBuilder {
     };
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async readJson(filePath: string): Promise<any | null> {
     try {
       const content = await fs.readFile(filePath, "utf-8");

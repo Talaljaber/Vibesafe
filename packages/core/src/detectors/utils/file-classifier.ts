@@ -1,4 +1,3 @@
-import path from "path";
 
 /**
  * Determines if a file is explicitly marked for the client-side

@@ -157,8 +157,8 @@ export function activate(context: vscode.ExtensionContext): void {
           } else {
             vscode.window.showInformationMessage("VibeSafe: No issues found! Your code is pristine ✨");
           }
-        } catch (error: any) {
-          vscode.window.showErrorMessage("VibeSafe scan failed: " + error.message);
+        } catch (error) {
+          vscode.window.showErrorMessage("VibeSafe scan failed: " + (error instanceof Error ? error.message : String(error)));
         }
       });
     })

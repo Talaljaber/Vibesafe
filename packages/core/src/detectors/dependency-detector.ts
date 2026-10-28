@@ -39,8 +39,6 @@ export class DependencyDetector implements Detector {
 
     const scripts = (pkg.scripts as Record<string, string> | undefined) ?? {};
     const deps = (pkg.dependencies as Record<string, string> | undefined) ?? {};
-    const devDeps =
-      (pkg.devDependencies as Record<string, string> | undefined) ?? {};
 
     // 1. Detect risky lifecycle scripts
     for (const scriptKey of RISKY_SCRIPT_KEYS) {
