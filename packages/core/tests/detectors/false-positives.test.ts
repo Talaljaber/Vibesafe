@@ -23,6 +23,22 @@ describe("error boundary: Next.js conventions (#41)", () => {
   });
 });
 
+describe("error boundary: root package.json only (#47)", () => {
+  const d = new ErrorBoundaryDetector();
+  it("ignores react in a nested package.json for non-JSX projects", async () => {
+    const f = await d.detect(
+      ctx({ "pkg/package.json": JSON.stringify({ dependencies: { react: "1" } }), "a.ts": "x" }),
+    );
+    expect(f).toHaveLength(0);
+  });
+  it("uses the root package.json react dependency", async () => {
+    const f = await d.detect(
+      ctx({ "package.json": JSON.stringify({ dependencies: { react: "1" } }), "a.tsx": "x" }),
+    );
+    expect(f).toHaveLength(1);
+  });
+});
+
 describe("hardcoded localhost false positives (#41)", () => {
   const d = new HardcodedLocalhostDetector();
   it("skips env fallbacks, comments and config files", async () => {

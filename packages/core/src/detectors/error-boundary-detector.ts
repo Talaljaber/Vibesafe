@@ -11,11 +11,18 @@ export class ErrorBoundaryDetector implements Detector {
     let isReactProject = false;
 
     // Check package.json for react dependency
-    const packageJsonPath = context.files.find(
-      (f) => f === "package.json" || f.endsWith("/package.json")
-    );
-    
-    if (packageJsonPath) {
+    // Prefer the already-parsed project context; otherwise use the root package.json only
+    const ctxDeps = {
+      ...(context.projectContext?.dependencies ?? {}),
+      ...(context.projectContext?.devDependencies ?? {}),
+    };
+    if (ctxDeps["react"]) {
+      isReactProject = true;
+    }
+
+    const packageJsonPath = context.files.find((f) => f.replace(/\\/g, "/") === "package.json");
+
+    if (!isReactProject && packageJsonPath) {
       try {
         const raw = await context.readFile(packageJsonPath);
         const pkg = JSON.parse(raw);
