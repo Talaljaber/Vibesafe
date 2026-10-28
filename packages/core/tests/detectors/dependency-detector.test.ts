@@ -26,6 +26,20 @@ describe("DependencyDetector", () => {
     expect(findings[0].ruleId).toBe("dependency/risky-install-script");
   });
 
+  it("ignores nested package.json files when there is no root one", async () => {
+    const context = createContext({
+      "fixtures/app/package.json": JSON.stringify({ scripts: { postinstall: "x" } }),
+    });
+    expect(await detector.detect(context)).toHaveLength(0);
+  });
+
+  it("lowers install script severity for private packages", async () => {
+    const run = async (pkg: object) =>
+      (await detector.detect(createContext({ "package.json": JSON.stringify(pkg) })))[0]?.severity;
+    expect(await run({ private: true, scripts: { postinstall: "x" } })).toBe("low");
+    expect(await run({ scripts: { postinstall: "x" } })).toBe("high");
+  });
+
   it("should detect excessive dependencies", async () => {
     const deps: Record<string, string> = {};
     for (let i = 0; i < 85; i++) {

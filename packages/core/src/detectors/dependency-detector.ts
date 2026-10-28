@@ -2,7 +2,8 @@
 // Dependency Detector
 //
 // Scans package.json for risky patterns: suspicious install scripts,
-// abnormally high dependency counts, and known typosquatting patterns.
+// and abnormally high dependency counts in the root package.json.
+// (No typosquatting detection is implemented.)
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
@@ -25,9 +26,8 @@ export class DependencyDetector implements Detector {
   async detect(context: ScanContext): Promise<Finding[]> {
     const findings: Finding[] = [];
 
-    const packageJsonPath = context.files.find(
-      (f) => f === "package.json" || f.endsWith("/package.json")
-    );
+    // Only the root package.json: nested ones (fixtures, workspaces) must not be picked up
+    const packageJsonPath = context.files.find((f) => f.replace(/\\/g, "/") === "package.json");
     if (!packageJsonPath) return findings;
 
     let pkg: Record<string, unknown>;
@@ -41,6 +41,10 @@ export class DependencyDetector implements Detector {
     const scripts = (pkg.scripts as Record<string, string> | undefined) ?? {};
     const deps = (pkg.dependencies as Record<string, string> | undefined) ?? {};
 
+    // Install scripts of a private (never published) package only affect the project's own
+    // contributors, so they are lower risk than in a published package.
+    const isPrivate = pkg.private === true;
+
     // 1. Detect risky lifecycle scripts
     for (const scriptKey of RISKY_SCRIPT_KEYS) {
       if (scriptKey in scripts) {
@@ -49,7 +53,7 @@ export class DependencyDetector implements Detector {
           id: createFindingId(CATEGORY_PREFIX.dependency, "dependency/risky-install-script", packageJsonPath, undefined, scriptKey),
           ruleId: "dependency/risky-install-script",
           title: `Risky lifecycle script: "${scriptKey}"`,
-          severity: "high",
+          severity: isPrivate ? "low" : "high",
           category: "dependency",
           deployBlocking: false,
           confidence: "medium",
