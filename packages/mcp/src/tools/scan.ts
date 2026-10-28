@@ -2,25 +2,15 @@ import path from "node:path";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ScannerPipeline, createDefaultRegistry } from "@vibesafe/core";
-import type { FindingCategory, Severity } from "@vibesafe/shared";
+import { ALL_CATEGORIES, type FindingCategory, type Severity } from "@vibesafe/shared";
 import type { ScanState } from "../state.js";
 import { isPathAllowed, type ServerPolicy } from "../policy.js";
 import { setScanResult } from "../state.js";
 import { formatScanSummaryText, summarizeScanResult } from "../format.js";
 
 const SEVERITIES = ["critical", "high", "medium", "low"] as const;
-const CATEGORIES = [
-  "secret",
-  "auth",
-  "authorization",
-  "frontend_exposure",
-  "validation",
-  "dependency",
-  "code_quality",
-  "structure",
-  "xss",
-  "security_config",
-] as const;
+/** Derived from shared so a new category is accepted here without a hand-maintained list. */
+const CATEGORIES = ALL_CATEGORIES as [FindingCategory, ...FindingCategory[]];
 
 export const scanInputShape = {
   path: z
@@ -90,7 +80,7 @@ export function registerScanTool(server: McpServer, state: ScanState, policy: Se
           deep,
           includeTests,
           minSeverity: minSeverity as Severity | undefined,
-          enabledCategories: category ? ([category] as FindingCategory[]) : undefined,
+          enabledCategories: category ? [category] : undefined,
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

@@ -22,6 +22,7 @@ import {
   VALIDATION_LIB_CALL_REGEX,
   INPUT_READ_REGEXES,
 } from "./patterns/validation-patterns.js";
+import { isStripeWebhookRoute, isWebhookPath } from "./stripe-webhook-detector.js";
 
 export class MissingValidationDetector implements Detector {
   id = "missing-validation-detector";
@@ -43,6 +44,11 @@ export class MissingValidationDetector implements Detector {
 
       const content = await context.readFile(filePath);
 
+      // Webhook routes read the raw body for signature verification, handled by StripeWebhookDetector
+      if (isStripeWebhookRoute(filePath, content)) {
+        continue;
+      }
+
       let inputIndex = -1;
       for (const re of INPUT_READ_REGEXES) {
         const m = re.exec(content);
@@ -58,31 +64,24 @@ export class MissingValidationDetector implements Detector {
 
         if (!validated) {
           findings.push({
-            id: createFindingId(
-              CATEGORY_PREFIX.validation,
-              "validation/missing-body-validation",
-              filePath,
-              line,
-            ),
+            id: createFindingId(CATEGORY_PREFIX.validation, "validation/missing-body-validation", filePath, line),
             ruleId: "validation/missing-body-validation",
             title: "Unvalidated Request Body",
             severity: "high",
             category: "validation",
             deployBlocking: false,
-            confidence: "medium",
+            confidence: "medium", 
             file: filePath,
             line,
-            plainEnglishProblem:
-              "This API route reads data sent by the user, but doesn't validate if the data is correct before using it.",
-            whyItMatters:
-              "Malicious users can send unexpected data types (like an object instead of a string) to crash your server or bypass security checks. This is a common cause of downtime.",
+            plainEnglishProblem: "This API route reads data sent by the user, but doesn't validate if the data is correct before using it.",
+            whyItMatters: "Malicious users can send unexpected data types (like an object instead of a string) to crash your server or bypass security checks. This is a common cause of downtime.",
             fixSteps: [
               "Install a validation library like Zod (`npm i zod`).",
               "Define a schema that strictly types what you expect the request body to look like.",
-              "Parse the request body with the schema before using it.",
+              "Parse the request body with the schema before using it."
             ],
             autoFixAvailable: false,
-            aiFixPrompt: `This API route reads the request body but doesn't validate it. Please write a Zod schema for the expected data and parse the body using safeParse.`,
+            aiFixPrompt: `This API route reads the request body but doesn't validate it. Please write a Zod schema for the expected data and parse the body using safeParse.`
           });
         }
       }
@@ -105,9 +104,12 @@ export class MissingValidationDetector implements Detector {
 
     const hasImport = VALIDATION_LIB_IMPORT_REGEX.test(content);
     const hasExpressValidator = EXPRESS_VALIDATOR_IMPORT_REGEX.test(content);
+    const stripeWebhookFile = isStripeWebhookRoute(filePath, content);
     const findings: Finding[] = [];
 
     for (const route of extractExpressRoutes(content)) {
+      // Stripe webhooks pass the raw body to constructEvent; StripeWebhookDetector covers them.
+      if (stripeWebhookFile && isWebhookPath(route.path)) continue;
       const chain = route.chainCode;
       let input = EXPRESS_BODY_READ_REGEX.exec(chain);
       let severity: "high" | "medium" = "high";
@@ -121,8 +123,7 @@ export class MissingValidationDetector implements Detector {
         VALIDATION_CALL_REGEXES.some((re) => re.test(chain)) ||
         middleware.some(
           (arg) =>
-            EXPRESS_VALIDATE_MIDDLEWARE_CALL_REGEX.test(arg) ||
-            EXPRESS_VALIDATE_MIDDLEWARE_IDENT_REGEX.test(arg),
+            EXPRESS_VALIDATE_MIDDLEWARE_CALL_REGEX.test(arg) || EXPRESS_VALIDATE_MIDDLEWARE_IDENT_REGEX.test(arg),
         ) ||
         (hasImport && VALIDATION_LIB_CALL_REGEX.test(chain)) ||
         (hasExpressValidator && EXPRESS_VALIDATOR_CALL_REGEX.test(chain));
@@ -133,12 +134,7 @@ export class MissingValidationDetector implements Detector {
       // The rule id is reused deliberately for query/params reads (existing suppressions and
       // baselines keep working); they are "medium" and only reported on mutating routes.
       findings.push({
-        id: createFindingId(
-          CATEGORY_PREFIX.validation,
-          "validation/missing-body-validation",
-          filePath,
-          line,
-        ),
+        id: createFindingId(CATEGORY_PREFIX.validation, "validation/missing-body-validation", filePath, line),
         ruleId: "validation/missing-body-validation",
         title: "Unvalidated Request Input",
         severity,

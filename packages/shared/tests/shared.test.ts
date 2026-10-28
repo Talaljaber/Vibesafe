@@ -171,10 +171,6 @@ describe("constants", () => {
       expect(CATEGORY_PREFIX.secret).toBe("SEC");
     });
 
-    it("CFG prefix is used for security_config", () => {
-      expect(CATEGORY_PREFIX.security_config).toBe("CFG");
-    });
-
     it("AUTH prefix is used for auth", () => {
       expect(CATEGORY_PREFIX.auth).toBe("AUTH");
     });

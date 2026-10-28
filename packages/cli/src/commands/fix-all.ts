@@ -3,6 +3,7 @@ import chalk from "chalk";
 import { ScannerPipeline, createDefaultRegistry, createDefaultFixRegistry } from "@vibesafe/core";
 import type { AutoFixer, Finding, FixPreview, FixResult } from "@vibesafe/shared";
 import { buildScanOptions, type ScanFlagOptions } from "./scan-options.js";
+import { sanitizeTerminal } from "../ui/sanitize.js";
 
 export interface FixAllCandidate {
   finding: Finding;
@@ -51,18 +52,6 @@ export interface FixAllOptions extends ScanFlagOptions {
 
 function isPromptAbort(err: unknown): boolean {
   return err instanceof Error && err.name === "ExitPromptError";
-}
-
-/**
- * Strips ANSI/OSC escape sequences and C0/C1 control characters (keeping \n and \t) from text that
- * originates in the scanned repo, so it cannot rewrite or hide parts of the terminal preview.
- */
-export function sanitizeTerminal(text: string): string {
-  return text
-    .replace(/\u001b\[[0-?]*[ -\/]*[@-~]/g, "")
-    .replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)?/g, "")
-    .replace(/\u001b[@-_]?/g, "")
-    .replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029]/g, "");
 }
 
 function location(f: Finding): string {

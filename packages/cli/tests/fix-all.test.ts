@@ -5,7 +5,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { runFixAll, runFixAllCommand, sanitizeTerminal } from "../src/commands/fix-all.js";
+import { runFixAll, runFixAllCommand } from "../src/commands/fix-all.js";
+import { sanitizeTerminal } from "../src/ui/sanitize.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BIN = path.resolve(__dirname, "../dist/bin.js");

@@ -96,6 +96,14 @@ export function isStripeWebhookRoute(filePath: string, fileContent: string): boo
 }
 
 /**
+ * True when an Express route path names a webhook endpoint. Paired with `isStripeWebhookRoute` (which
+ * is file-level) so only the webhook routes of a Stripe webhook file are exempt from auth/validation.
+ */
+export function isWebhookPath(routePath: string): boolean {
+  return /webhook/i.test(routePath);
+}
+
+/**
  * True when the source calls `webhooks.constructEvent(...)`/`constructEventAsync(...)` or a bare
  * (imported) `constructEvent(...)`. Expects code with string contents blanked, so text inside
  * strings or comments never counts.
