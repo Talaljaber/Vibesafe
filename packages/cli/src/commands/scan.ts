@@ -12,6 +12,7 @@ import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import { OUTPUT_FORMAT_NAMES, isOutputFormat, renderOutput, type OutputFormat } from "../formatters/index.js";
 import { buildScanOptions } from "./scan-options.js";
+import { sanitizeTerminal } from "./fix-all.js";
 
 // Both dist/commands/scan.js and src/commands/scan.ts sit two levels below package.json.
 const require = createRequire(import.meta.url);
@@ -126,7 +127,7 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
         console.error(`Warning: ${result.errors.length} detector(s) failed. Scan may be incomplete.`);
         for (const e of result.errors) console.error(`  - ${e.detectorName}: ${e.message}`);
       }
-      for (const w of result.warnings ?? []) console.error(`Warning: ${w}`);
+      for (const w of result.warnings ?? []) console.error(`Warning: ${sanitizeTerminal(w)}`);
       // Strip any trailing newline (markdown ends with one, JSON does not) so both stdout and the
       // --output file end with exactly one.
       const rendered = renderOutput(format, result, { version: CLI_VERSION }).replace(/\n+$/, "");
@@ -157,7 +158,7 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
         );
       }
       if (result.warnings && result.warnings.length > 0) {
-        for (const w of result.warnings) console.log(chalk.yellow(`⚠️  ${w}`));
+        for (const w of result.warnings) console.log(chalk.yellow(`⚠️  ${sanitizeTerminal(w)}`));
       }
       await printScanResult(result);
     }
@@ -227,8 +228,8 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
     }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    if (!options.json) console.error(chalk.red.bold(`\n❌ Error during scan: ${message}`));
-    else console.error(`Error during scan: ${message}`);
+    if (!options.json) console.error(chalk.red.bold(`\n❌ Error during scan: ${sanitizeTerminal(message)}`));
+    else console.error(`Error during scan: ${sanitizeTerminal(message)}`);
     process.exitCode = 2;
   }
 }

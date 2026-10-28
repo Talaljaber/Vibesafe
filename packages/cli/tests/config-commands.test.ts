@@ -201,3 +201,14 @@ describe("built binary threads the config flags", () => {
     expect(watchHelp).toContain("--no-include-tests");
   }, 30000);
 });
+
+describe("scan output from config-supplied strings", () => {
+  it("strips terminal control sequences from config warnings in text mode", async () => {
+    await writeConfig({ disabledDetectors: ["]0;pwnedevil[31m-detector"] });
+    const res = spawnSync(process.execPath, [BIN, "scan", proj], { encoding: "utf-8", maxBuffer: 64 * 1024 * 1024 });
+    const out = res.stdout + res.stderr;
+    expect(out).toContain("evil");
+    expect(out).not.toContain("]0;pwned");
+    expect(out).not.toContain("[31m-detector");
+  }, 30000);
+});
