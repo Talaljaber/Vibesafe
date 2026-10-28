@@ -102,6 +102,49 @@ describe("runFixWizard", () => {
     expect(out).toContain("+20");
   });
 
+  it("leaves deep/includeTests unset so the config file applies, for the scan and the rescan", async () => {
+    scanMock
+      .mockResolvedValueOnce({ ...scanResult([finding("f1", "fixable", true)], 60), warnings: ["Applied config file x"] })
+      .mockResolvedValueOnce(scanResult([], 80));
+    selectMock.mockResolvedValueOnce("apply");
+    await runFixWizard(".");
+    expect(scanMock).toHaveBeenCalledTimes(2);
+    for (const [opts] of scanMock.mock.calls) {
+      expect(opts).not.toHaveProperty("deep");
+      expect(opts).not.toHaveProperty("includeTests");
+      expect(opts).not.toHaveProperty("useConfigFile");
+    }
+    expect(out).toContain("Applied config file x");
+  });
+
+  it("threads --no-config, --trust-config and explicit flags into both scans", async () => {
+    scanMock
+      .mockResolvedValueOnce(scanResult([finding("f1", "fixable", true)], 60))
+      .mockResolvedValueOnce(scanResult([], 80));
+    selectMock.mockResolvedValueOnce("apply");
+    await runFixWizard(".", { config: false, trustConfig: true, includeTests: true, deep: false });
+    expect(scanMock).toHaveBeenCalledTimes(2);
+    for (const [opts] of scanMock.mock.calls) {
+      expect(opts).toMatchObject({
+        useConfigFile: false,
+        trustConfigScripts: true,
+        includeTests: true,
+        deep: false,
+      });
+    }
+  });
+
+  it("uses the scan -i flags for the rescan after reusing the initial result", async () => {
+    scanMock.mockResolvedValueOnce(scanResult([], 90));
+    selectMock.mockResolvedValueOnce("apply");
+    await runFixWizard(".", {
+      initialResult: scanResult([finding("f1", "fixable", true)], 70) as never,
+      config: false,
+    });
+    expect(scanMock).toHaveBeenCalledTimes(1);
+    expect(scanMock.mock.calls[0]?.[0]).toMatchObject({ useConfigFile: false });
+  });
+
   it("skip does not apply and does not rescan", async () => {
     scanMock.mockResolvedValueOnce(scanResult([finding("f1", "fixable", true)], 60));
     selectMock.mockResolvedValueOnce("skip");

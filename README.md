@@ -74,7 +74,7 @@ npx vibesafe scan .
 - `npx @vibesafe/cli scan . --html` - Scans the directory and generates a beautiful `vibesafe-report.html` dashboard.
 - `npx @vibesafe/cli scan . --open-report` - Generates the HTML dashboard and opens it in your default browser automatically.
 - `npx @vibesafe/cli scan . -i` - After the scan, offers to walk through the findings one by one (apply the safe auto-fix, skip, or quit). Needs an interactive terminal; the scan's exit code is preserved.
-- `npx @vibesafe/cli fix -i [dir]` - Scans, then runs the same interactive fix wizard (no `--deep` or `--include-tests`; use `scan -i` for those).
+- `npx @vibesafe/cli fix -i [dir]` - Scans, then runs the same interactive fix wizard (no `--deep` or `--include-tests` flags; it takes those from the config file described below, or use `scan -i`).
 - `npx @vibesafe/cli --help` - Shows all available options and commands.
 
 ```text
@@ -183,7 +183,7 @@ Create `.vibesafe.config.json` (or `vibesafe.config.json`) in the project root. 
 }
 ```
 
-TypeScript variant (`.vibesafe.config.ts`, only loaded with `--trust-config`; `vibesafe fix` accepts `--no-config` / `--trust-config` too):
+TypeScript variant (`.vibesafe.config.ts`, only loaded with `--trust-config`):
 
 ```ts
 import { defineConfig } from "@vibesafe/core";
@@ -199,7 +199,17 @@ export default defineConfig({
 });
 ```
 
-Explicit CLI flags / API options always win over file values (`--deep` / `--no-deep`, `--include-tests` / `--no-include-tests`); `--no-config` ignores the file entirely. `exclude` and `categories` in the file replace the defaults rather than extending them. An exact rule id beats a glob; among globs the longest wins. Rule overrides run after detection, so severity changes are re-sorted and re-scored. API users can skip the file with `useConfigFile: false`.
+Explicit CLI flags / API options always win over file values (`--deep` / `--no-deep`, `--include-tests` / `--no-include-tests`); `--no-config` ignores the file entirely.
+
+The config file applies to every command that scans, and they all accept `--no-config` / `--trust-config`:
+
+| Command | Config handling |
+| --- | --- |
+| `vibesafe scan` (incl. `--format json\|sarif\|markdown`, `--output`, `-i`) | Full config. Flags: `--deep` / `--no-deep`, `--include-tests` / `--no-include-tests`. `scan -i` hands the same flags to the fix wizard. |
+| `vibesafe fix <id>`, `fix --all`, `fix -i` | Full config, for both the scan that finds the fixes and the rescan after them, so the findings offered match what `scan` reports. |
+| `vibesafe watch` | Full config, re-read on every rescan, plus `--include-tests` / `--no-include-tests`. Git history is never scanned in watch mode, so `deep` is ignored. |
+
+Config warnings (applied config file, suppressed findings, ignored script configs) go to stderr in machine-output modes (`--json`, `--format`, `--output`), so stdout stays a clean report; `watch --json` carries them in a `warnings` field on its `ready` and `change` events. `exclude` and `categories` in the file replace the defaults rather than extending them. An exact rule id beats a glob; among globs the longest wins. Rule overrides run after detection, so severity changes are re-sorted and re-scored. API users can skip the file with `useConfigFile: false`.
 
 ## ⚠️ Known Limitations (v0.1)
 

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import type { FindingCategory } from "../src/index.js";
 import {
+  ALL_CATEGORIES,
   CATEGORY_MULTIPLIERS,
   CATEGORY_PREFIX,
   DEPLOY_STATUS_LABEL,
@@ -110,6 +112,34 @@ describe("constants", () => {
           expect(structureMultiplier).toBeLessThanOrEqual(mult);
         }
       }
+    });
+  });
+
+  describe("ALL_CATEGORIES", () => {
+    // A Record over the union, so the compiler (editor / vitest typecheck) flags a category
+    // missing here; the runtime check then pins ALL_CATEGORIES to the same set.
+    const UNION: Record<FindingCategory, true> = {
+      secret: true,
+      auth: true,
+      authorization: true,
+      frontend_exposure: true,
+      validation: true,
+      dependency: true,
+      code_quality: true,
+      structure: true,
+      xss: true,
+      security_config: true,
+    };
+
+    it("lists every FindingCategory exactly once, including xss and security_config", () => {
+      expect([...ALL_CATEGORIES].sort()).toEqual(Object.keys(UNION).sort());
+      expect(new Set(ALL_CATEGORIES).size).toBe(ALL_CATEGORIES.length);
+      expect(ALL_CATEGORIES).toContain("xss");
+      expect(ALL_CATEGORIES).toContain("security_config");
+    });
+
+    it("matches the category multiplier table", () => {
+      expect([...ALL_CATEGORIES].sort()).toEqual(Object.keys(CATEGORY_MULTIPLIERS).sort());
     });
   });
 

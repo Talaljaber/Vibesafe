@@ -3,7 +3,7 @@ import chalk from "chalk";
 import { ScannerPipeline, createDefaultRegistry, createDefaultFixRegistry } from "@vibesafe/core";
 import { confirm, select } from "@inquirer/prompts";
 import type { Finding } from "@vibesafe/shared";
-import { buildScanOptions } from "./scan.js";
+import { buildScanOptions } from "./scan-options.js";
 import { sanitizeTerminal } from "./fix-all.js";
 
 export interface FixOptions {
@@ -39,6 +39,7 @@ export async function runFix(findingId: string, targetDir: string, options: FixO
   const registry = createDefaultRegistry();
   const pipeline = new ScannerPipeline(registry);
   const result = await pipeline.scan(buildScanOptions(rootPath, options));
+  for (const w of result.warnings ?? []) console.log(chalk.yellow(`⚠️  ${sanitizeTerminal(w)}`));
 
   let finding: Finding | undefined = result.findings.find((f) => f.id === findingId);
 

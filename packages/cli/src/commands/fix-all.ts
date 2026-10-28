@@ -2,6 +2,7 @@ import path from "path";
 import chalk from "chalk";
 import { ScannerPipeline, createDefaultRegistry, createDefaultFixRegistry } from "@vibesafe/core";
 import type { AutoFixer, Finding, FixPreview, FixResult } from "@vibesafe/shared";
+import { buildScanOptions, type ScanFlagOptions } from "./scan-options.js";
 
 export interface FixAllCandidate {
   finding: Finding;
@@ -33,7 +34,11 @@ export interface FixAllResult {
   scoreAfter: number;
 }
 
-export interface FixAllOptions {
+/**
+ * Scan flags (--no-config, --trust-config, ...) apply to both the initial scan and the post-fix
+ * rescan, so `.vibesafe.config.*` shapes which findings are offered exactly as it does for `scan`.
+ */
+export interface FixAllOptions extends ScanFlagOptions {
   /** Skip the confirmation prompt. */
   yes?: boolean | undefined;
   /** Whether an interactive terminal is available. Defaults to process.stdin.isTTY. */
@@ -86,7 +91,7 @@ function printPreview(log: (line: string) => void, finding: Finding, preview: Fi
 /** CLI wrapper: runs the batch fix and maps the outcome to the process exit code. */
 export async function runFixAllCommand(
   targetDir: string,
-  options: { yes?: boolean | undefined } = {},
+  options: { yes?: boolean | undefined } & ScanFlagOptions = {},
 ): Promise<FixAllResult> {
   const result = await runFixAll(path.resolve(process.cwd(), targetDir), options);
   if (result.status === "no-tty" || result.failed > 0) process.exitCode = 1;
@@ -105,7 +110,9 @@ export async function runFixAll(rootPath: string, options: FixAllOptions = {}): 
 
   log(chalk.gray(`Scanning ${root} for auto-fixable findings...`));
   const pipeline = new ScannerPipeline(createDefaultRegistry());
-  const before = await pipeline.scan({ rootPath: root });
+  const scanOptions = buildScanOptions(root, options);
+  const before = await pipeline.scan(scanOptions);
+  for (const w of before.warnings ?? []) log(chalk.yellow(`Warning: ${sanitizeTerminal(w)}`));
   const fixers = createDefaultFixRegistry();
 
   // Preview every registered fixer up front; a fixer that would change nothing (it explains why in
@@ -213,7 +220,7 @@ export async function runFixAll(rootPath: string, options: FixAllOptions = {}): 
   }
 
   result.status = "applied";
-  const after = await pipeline.scan({ rootPath: root });
+  const after = await pipeline.scan(scanOptions);
   result.scoreAfter = after.score;
   log(`\n${result.succeeded} applied, ${result.failed} failed.`);
   log(chalk.bold(`Score: ${before.score} -> ${after.score}`));

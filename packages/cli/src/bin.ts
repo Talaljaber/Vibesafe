@@ -65,6 +65,11 @@ program
   .option("--no-config", "Ignore any .vibesafe.config file")
   .option("--trust-config", "Execute .ts/.js config files from the directory (runs that code; trusted projects only)")
   .action(async (first: string | undefined, second: string | undefined, options) => {
+    // Same config handling for every fix mode (single, --all, -i).
+    const configFlags = {
+      ...(options.config === false ? { config: false } : {}),
+      trustConfig: Boolean(options.trustConfig),
+    };
     if (options.all && options.interactive) {
       console.error("error: --all and --interactive cannot be used together");
       process.exitCode = 1;
@@ -77,7 +82,7 @@ program
         process.exitCode = 1;
         return;
       }
-      await runFixAllCommand(first ?? ".", { yes: Boolean(options.yes) });
+      await runFixAllCommand(first ?? ".", { yes: Boolean(options.yes), ...configFlags });
       return;
     }
     if (options.interactive) {
@@ -89,7 +94,7 @@ program
         return;
       }
       try {
-        await runFixWizard(first ?? ".");
+        await runFixWizard(first ?? ".", configFlags);
       } catch (err) {
         console.error(`Error during fix wizard: ${err instanceof Error ? err.message : String(err)}`);
         process.exitCode = 1;
@@ -101,11 +106,7 @@ program
       process.exitCode = 1;
       return;
     }
-    await runFix(first, second ?? ".", {
-      yes: Boolean(options.yes),
-      ...(options.config === false ? { config: false } : {}),
-      trustConfig: Boolean(options.trustConfig),
-    });
+    await runFix(first, second ?? ".", { yes: Boolean(options.yes), ...configFlags });
   });
 
 program
@@ -113,14 +114,23 @@ program
   .description("Scan, then keep watching for changes and print what got better or worse")
   .argument("[dir]", "Directory to watch", ".")
   .option("-j, --json", "Emit NDJSON events (ready, change, error), one JSON object per line", false)
-  .option("--include-tests", "Also scan test files and fixtures (excluded by default)", false)
+  .option("--include-tests", "Also scan test files and fixtures (excluded by default)")
+  .option("--no-include-tests", "Exclude test files, even if the config file includes them")
+  .option("--no-config", "Ignore any .vibesafe.config file")
+  .option(
+    "--trust-config",
+    "Execute .ts/.js config files from the watched directory (runs that code; trusted projects only)",
+  )
   .action(async (dir, options) => {
     const controller = new AbortController();
     process.once("SIGINT", () => controller.abort());
     process.once("SIGTERM", () => controller.abort());
+    // Watch never scans git history (a config `deep: true` is ignored here).
     await runWatch(dir, {
       json: Boolean(options.json),
-      includeTests: Boolean(options.includeTests),
+      ...(options.includeTests !== undefined ? { includeTests: Boolean(options.includeTests) } : {}),
+      ...(options.config === false ? { config: false } : {}),
+      trustConfig: Boolean(options.trustConfig),
       signal: controller.signal,
     });
   });

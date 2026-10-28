@@ -11,6 +11,7 @@ import { pathToFileURL } from "node:url";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import { OUTPUT_FORMAT_NAMES, isOutputFormat, renderOutput, type OutputFormat } from "../formatters/index.js";
+import { buildScanOptions } from "./scan-options.js";
 
 // Both dist/commands/scan.js and src/commands/scan.ts sit two levels below package.json.
 const require = createRequire(import.meta.url);
@@ -36,19 +37,8 @@ export interface ScanOptions {
   trustConfig?: boolean;
 }
 
-/**
- * Builds the explicit scan options from CLI flags. Only flags the user actually
- * passed are included, so config-file values apply otherwise.
- */
-export function buildScanOptions(rootPath: string, options: ScanOptions) {
-  return {
-    rootPath,
-    ...(options.deep !== undefined ? { deep: options.deep } : {}),
-    ...(options.includeTests !== undefined ? { includeTests: options.includeTests } : {}),
-    ...(options.config === false ? { useConfigFile: false } : {}),
-    ...(options.trustConfig ? { trustConfigScripts: true } : {}),
-  };
-}
+// Re-exported for existing importers; the implementation lives in scan-options.ts.
+export { buildScanOptions };
 
 export async function runScan(targetDir: string, options: ScanOptions = {}) {
   const rootPath = path.resolve(process.cwd(), targetDir);
@@ -218,10 +208,13 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
       if (start) {
         const scanExitCode = process.exitCode;
         try {
+          // Same flags as the scan, so the wizard's rescan applies the config file the same way.
           await runFixWizard(rootPath, {
             initialResult: result,
-            deep: options.deep ?? false,
-            includeTests: options.includeTests ?? false,
+            deep: options.deep,
+            includeTests: options.includeTests,
+            config: options.config,
+            trustConfig: options.trustConfig,
           });
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
