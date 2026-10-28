@@ -26,7 +26,10 @@ describe("vibesafe CLI (built binary)", () => {
 
   // spawnSync gives the child a non-TTY stdin, so the wizard refuses to start.
   it("fix -i and fix -i <dir> route to the wizard (no TTY -> exit 1)", () => {
-    for (const args of [["fix", "-i"], ["fix", "-i", FIXTURE]]) {
+    for (const args of [
+      ["fix", "-i"],
+      ["fix", "-i", FIXTURE],
+    ]) {
       const res = spawnSync(process.execPath, [BIN, ...args], { encoding: "utf-8" });
       expect(res.status).toBe(1);
       expect(res.stderr).toContain("interactive terminal");
@@ -34,13 +37,17 @@ describe("vibesafe CLI (built binary)", () => {
   }, 30000);
 
   it("fix -i <id> <dir> errors instead of treating the id as a directory", () => {
-    const res = spawnSync(process.execPath, [BIN, "fix", "-i", "some-id", FIXTURE], { encoding: "utf-8" });
+    const res = spawnSync(process.execPath, [BIN, "fix", "-i", "some-id", FIXTURE], {
+      encoding: "utf-8",
+    });
     expect(res.status).toBe(1);
     expect(res.stderr).toContain("--interactive takes an optional directory");
   }, 30000);
 
   it("fix rejects --all combined with --interactive", () => {
-    const res = spawnSync(process.execPath, [BIN, "fix", "--all", "-i", FIXTURE], { encoding: "utf-8" });
+    const res = spawnSync(process.execPath, [BIN, "fix", "--all", "-i", FIXTURE], {
+      encoding: "utf-8",
+    });
     expect(res.status).toBe(1);
     expect(res.stderr).toContain("--all and --interactive cannot be used together");
   }, 30000);
@@ -104,10 +111,14 @@ describe("vibesafe CLI --format / --output", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vibesafe-sarif-"));
     try {
       const out = path.join(dir, "nested", "r.sarif");
-      const res = spawnSync(process.execPath, [BIN, "scan", FIXTURE, "--format", "sarif", "--output", out], {
-        encoding: "utf-8",
-        maxBuffer: 64 * 1024 * 1024,
-      });
+      const res = spawnSync(
+        process.execPath,
+        [BIN, "scan", FIXTURE, "--format", "sarif", "--output", out],
+        {
+          encoding: "utf-8",
+          maxBuffer: 64 * 1024 * 1024,
+        },
+      );
       expect(res.status).toBe(1);
       expect(res.stdout).toBe("");
       expect(JSON.parse(fs.readFileSync(out, "utf-8")).version).toBe("2.1.0");
@@ -117,7 +128,10 @@ describe("vibesafe CLI --format / --output", () => {
   }, 30000);
 
   const run = (args: string[]) =>
-    spawnSync(process.execPath, [BIN, "scan", FIXTURE, ...args], { encoding: "utf-8", maxBuffer: 64 * 1024 * 1024 });
+    spawnSync(process.execPath, [BIN, "scan", FIXTURE, ...args], {
+      encoding: "utf-8",
+      maxBuffer: 64 * 1024 * 1024,
+    });
 
   it("--output alone implies json and keeps stdout empty", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vibesafe-out-"));
@@ -173,7 +187,9 @@ describe("vibesafe CLI --format / --output", () => {
   }, 30000);
 
   it("rejects an unknown --format with exit code 2", () => {
-    const res = spawnSync(process.execPath, [BIN, "scan", FIXTURE, "--format", "xml"], { encoding: "utf-8" });
+    const res = spawnSync(process.execPath, [BIN, "scan", FIXTURE, "--format", "xml"], {
+      encoding: "utf-8",
+    });
     expect(res.status).toBe(2);
     expect(res.stdout).toBe("");
     expect(res.stderr).toContain("unknown --format");

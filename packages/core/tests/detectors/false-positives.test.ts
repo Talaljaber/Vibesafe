@@ -18,7 +18,9 @@ describe("error boundary: Next.js conventions (#41)", () => {
   const d = new ErrorBoundaryDetector();
   it("treats app/**/error.tsx and global-error as boundaries", async () => {
     expect(await d.detect(ctx({ "app/page.tsx": "x", "app/dash/error.tsx": "x" }))).toHaveLength(0);
-    expect(await d.detect(ctx({ "src/app/page.tsx": "x", "src/app/global-error.jsx": "x" }))).toHaveLength(0);
+    expect(
+      await d.detect(ctx({ "src/app/page.tsx": "x", "src/app/global-error.jsx": "x" })),
+    ).toHaveLength(0);
     expect(await d.detect(ctx({ "app/page.tsx": "x" }))).toHaveLength(1);
   });
 });
@@ -51,14 +53,18 @@ describe("hardcoded localhost false positives (#41)", () => {
     expect(findings).toHaveLength(0);
   });
   it("still flags a bare hardcoded host", async () => {
-    expect(await d.detect(ctx({ "src/a.ts": `fetch("http://localhost:3000/api");` }))).toHaveLength(1);
+    expect(await d.detect(ctx({ "src/a.ts": `fetch("http://localhost:3000/api");` }))).toHaveLength(
+      1,
+    );
   });
 });
 
 describe("dangerous html false positives (#41)", () => {
   const d = new DangerousHtmlDetector();
   it("flags raw usage with medium confidence", async () => {
-    const f = await d.detect(ctx({ "a.tsx": `<div dangerouslySetInnerHTML={{ __html: html }} />` }));
+    const f = await d.detect(
+      ctx({ "a.tsx": `<div dangerouslySetInnerHTML={{ __html: html }} />` }),
+    );
     expect(f).toHaveLength(1);
     expect(f[0]?.confidence).toBe("medium");
   });
@@ -79,7 +85,9 @@ describe("codebase mess false positives (#41)", () => {
     const prose = "// any any any any any\nconst s = 'anything any';\n".repeat(30);
     const f = await d.detect(ctx({ "a.ts": prose, "b.js": "const x: any = 1;\n".repeat(30) }));
     expect(f.find((x) => x.ruleId === "code_quality/excessive-any")).toBeUndefined();
-    const typed = await d.detect(ctx({ "a.ts": "let a: any; let b = c as any; let d: any[];\n".repeat(10) }));
+    const typed = await d.detect(
+      ctx({ "a.ts": "let a: any; let b = c as any; let d: any[];\n".repeat(10) }),
+    );
     expect(typed.find((x) => x.ruleId === "code_quality/excessive-any")).toBeDefined();
   });
   it("detects only genuinely empty catch blocks", async () => {
@@ -95,6 +103,8 @@ describe("codebase mess false positives (#41)", () => {
         ].join("\n"),
       }),
     );
-    expect(f.filter((x) => x.ruleId === "code_quality/empty-catch").map((x) => x.line)).toEqual([1, 2, 3]);
+    expect(f.filter((x) => x.ruleId === "code_quality/empty-catch").map((x) => x.line)).toEqual([
+      1, 2, 3,
+    ]);
   });
 });

@@ -9,7 +9,10 @@ import {
   usesExpress,
 } from "../../src/detectors/utils/route-analyzer";
 
-const ctx = (files: Record<string, string>, dependencies: Record<string, string> = { express: "^4.0.0" }): ScanContext => ({
+const ctx = (
+  files: Record<string, string>,
+  dependencies: Record<string, string> = { express: "^4.0.0" },
+): ScanContext => ({
   rootPath: "/fake",
   projectContext: { dependencies } as never,
   files: Object.keys(files),
@@ -32,7 +35,12 @@ describe("extractExpressRoutes", () => {
 
   it("supports put/patch/delete/all and custom router names", () => {
     const src = `const r = express.Router();\nr.put("/x", h);\nr.patch("/x", h);\nr.delete("/x", h);\nr.all("/x", h);`;
-    expect(extractExpressRoutes(src).map((r) => r.method)).toEqual(["PUT", "PATCH", "DELETE", "ALL"]);
+    expect(extractExpressRoutes(src).map((r) => r.method)).toEqual([
+      "PUT",
+      "PATCH",
+      "DELETE",
+      "ALL",
+    ]);
   });
 
   it("ignores axios/map style calls and single-argument getters", () => {
@@ -51,8 +59,10 @@ describe("extractExpressRoutes", () => {
 
 describe("helpers", () => {
   it("isExpressCandidateFile", () => {
-    for (const f of ["server.js", "src/app.ts", "a/b.mjs", "a.cjs"]) expect(isExpressCandidateFile(f)).toBe(true);
-    for (const f of ["a.test.ts", "a.spec.js", "types.d.ts", "a.tsx", "x.json"]) expect(isExpressCandidateFile(f)).toBe(false);
+    for (const f of ["server.js", "src/app.ts", "a/b.mjs", "a.cjs"])
+      expect(isExpressCandidateFile(f)).toBe(true);
+    for (const f of ["a.test.ts", "a.spec.js", "types.d.ts", "a.tsx", "x.json"])
+      expect(isExpressCandidateFile(f)).toBe(false);
   });
   it("usesExpress via dependency or import", () => {
     expect(usesExpress("", { express: "4" })).toBe(true);
@@ -67,7 +77,9 @@ describe("MissingAuthDetector (Express)", () => {
 
   it("flags a mutating route without auth with its line", async () => {
     const findings = await detector.detect(
-      ctx({ "server.js": `const app = require("express")();\n\napp.post("/orders", (req, res) => res.send("ok"));\n` }),
+      ctx({
+        "server.js": `const app = require("express")();\n\napp.post("/orders", (req, res) => res.send("ok"));\n`,
+      }),
     );
     expect(findings).toHaveLength(1);
     expect(findings[0]!.ruleId).toBe("auth/missing-route-auth");
@@ -76,7 +88,9 @@ describe("MissingAuthDetector (Express)", () => {
   });
 
   it("is critical on sensitive paths", async () => {
-    const findings = await detector.detect(ctx({ "routes.ts": `router.delete("/admin/users/:id", handler);` }));
+    const findings = await detector.detect(
+      ctx({ "routes.ts": `router.delete("/admin/users/:id", handler);` }),
+    );
     expect(findings[0]!.severity).toBe("critical");
     expect(findings[0]!.deployBlocking).toBe(true);
   });
@@ -116,20 +130,29 @@ describe("MissingAuthDetector (Express)", () => {
 
   it("ignores GET routes, public auth paths and non-express files", async () => {
     expect(await detector.detect(ctx({ "a.js": `app.get("/x", h);` }))).toHaveLength(0);
-    expect(await detector.detect(ctx({ "a.js": `app.post("/login", h);\napp.post("/api/register", h);` }))).toHaveLength(0);
+    expect(
+      await detector.detect(
+        ctx({ "a.js": `app.post("/login", h);\napp.post("/api/register", h);` }),
+      ),
+    ).toHaveLength(0);
     expect(await detector.detect(ctx({ "a.js": `app.post("/x", h);` }, {}))).toHaveLength(0);
     expect(await detector.detect(ctx({ "a.test.js": `app.post("/x", h);` }))).toHaveLength(0);
   });
 
   it("detects express via import when the dependency is not in the context", async () => {
     const findings = await detector.detect(
-      ctx({ "a.mjs": `import express from "express";\nconst app = express();\napp.post("/x", h);` }, {}),
+      ctx(
+        { "a.mjs": `import express from "express";\nconst app = express();\napp.post("/x", h);` },
+        {},
+      ),
     );
     expect(findings).toHaveLength(1);
   });
 
   it("produces stable distinct ids per route", async () => {
-    const findings = await detector.detect(ctx({ "a.js": `app.post("/x", h);\napp.put("/y", h);` }));
+    const findings = await detector.detect(
+      ctx({ "a.js": `app.post("/x", h);\napp.put("/y", h);` }),
+    );
     expect(new Set(findings.map((f) => f.id)).size).toBe(2);
   });
 });
@@ -154,7 +177,7 @@ app.delete("/c/:id", (req, res) => res.send(req.params.id));`;
   });
 
   it("keeps body reads high and sanitizes the route path in messages", async () => {
-    const src = "app.post(\"/x\u0001y\", (req, res) => res.send(req.body));";
+    const src = 'app.post("/x\u0001y", (req, res) => res.send(req.body));';
     const ctl = String.fromCharCode(1);
     const findings = await detector.detect(ctx({ "server.js": src }));
     expect(findings[0]!.severity).toBe("high");
@@ -210,8 +233,14 @@ app.post("/x", body("email").isEmail(), (req, res) => {
   });
 
   it("does not flag routes that never read request input or non-express files", async () => {
-    expect(await detector.detect(ctx({ "a.js": `app.post("/x", (req, res) => res.send("ok"));` }))).toHaveLength(0);
-    expect(await detector.detect(ctx({ "a.js": `app.post("/x", (req, res) => res.send(req.body));` }, {}))).toHaveLength(0);
+    expect(
+      await detector.detect(ctx({ "a.js": `app.post("/x", (req, res) => res.send("ok"));` })),
+    ).toHaveLength(0);
+    expect(
+      await detector.detect(
+        ctx({ "a.js": `app.post("/x", (req, res) => res.send(req.body));` }, {}),
+      ),
+    ).toHaveLength(0);
   });
 
   it("only attributes validation to its own route", async () => {
@@ -253,7 +282,9 @@ const s = 'app.post("/y", h)';`;
     const nf = `app.all("/*", (req, res) => res.status(404).send("nope"));`;
     const nf2 = `app.all("/anything", (req, res) => res.status(404).send("nope"));`;
     expect(await auth.detect(ctx({ "a.js": cors, "b.js": nf, "c.js": nf2 }))).toHaveLength(0);
-    expect(await auth.detect(ctx({ "a.js": `app.all("/items", (req, res) => res.send("x"));` }))).toHaveLength(1);
+    expect(
+      await auth.detect(ctx({ "a.js": `app.all("/items", (req, res) => res.send("x"));` })),
+    ).toHaveLength(1);
   });
 
   it("handles regex literals in handlers without swallowing later routes", async () => {
@@ -271,7 +302,8 @@ const s = 'app.post("/y", h)';`;
   });
 
   it("handles nested template literals", () => {
-    const src = 'app.post("/a", (req, res) => { res.send(`x ${`y ${req.body.a}`} )`); });\napp.get("/b", h);';
+    const src =
+      'app.post("/a", (req, res) => { res.send(`x ${`y ${req.body.a}`} )`); });\napp.get("/b", h);';
     const routes = extractExpressRoutes(src);
     expect(routes).toHaveLength(2);
     expect(routes[0]!.handlerChain).not.toContain('"/b"');
@@ -295,7 +327,12 @@ app.post("/b", requireAuth, h);`;
   });
 
   it("does not whitelist the whole /auth subtree", async () => {
-    const src = [`/auth/change-password`, `/api/auth/delete-account`, `/auth/2fa/enable`, `/auth/logout`]
+    const src = [
+      `/auth/change-password`,
+      `/api/auth/delete-account`,
+      `/auth/2fa/enable`,
+      `/auth/logout`,
+    ]
       .map((p) => `app.post("${p}", h);`)
       .join("\n");
     expect(await auth.detect(ctx({ "a.js": src }))).toHaveLength(4);
@@ -356,7 +393,9 @@ app.post("/webhooks/stripe", express.json(), (req, res) => {
 
     it("does not flag a signature-verified webhook for auth or validation", async () => {
       const authLines = (await auth.detect(ctx({ "server.js": signed }))).map((f) => f.line);
-      const validationLines = (await validation.detect(ctx({ "server.js": signed }))).map((f) => f.line);
+      const validationLines = (await validation.detect(ctx({ "server.js": signed }))).map(
+        (f) => f.line,
+      );
       expect(authLines).toEqual([12]);
       expect(validationLines).toEqual([13]);
       expect(await stripe.detect(ctx({ "server.js": signed }))).toHaveLength(0);

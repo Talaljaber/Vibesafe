@@ -74,7 +74,10 @@ export interface SarifLog {
       };
     };
     originalUriBaseIds: Record<string, { description: { text: string } }>;
-    invocations: { executionSuccessful: boolean; toolExecutionNotifications: SarifNotification[] }[];
+    invocations: {
+      executionSuccessful: boolean;
+      toolExecutionNotifications: SarifNotification[];
+    }[];
     results: SarifResult[];
   }[];
 }
@@ -113,7 +116,8 @@ function buildRegion(f: Finding): SarifRegion | undefined {
   if (positiveInt(f.column)) {
     region.startColumn = f.column;
     const sameLine = region.endLine === undefined || region.endLine === f.line;
-    if (positiveInt(f.endColumn) && sameLine && f.endColumn >= f.column) region.endColumn = f.endColumn;
+    if (positiveInt(f.endColumn) && sameLine && f.endColumn >= f.column)
+      region.endColumn = f.endColumn;
   }
   return region;
 }
@@ -197,7 +201,11 @@ export function formatSarif(result: ScanResult, toolVersion: string): SarifLog {
       idx = rules.length;
       ruleIndex.set(f.ruleId, idx);
       rules.push(
-        buildRule(ruleFindings.get(f.ruleId) ?? [f], ruleSeverity.get(f.ruleId) ?? f.severity, [...(ruleTags.get(f.ruleId) ?? [])].sort()),
+        buildRule(
+          ruleFindings.get(f.ruleId) ?? [f],
+          ruleSeverity.get(f.ruleId) ?? f.severity,
+          [...(ruleTags.get(f.ruleId) ?? [])].sort(),
+        ),
       );
     }
 
@@ -207,7 +215,11 @@ export function formatSarif(result: ScanResult, toolVersion: string): SarifLog {
       level: LEVEL[f.severity],
       message: { text: f.plainEnglishProblem || f.title },
       partialFingerprints: { [FINGERPRINT_KEY]: f.id },
-      properties: { severity: f.severity, confidence: f.confidence, deployBlocking: f.deployBlocking },
+      properties: {
+        severity: f.severity,
+        confidence: f.confidence,
+        deployBlocking: f.deployBlocking,
+      },
     };
     // Findings without a file get no location (a placeholder path would mislead);
     // GitHub code scanning may not display such results. Known limitation.
@@ -226,8 +238,14 @@ export function formatSarif(result: ScanResult, toolVersion: string): SarifLog {
   }
 
   const notifications: SarifNotification[] = [
-    ...(result.errors ?? []).map((m): SarifNotification => ({ level: "error", message: { text: `${m.detectorName}: ${m.message}` } })),
-    ...(result.warnings ?? []).map((m): SarifNotification => ({ level: "warning", message: { text: m } })),
+    ...(result.errors ?? []).map((m): SarifNotification => ({
+      level: "error",
+      message: { text: `${m.detectorName}: ${m.message}` },
+    })),
+    ...(result.warnings ?? []).map((m): SarifNotification => ({
+      level: "warning",
+      message: { text: m },
+    })),
   ];
 
   return {
@@ -247,10 +265,15 @@ export function formatSarif(result: ScanResult, toolVersion: string): SarifLog {
         // repository root). Result URIs are relative to the scan root, so scans
         // should run from the repository root.
         originalUriBaseIds: {
-          "%SRCROOT%": { description: { text: "The scanned directory (run vibesafe from the repository root)." } },
+          "%SRCROOT%": {
+            description: { text: "The scanned directory (run vibesafe from the repository root)." },
+          },
         },
         invocations: [
-          { executionSuccessful: (result.errors ?? []).length === 0, toolExecutionNotifications: notifications },
+          {
+            executionSuccessful: (result.errors ?? []).length === 0,
+            toolExecutionNotifications: notifications,
+          },
         ],
         results,
       },

@@ -16,7 +16,8 @@ const SIGNATURE_HEADER_RE = /stripe-signature/i;
 /** A bare default export only counts as a handler in a Pages Router API file. */
 const DEFAULT_EXPORT_RE = /export\s+default\b/;
 
-const ROUTE_LIKE_PATH_RE = /(?:^|\/)route\.[cm]?[jt]s$|(?:^|\/)pages\/api\/|(?:^|\/)app\/api\/|(?:^|\/)api\/|webhook[^/]*$/;
+const ROUTE_LIKE_PATH_RE =
+  /(?:^|\/)route\.[cm]?[jt]s$|(?:^|\/)pages\/api\/|(?:^|\/)app\/api\/|(?:^|\/)api\/|webhook[^/]*$/;
 
 const HELPER_NAME_RE =
   /(?:verify|validate).*(?:stripe|webhook|signature|event)|construct.*(?:event|webhook)|webhook.*(?:event|signature)|stripe.*event/i;
@@ -73,7 +74,9 @@ export function isStripeWebhookRoute(filePath: string, fileContent: string): boo
   const signals = hasWebhookSignals(code);
 
   const isStripeWebhookPath =
-    normalizedPath.includes("stripe") && normalizedPath.includes("webhook") && ROUTE_LIKE_PATH_RE.test(normalizedPath);
+    normalizedPath.includes("stripe") &&
+    normalizedPath.includes("webhook") &&
+    ROUTE_LIKE_PATH_RE.test(normalizedPath);
 
   // A route that manages webhook endpoints through the Stripe API is not itself a webhook receiver.
   if (isStripeWebhookPath && !signals && /\bwebhookEndpoints\b/.test(code)) return false;
@@ -83,7 +86,11 @@ export function isStripeWebhookRoute(filePath: string, fileContent: string): boo
   if (isStripeWebhookPath || isContentMatch) {
     // Reading the stripe-signature header alone is only handler evidence in route-like files
     // (a helper such as lib/stripe-signature.ts merely reads it).
-    return isHandlerText(code, allowsDefaultExport(normalizedPath), ROUTE_LIKE_PATH_RE.test(normalizedPath));
+    return isHandlerText(
+      code,
+      allowsDefaultExport(normalizedPath),
+      ROUTE_LIKE_PATH_RE.test(normalizedPath),
+    );
   }
   return false;
 }
@@ -125,7 +132,9 @@ function importedNames(code: string): Set<string> {
     const ns = /\*\s+as\s+([\w$]+)/.exec(clause);
     if (ns?.[1]) names.add(ns[1]);
   }
-  for (const m of code.matchAll(/(?:const|let|var)\s+(\{[^}]*\}|[\w$]+)\s*=\s*(?:await\s+)?(?:import|require)\s*\(/g)) {
+  for (const m of code.matchAll(
+    /(?:const|let|var)\s+(\{[^}]*\}|[\w$]+)\s*=\s*(?:await\s+)?(?:import|require)\s*\(/g,
+  )) {
     const target = m[1] ?? "";
     if (target.startsWith("{")) add(target.slice(1, -1));
     else names.add(target);
@@ -152,7 +161,8 @@ export function mayDelegateVerification(code: string): boolean {
  * parsed body (`req.body`, `await req.json()`, `JSON.stringify(...)`) instead of the raw text.
  */
 function findParsedBodyVerification(code: string): number | undefined {
-  const re = /\bconstructEvent(?:Async)?\s*\(\s*(JSON\.stringify\s*\(|await\s+[\w.]+\.json\s*\(|[\w.]+\.body\b)/g;
+  const re =
+    /\bconstructEvent(?:Async)?\s*\(\s*(JSON\.stringify\s*\(|await\s+[\w.]+\.json\s*\(|[\w.]+\.body\b)/g;
   const hasRawHint =
     /\bexpress\s*\.\s*raw\s*\(|bodyParser\s*:\s*false|\bgetRawBody\s*\(|(?<![.\w$])buffer\s*\(|\brawBody\b|\breq\.text\s*\(|\.arrayBuffer\s*\(/.test(
       code,
@@ -166,7 +176,10 @@ function findParsedBodyVerification(code: string): number | undefined {
   return undefined;
 }
 
-function findHandlerLine(lines: string[], allowDefaultExport: boolean): { line: number; text: string } {
+function findHandlerLine(
+  lines: string[],
+  allowDefaultExport: boolean,
+): { line: number; text: string } {
   for (let i = 0; i < lines.length; i++) {
     const text = lines[i] ?? "";
     if (isHandlerText(text, allowDefaultExport)) return { line: i + 1, text };
@@ -188,7 +201,8 @@ export class StripeWebhookDetector implements Detector {
   id = "stripe-webhook-detector";
   name = "Stripe Webhook Signature Detection";
   category = "auth" as const;
-  description = "Ensures Stripe webhook routes verify signatures using stripe.webhooks.constructEvent() on the raw body.";
+  description =
+    "Ensures Stripe webhook routes verify signatures using stripe.webhooks.constructEvent() on the raw body.";
 
   async detect(context: ScanContext): Promise<Finding[]> {
     const findings: Finding[] = [];
@@ -241,7 +255,12 @@ export class StripeWebhookDetector implements Detector {
       const parsedLine = findParsedBodyVerification(code);
       if (parsedLine !== undefined) {
         findings.push({
-          id: createFindingId(CATEGORY_PREFIX.auth, "auth/stripe-webhook-parsed-body", filePath, parsedLine),
+          id: createFindingId(
+            CATEGORY_PREFIX.auth,
+            "auth/stripe-webhook-parsed-body",
+            filePath,
+            parsedLine,
+          ),
           ruleId: "auth/stripe-webhook-parsed-body",
           title: "Stripe webhook verified against a parsed body",
           severity: "high",

@@ -56,7 +56,9 @@ function refreshViews(result: ScanResult): void {
  * on a config error the scan is retried without the config file and a warning
  * is shown. Script configs are never executed here (trustConfigScripts is unset).
  */
-async function scanWithConfigFallback(opts: Parameters<ScannerPipeline["scan"]>[0]): Promise<ScanResult> {
+async function scanWithConfigFallback(
+  opts: Parameters<ScannerPipeline["scan"]>[0],
+): Promise<ScanResult> {
   const root = opts.rootPath;
   // Already known broken for this folder: skip the failing load (and the repeat warning).
   if (brokenConfigRoots.has(root)) return pipeline.scan({ ...opts, useConfigFile: false });
@@ -65,7 +67,9 @@ async function scanWithConfigFallback(opts: Parameters<ScannerPipeline["scan"]>[
   } catch (error) {
     if (error instanceof Error && error.name === "ConfigLoadError") {
       brokenConfigRoots.add(root);
-      vscode.window.showWarningMessage(`VibeSafe: ${error.message} Scanning without the config file.`);
+      vscode.window.showWarningMessage(
+        `VibeSafe: ${error.message} Scanning without the config file.`,
+      );
       return pipeline.scan({ ...opts, useConfigFile: false });
     }
     throw error;
@@ -88,7 +92,9 @@ async function runFullScan(folder: vscode.WorkspaceFolder, notify: boolean): Pro
     }
 
     if (result.findings.length > 0) {
-      vscode.window.showWarningMessage(`VibeSafe found ${result.findings.length} issues. Check the Problems panel!`);
+      vscode.window.showWarningMessage(
+        `VibeSafe found ${result.findings.length} issues. Check the Problems panel!`,
+      );
       if (vscode.workspace.getConfiguration("vibesafe").get<boolean>("focusProblemsOnScan")) {
         vscode.commands.executeCommand("workbench.action.problems.focus");
       }
@@ -96,7 +102,9 @@ async function runFullScan(folder: vscode.WorkspaceFolder, notify: boolean): Pro
       vscode.window.showInformationMessage("VibeSafe: No issues found! Your code is pristine ✨");
     }
   } catch (error) {
-    vscode.window.showErrorMessage("VibeSafe scan failed: " + (error instanceof Error ? error.message : String(error)));
+    vscode.window.showErrorMessage(
+      "VibeSafe scan failed: " + (error instanceof Error ? error.message : String(error)),
+    );
   }
 }
 
@@ -116,7 +124,7 @@ async function scanAllFolders(notify: boolean): Promise<void> {
       for (const folder of folders) {
         await runFullScan(folder, notify);
       }
-    }
+    },
   );
 }
 
@@ -129,13 +137,15 @@ function dropDiagnosticsUnder(uri: vscode.Uri): void {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-  console.log('VibeSafe extension is now active!');
+  console.log("VibeSafe extension is now active!");
 
   // Initialize the core scanner
   pipeline = new ScannerPipeline(createDefaultRegistry());
 
   // A changed config file may now be valid: forget the fallback and warn again if still broken.
-  const configWatcher = vscode.workspace.createFileSystemWatcher("**/{.vibesafe.config,vibesafe.config}.*");
+  const configWatcher = vscode.workspace.createFileSystemWatcher(
+    "**/{.vibesafe.config,vibesafe.config}.*",
+  );
   const resetBroken = () => brokenConfigRoots.clear();
   configWatcher.onDidChange(resetBroken);
   configWatcher.onDidCreate(resetBroken);
@@ -150,10 +160,13 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Register views
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(VibeSafeDeployStatusProvider.viewType, deployStatusProvider)
+    vscode.window.registerWebviewViewProvider(
+      VibeSafeDeployStatusProvider.viewType,
+      deployStatusProvider,
+    ),
   );
   context.subscriptions.push(
-    vscode.window.registerTreeDataProvider("vibesafe.issues", issuesProvider)
+    vscode.window.registerTreeDataProvider("vibesafe.issues", issuesProvider),
   );
 
   // Create a diagnostic collection for our squiggles
@@ -171,13 +184,13 @@ export function activate(context: vscode.ExtensionContext): void {
       documentSelector,
       new VibeSafeCodeActionProvider(),
       {
-        providedCodeActionKinds: VibeSafeCodeActionProvider.providedCodeActionKinds
-      }
-    )
+        providedCodeActionKinds: VibeSafeCodeActionProvider.providedCodeActionKinds,
+      },
+    ),
   );
 
   context.subscriptions.push(
-    vscode.languages.registerHoverProvider(documentSelector, hoverProvider)
+    vscode.languages.registerHoverProvider(documentSelector, hoverProvider),
   );
 
   // Register command to copy the AI fix prompt to clipboard
@@ -186,33 +199,41 @@ export function activate(context: vscode.ExtensionContext): void {
       // Never trust finding data from arguments; look it up by id.
       const found = findFindingInResults(resultsByFolder.values(), resolveFindingId(arg));
       if (!found?.finding.aiFixPrompt) {
-        vscode.window.showWarningMessage("VibeSafe: Finding not found. Re-run the scan and try again.");
+        vscode.window.showWarningMessage(
+          "VibeSafe: Finding not found. Re-run the scan and try again.",
+        );
         return;
       }
       await vscode.env.clipboard.writeText(found.finding.aiFixPrompt);
-      vscode.window.showInformationMessage("✨ VibeSafe AI Fix Prompt copied to clipboard! Paste it into Copilot.");
-    })
+      vscode.window.showInformationMessage(
+        "✨ VibeSafe AI Fix Prompt copied to clipboard! Paste it into Copilot.",
+      );
+    }),
   );
 
   // Register command to open dashboard
   context.subscriptions.push(
     vscode.commands.registerCommand("vibesafe.openDashboard", () => {
       openDashboard(context.extensionUri, primaryResult);
-    })
+    }),
   );
 
   // Register applySafeFix command with Workspace Trust check
   context.subscriptions.push(
     vscode.commands.registerCommand("vibesafe.applyFix", async (arg: unknown) => {
       if (!vscode.workspace.isTrusted) {
-        vscode.window.showErrorMessage("VibeSafe: Cannot apply fixes in Restricted Mode. Please trust this workspace first.");
+        vscode.window.showErrorMessage(
+          "VibeSafe: Cannot apply fixes in Restricted Mode. Please trust this workspace first.",
+        );
         return;
       }
 
       // Never trust finding data from arguments; look it up by id.
       const found = findFindingInResults(resultsByFolder.values(), resolveFindingId(arg));
       if (!found) {
-        vscode.window.showWarningMessage("VibeSafe: Finding not found. Re-run the scan and try again.");
+        vscode.window.showWarningMessage(
+          "VibeSafe: Finding not found. Re-run the scan and try again.",
+        );
         return;
       }
       const { finding } = found;
@@ -221,7 +242,9 @@ export function activate(context: vscode.ExtensionContext): void {
       const rootPath = found.result.projectPath;
       const rootFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(rootPath));
       if (!rootFolder) {
-        vscode.window.showErrorMessage("VibeSafe: The scanned folder is no longer part of the workspace.");
+        vscode.window.showErrorMessage(
+          "VibeSafe: The scanned folder is no longer part of the workspace.",
+        );
         return;
       }
 
@@ -235,7 +258,9 @@ export function activate(context: vscode.ExtensionContext): void {
       const fixer = fixRegistry.getFixer(finding.ruleId);
 
       if (!fixer) {
-        vscode.window.showErrorMessage(`VibeSafe: No AutoFixer is registered for rule '${finding.ruleId}'.`);
+        vscode.window.showErrorMessage(
+          `VibeSafe: No AutoFixer is registered for rule '${finding.ruleId}'.`,
+        );
         return;
       }
 
@@ -244,7 +269,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const confirm = await vscode.window.showInformationMessage(
         `VibeSafe Auto-Fix:\n\n${preview.description}\n\nAre you sure you want to apply this fix?`,
         { modal: true },
-        "Apply Fix"
+        "Apply Fix",
       );
 
       if (confirm === "Apply Fix") {
@@ -254,10 +279,12 @@ export function activate(context: vscode.ExtensionContext): void {
           // Re-scan the same folder to clear the squiggles
           await runFullScan(rootFolder, false);
         } else {
-          vscode.window.showErrorMessage(`❌ VibeSafe Fix Failed: ${result.message}\n${result.error || ''}`);
+          vscode.window.showErrorMessage(
+            `❌ VibeSafe Fix Failed: ${result.message}\n${result.error || ""}`,
+          );
         }
       }
-    })
+    }),
   );
 
   // Scan the entire workspace manually; "rescan" is an alias.
@@ -286,9 +313,11 @@ export function activate(context: vscode.ExtensionContext): void {
       scanTimeout = setTimeout(() => {
         // Queue the promise to prevent overlapping concurrent scans
         const previousPromise = latestScanPromise || Promise.resolve();
-        latestScanPromise = previousPromise.then(() => runScannerOnDocument(document)).catch(() => {});
+        latestScanPromise = previousPromise
+          .then(() => runScannerOnDocument(document))
+          .catch(() => {});
       }, 1500);
-    })
+    }),
   );
 
   // Re-scan when scan-affecting settings change
@@ -301,15 +330,17 @@ export function activate(context: vscode.ExtensionContext): void {
       ) {
         void scanAllFolders(false);
       }
-    })
+    }),
   );
 
   // Clear squiggles for deleted / renamed files
   context.subscriptions.push(
-    vscode.workspace.onDidDeleteFiles((e) => e.files.forEach(dropDiagnosticsUnder))
+    vscode.workspace.onDidDeleteFiles((e) => e.files.forEach(dropDiagnosticsUnder)),
   );
   context.subscriptions.push(
-    vscode.workspace.onDidRenameFiles((e) => e.files.forEach((f) => dropDiagnosticsUnder(f.oldUri)))
+    vscode.workspace.onDidRenameFiles((e) =>
+      e.files.forEach((f) => dropDiagnosticsUnder(f.oldUri)),
+    ),
   );
 
   // Optionally run it on open documents right away

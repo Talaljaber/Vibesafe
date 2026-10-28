@@ -2,9 +2,9 @@
   <h1>🛡️ VibeSafe for VS Code</h1>
   <p><strong>Catch security flaws and exposed secrets from AI "vibe coding" before you ship.</strong></p>
   <p>
-    <a href="https://marketplace.visualstudio.com/items?itemName=talaljaber.vibesafe"><img src="https://img.shields.io/visual-studio-marketplace/v/talaljaber.vibesafe?style=flat-square&color=blueviolet" alt="VS Code Marketplace"></a>
-    <a href="https://marketplace.visualstudio.com/items?itemName=talaljaber.vibesafe"><img src="https://img.shields.io/visual-studio-marketplace/i/talaljaber.vibesafe?style=flat-square&color=success" alt="Installs"></a>
-    <a href="https://github.com/talaljaber/vibesafe"><img src="https://img.shields.io/badge/GitHub-Source-blue?style=flat-square&logo=github" alt="GitHub"></a>
+    <a href="https://marketplace.visualstudio.com/items?itemName=talaljaber.vibeguard-scanner"><img src="https://img.shields.io/visual-studio-marketplace/v/talaljaber.vibeguard-scanner?style=flat-square&color=blueviolet" alt="VS Code Marketplace"></a>
+    <a href="https://marketplace.visualstudio.com/items?itemName=talaljaber.vibeguard-scanner"><img src="https://img.shields.io/visual-studio-marketplace/i/talaljaber.vibeguard-scanner?style=flat-square&color=success" alt="Installs"></a>
+    <a href="https://github.com/Talaljaber/Vibesafe"><img src="https://img.shields.io/badge/GitHub-Source-blue?style=flat-square&logo=github" alt="GitHub"></a>
   </p>
 </div>
 
@@ -15,33 +15,38 @@
 ### VibeSafe in Action
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Talaljaber/Vibeguard/main/packages/vscode/report.png" alt="VibeSafe Report Dashboard" width="45%">
-  <img src="https://raw.githubusercontent.com/Talaljaber/Vibeguard/main/packages/vscode/report1.png" alt="VibeSafe Detail View" width="45%">
+  <img src="https://raw.githubusercontent.com/Talaljaber/Vibesafe/main/packages/vscode/report.png" alt="VibeSafe Report Dashboard" width="45%">
+  <img src="https://raw.githubusercontent.com/Talaljaber/Vibesafe/main/packages/vscode/report1.png" alt="VibeSafe Detail View" width="45%">
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Talaljaber/Vibeguard/main/packages/vscode/Cli.png" alt="VibeSafe CLI Output" width="60%">
+  <img src="https://raw.githubusercontent.com/Talaljaber/Vibesafe/main/packages/vscode/Cli.png" alt="VibeSafe CLI Output" width="60%">
 </p>
+
 ## ✨ Key Features
 
 - 🕵️‍♂️ **Pre-Deploy Scanning**: Instantly scans your entire workspace for vulnerabilities, secrets, and code smells.
 - 📋 **Detailed Repair Plans**: Get step-by-step repair plans with exact file locations and line numbers natively inside VS Code.
 - 🤖 **AI Fix Prompts**: For every issue, VibeSafe generates a highly specific, copy-pasteable prompt. Drop it straight into Copilot or Cursor to let AI fix the AI's mistakes.
 - 🛠️ **Auto-Fix Capabilities**: Safely apply fixes to your codebase with a single click natively through the extension.
-- 📊 **Detailed Dashboards**: Companion CLI generates clean, interactive HTML dashboards summarizing your code health.
+- 💬 **Editor Hovers**: Hover a highlighted line to see the problem, why it matters, the fix steps and the AI fix prompt.
+- 📊 **Dashboard**: `VibeSafe: Open Dashboard` shows the score, deploy status and repair plan; the companion CLI can write an HTML report with `--html`.
 
 ## 🚀 Installation & Usage
 
 ### Installing the Extension
+
 1. Open the Extensions view in VS Code (`Ctrl+Shift+X` or `Cmd+Shift+X`).
 2. Search for **VibeSafe**.
 3. Click **Install**.
-4. (Optional but recommended) Run `npm install -D @vibesafe/cli` in your project to use the companion CLI.
+4. (Optional) Build the companion CLI from source to get the HTML dashboard, SARIF / markdown output and watch mode (see the [main README](https://github.com/Talaljaber/Vibesafe#readme)). It is not published to npm yet.
 
 ### Available Commands
+
 Open the **Command Palette** (`Ctrl+Shift+P` or `Cmd+Shift+P`) and type `VibeSafe`:
 
 - **`VibeSafe: Scan Project`**: Triggers a full workspace scan and populates the VibeSafe side panel with issues.
+- **`VibeSafe: Open Dashboard`**: Opens the dashboard with the score, deploy status and repair plan.
 - **`VibeSafe: Re-scan`**: Refreshes the scan results for the current project.
 - **`VibeSafe: Copy Fix Prompt`**: (Contextual) Copies the AI prompt to your clipboard to paste into your AI chat assistant.
 - **`VibeSafe: Apply Safe Fix`**: (Contextual) Applies an automated fix to an identified issue.
@@ -50,15 +55,18 @@ Open the **Command Palette** (`Ctrl+Shift+P` or `Cmd+Shift+P`) and type `VibeSaf
 
 Customize VibeSafe behavior in your `settings.json` or the VS Code Settings UI:
 
-| Setting | Description | Default |
-|---------|-------------|---------|
-| `vibesafe.enabledCategories` | Which rule categories to run (`secret`, `auth`, `authorization`, `frontend_exposure`, `validation`, `dependency`, `code_quality`, `structure`, `xss`, `security_config`) | All enabled |
-| `vibesafe.minSeverity` | Minimum severity level to report (`critical`, `high`, `medium`, `low`) | `low` |
-| `vibesafe.scanOnOpen` | Automatically run a scan when opening a workspace | `false` |
-| `vibesafe.scanOnSave` | Automatically run VibeSafe whenever you save a file | `false` |
+| Setting                        | Description                                                                                                                                                              | Default     |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------- |
+| `vibesafe.enabledCategories`   | Which rule categories to run (`secret`, `auth`, `authorization`, `frontend_exposure`, `validation`, `dependency`, `code_quality`, `structure`, `xss`, `security_config`) | All enabled |
+| `vibesafe.minSeverity`         | Minimum severity level to report (`critical`, `high`, `medium`, `low`)                                                                                                   | `low`       |
+| `vibesafe.scanOnOpen`          | Automatically run a scan when opening a workspace                                                                                                                        | `false`     |
+| `vibesafe.scanOnSave`          | Automatically run VibeSafe whenever you save a file                                                                                                                      | `false`     |
+| `vibesafe.focusProblemsOnScan` | Focus the Problems panel after a scan that finds issues                                                                                                                  | `false`     |
 
 ## 🤝 Open Source
-VibeSafe is open source! Feel free to contribute, report issues, or suggest features on our [GitHub Repository](https://github.com/talaljaber/vibesafe).
+
+VibeSafe is open source! Feel free to contribute, report issues, or suggest features on our [GitHub Repository](https://github.com/Talaljaber/Vibesafe).
 
 ## 📄 License
+
 [MIT](LICENSE)

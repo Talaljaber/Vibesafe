@@ -25,8 +25,12 @@ describe("file-classifier", () => {
   it("detects server-side data fetching exports in pages files only", () => {
     const gssp = `export async function getServerSideProps() {}`;
     expect(usesServerSideDataFetching("pages/a.tsx", gssp)).toBe(true);
-    expect(usesServerSideDataFetching("pages/a.tsx", `export const getStaticProps = async () => ({});`)).toBe(true);
-    expect(usesServerSideDataFetching("pages/a.tsx", `Page.getInitialProps = async () => ({});`)).toBe(true);
+    expect(
+      usesServerSideDataFetching("pages/a.tsx", `export const getStaticProps = async () => ({});`),
+    ).toBe(true);
+    expect(
+      usesServerSideDataFetching("pages/a.tsx", `Page.getInitialProps = async () => ({});`),
+    ).toBe(true);
     expect(usesServerSideDataFetching("app/a.tsx", gssp)).toBe(false);
     expect(usesServerSideDataFetching("pages/a.tsx", `export default 1;`)).toBe(false);
   });

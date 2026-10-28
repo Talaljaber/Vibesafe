@@ -29,14 +29,21 @@ describe("RateLimitDetector", () => {
       expect(f[0]!.id).toMatch(/^CFG-/);
     });
 
-    it.each(["signup", "register", "password-reset", "forgot-password", "otp", "verify", "sign-in"])(
-      "flags /%s",
-      async (seg) => {
-        const f = await run({ [`app/api/${seg}/route.ts`]: `export async function POST() { return new Response("ok"); }` });
-        expect(f).toHaveLength(1);
-        expect(f[0]!.severity).toBe("high");
-      },
-    );
+    it.each([
+      "signup",
+      "register",
+      "password-reset",
+      "forgot-password",
+      "otp",
+      "verify",
+      "sign-in",
+    ])("flags /%s", async (seg) => {
+      const f = await run({
+        [`app/api/${seg}/route.ts`]: `export async function POST() { return new Response("ok"); }`,
+      });
+      expect(f).toHaveLength(1);
+      expect(f[0]!.severity).toBe("high");
+    });
 
     it("flags pages/api and src/ layouts", async () => {
       const f = await run({
@@ -213,7 +220,9 @@ describe("RateLimitDetector", () => {
     });
 
     it("ignores test files", async () => {
-      const f = await run({ "tests/app/api/login/route.test.ts": `export async function POST() {}` });
+      const f = await run({
+        "tests/app/api/login/route.test.ts": `export async function POST() {}`,
+      });
       expect(f).toEqual([]);
     });
   });

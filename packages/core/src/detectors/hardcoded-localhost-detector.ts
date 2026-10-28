@@ -60,7 +60,13 @@ export class HardcodedLocalhostDetector implements Detector {
         }
 
         findings.push({
-          id: createFindingId(CATEGORY_PREFIX.code_quality, "code_quality/hardcoded-localhost", filePath, i + 1, match[0]),
+          id: createFindingId(
+            CATEGORY_PREFIX.code_quality,
+            "code_quality/hardcoded-localhost",
+            filePath,
+            i + 1,
+            match[0],
+          ),
           ruleId: "code_quality/hardcoded-localhost",
           title: "Hardcoded localhost or private IP address",
           severity: "medium",

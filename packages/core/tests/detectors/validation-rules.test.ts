@@ -12,7 +12,8 @@ const ctx = (files: Record<string, string>): ScanContext => ({
 
 describe("MissingValidationDetector (library/call detection, inputs, lines)", () => {
   const detector = new MissingValidationDetector();
-  const run = (src: string, file = "app/api/data/route.ts") => detector.detect(ctx({ [file]: src }));
+  const run = (src: string, file = "app/api/data/route.ts") =>
+    detector.detect(ctx({ [file]: src }));
 
   it("is not fooled by path.join containing 'joi'", async () => {
     const f = await run(`import path from "path";
@@ -47,18 +48,32 @@ export async function POST(req: Request) { const r = schema.safeParse(await req.
   });
 
   it("treats formData, text, req.query and searchParams as input reads", async () => {
-    expect(await run("export async function POST(request: Request) { await request.formData(); }")).toHaveLength(1);
-    expect(await run("export async function POST(request: Request) { await request.text(); }")).toHaveLength(1);
-    expect(await run("export default function h(req, res) { res.json(req.query.id); }", "pages/api/x.ts")).toHaveLength(1);
     expect(
-      await run("export async function GET(request: Request) { const u = new URL(request.url).searchParams; }"),
+      await run("export async function POST(request: Request) { await request.formData(); }"),
+    ).toHaveLength(1);
+    expect(
+      await run("export async function POST(request: Request) { await request.text(); }"),
+    ).toHaveLength(1);
+    expect(
+      await run(
+        "export default function h(req, res) { res.json(req.query.id); }",
+        "pages/api/x.ts",
+      ),
+    ).toHaveLength(1);
+    expect(
+      await run(
+        "export async function GET(request: Request) { const u = new URL(request.url).searchParams; }",
+      ),
     ).toHaveLength(1);
   });
 
   it("detects library usage via require", async () => {
-    const f = await run(`const Joi = require("joi");
+    const f = await run(
+      `const Joi = require("joi");
 const s = Joi.object({});
-module.exports = async (req, res) => { const v = s.validate(req.body); res.json(v); };`, "pages/api/y.js");
+module.exports = async (req, res) => { const v = s.validate(req.body); res.json(v); };`,
+      "pages/api/y.js",
+    );
     expect(f).toHaveLength(0);
   });
 

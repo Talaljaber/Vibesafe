@@ -20,12 +20,12 @@ describe("CodebaseMessDetector", () => {
   it("should detect huge files", async () => {
     let content = "";
     for (let i = 0; i < 505; i++) content += "const a = 1;\n";
-    
+
     const context = createContext({
       "app/page.tsx": content,
     });
     const findings = await detector.detect(context);
-    expect(findings.some(f => f.ruleId === "code_quality/huge-file")).toBe(true);
+    expect(findings.some((f) => f.ruleId === "code_quality/huge-file")).toBe(true);
   });
 
   it("should detect empty catch blocks", async () => {
@@ -38,7 +38,7 @@ describe("CodebaseMessDetector", () => {
       `,
     });
     const findings = await detector.detect(context);
-    expect(findings.some(f => f.ruleId === "code_quality/empty-catch")).toBe(true);
+    expect(findings.some((f) => f.ruleId === "code_quality/empty-catch")).toBe(true);
   });
 
   it("should detect leftover console.log", async () => {
@@ -46,7 +46,7 @@ describe("CodebaseMessDetector", () => {
       "app/page.tsx": `console.log("hello");`,
     });
     const findings = await detector.detect(context);
-    expect(findings.some(f => f.ruleId === "code_quality/console-log")).toBe(true);
+    expect(findings.some((f) => f.ruleId === "code_quality/console-log")).toBe(true);
   });
 
   it("ignores console.log lines that are already commented out", async () => {
@@ -54,7 +54,7 @@ describe("CodebaseMessDetector", () => {
       "app/page.tsx": `// console.log("a");\n  /* console.log("b"); */\n/**\n * console.log("c")\n */\nconst z = 1;`,
     });
     const findings = await detector.detect(context);
-    expect(findings.some(f => f.ruleId === "code_quality/console-log")).toBe(false);
+    expect(findings.some((f) => f.ruleId === "code_quality/console-log")).toBe(false);
   });
 
   it("still flags live code that follows a leading block comment", async () => {
@@ -62,7 +62,9 @@ describe("CodebaseMessDetector", () => {
       "app/page.tsx": `/* tmp */ console.log(user.token);\n/* a */ /* b */ console.log(2);`,
     });
     const findings = await detector.detect(context);
-    expect(findings.filter(f => f.ruleId === "code_quality/console-log").map(f => f.line)).toEqual([1, 2]);
+    expect(
+      findings.filter((f) => f.ruleId === "code_quality/console-log").map((f) => f.line),
+    ).toEqual([1, 2]);
   });
 
   it("does not re-flag lines rewritten by ConsoleLogFixer", async () => {
@@ -75,7 +77,7 @@ describe("CodebaseMessDetector", () => {
       const src = await fs.readFile(path.join(dir, "index.js"), "utf-8");
       expect(src).toContain("// console.log(a)");
       const findings = await detector.detect(createContext({ "index.js": src }));
-      expect(findings.some(f => f.ruleId === "code_quality/console-log")).toBe(false);
+      expect(findings.some((f) => f.ruleId === "code_quality/console-log")).toBe(false);
     } finally {
       await fs.rm(dir, { recursive: true, force: true });
     }

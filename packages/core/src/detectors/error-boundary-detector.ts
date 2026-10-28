@@ -37,9 +37,7 @@ export class ErrorBoundaryDetector implements Detector {
 
     // Fallback: check if there are any .tsx or .jsx files
     if (!isReactProject) {
-      isReactProject = context.files.some(
-        (file) => file.endsWith(".tsx") || file.endsWith(".jsx")
-      );
+      isReactProject = context.files.some((file) => file.endsWith(".tsx") || file.endsWith(".jsx"));
     }
 
     if (!isReactProject) {

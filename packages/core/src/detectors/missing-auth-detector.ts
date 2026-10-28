@@ -27,7 +27,10 @@ import { isStripeWebhookRoute, isWebhookPath } from "./stripe-webhook-detector.j
 function isNonMutatingCatchAll(route: ExpressRoute): boolean {
   if (route.method !== "ALL") return false;
   if (/^\/?\*$/.test(route.path)) return true;
-  return /\bnext\s*\(/.test(route.chainCode) || /\b(?:status|sendStatus)\s*\(\s*404\s*\)/.test(route.chainCode);
+  return (
+    /\bnext\s*\(/.test(route.chainCode) ||
+    /\b(?:status|sendStatus)\s*\(\s*404\s*\)/.test(route.chainCode)
+  );
 }
 
 export class MissingAuthDetector implements Detector {
@@ -38,7 +41,9 @@ export class MissingAuthDetector implements Detector {
 
   async detect(context: ScanContext): Promise<Finding[]> {
     const findings: Finding[] = [];
-    const protectedByMiddleware = await middlewareProtectsApi(context.files, (f) => context.readFile(f));
+    const protectedByMiddleware = await middlewareProtectsApi(context.files, (f) =>
+      context.readFile(f),
+    );
 
     for (const filePath of context.files) {
       if (isExpressCandidateFile(filePath) && !isApiRoute(filePath)) {
@@ -77,15 +82,17 @@ export class MissingAuthDetector implements Detector {
             confidence: "medium",
             file: filePath,
             line,
-            plainEnglishProblem: "This API route appears to modify data or access sensitive info, but we couldn't find any code verifying who the user is.",
-            whyItMatters: "Without an auth check, anyone on the internet can call this API directly and modify your database or view private data.",
+            plainEnglishProblem:
+              "This API route appears to modify data or access sensitive info, but we couldn't find any code verifying who the user is.",
+            whyItMatters:
+              "Without an auth check, anyone on the internet can call this API directly and modify your database or view private data.",
             fixSteps: [
               "Import your authentication library's server-side session checker.",
               "Call the session checker at the very beginning of the route handler.",
-              "If the session is null, immediately `return new Response('Unauthorized', { status: 401 })`."
+              "If the session is null, immediately `return new Response('Unauthorized', { status: 401 })`.",
             ],
             autoFixAvailable: false,
-            aiFixPrompt: `I need to secure this Next.js API route. Please add an authentication check at the beginning of the handler so that unauthenticated users receive a 401 response.`
+            aiFixPrompt: `I need to secure this Next.js API route. Please add an authentication check at the beginning of the handler so that unauthenticated users receive a 401 response.`,
           });
         }
       }

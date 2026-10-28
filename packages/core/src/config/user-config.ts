@@ -4,7 +4,7 @@ import type { FindingCategory, Severity } from "@vibesafe/shared";
 export interface VibeSafeConfig {
   /** Per-rule overrides: ruleId (or `*` glob such as `code_quality/*`) -> "off" or a severity. */
   rules?: Record<string, "off" | Severity>;
-  /** Detector ids that must not run (e.g. "git-history"). */
+  /** Detector ids that must not run (e.g. "git-history-detector"). */
   disabledDetectors?: string[];
   /** Categories to run. Omit for all. */
   categories?: FindingCategory[];

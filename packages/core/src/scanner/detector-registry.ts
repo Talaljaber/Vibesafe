@@ -123,4 +123,3 @@ export class DetectorRegistry {
     return { findings, errors };
   }
 }
-

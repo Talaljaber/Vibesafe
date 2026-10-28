@@ -45,10 +45,15 @@ function describe(f: Finding): string {
 
 export function formatDelta(delta: ResultDelta, files: string[]): string[] {
   const lines: string[] = [];
-  lines.push(chalk.cyan(`Changed: ${files.slice(0, 5).map(stripControl).join(", ")}${files.length > 5 ? `, +${files.length - 5} more` : ""}`));
+  lines.push(
+    chalk.cyan(
+      `Changed: ${files.slice(0, 5).map(stripControl).join(", ")}${files.length > 5 ? `, +${files.length - 5} more` : ""}`,
+    ),
+  );
   for (const f of delta.added) lines.push(chalk.red(`  + new      ${describe(f)}`));
   for (const f of delta.resolved) lines.push(chalk.green(`  - resolved ${describe(f)}`));
-  if (delta.added.length === 0 && delta.resolved.length === 0) lines.push(chalk.gray("  no change in findings"));
+  if (delta.added.length === 0 && delta.resolved.length === 0)
+    lines.push(chalk.gray("  no change in findings"));
   const sign = delta.scoreChange > 0 ? "+" : "";
   lines.push(
     `  score ${delta.scoreBefore} -> ${delta.scoreAfter} (${sign}${delta.scoreChange}), status: ${delta.statusAfter}`,
@@ -59,7 +64,8 @@ export function formatDelta(delta: ResultDelta, files: string[]): string[] {
 /** True when the path is inside a default-excluded directory (node_modules, .git, ...). */
 export function isExcludedPath(p: string): boolean {
   const parts = p.split(/[\\/]/);
-  if (parts.some((part) => (ALWAYS_EXCLUDED_ANYWHERE_DIRS as readonly string[]).includes(part))) return true;
+  if (parts.some((part) => (ALWAYS_EXCLUDED_ANYWHERE_DIRS as readonly string[]).includes(part)))
+    return true;
   // Build-output dirs (dist, build, ...) are only excluded at the project root
   // or at a workspace-package root (packages/*/dist), mirroring FileDiscovery.
   const anchored = ROOT_ANCHORED_EXCLUDED_DIRS as readonly string[];
@@ -75,7 +81,8 @@ export function isExcludedPath(p: string): boolean {
 export function isRelevantPath(p: string): boolean {
   const base = p.split("/").pop() ?? p;
   if ((SCANNABLE_FILENAMES as readonly string[]).includes(base)) return true;
-  if (base === ".gitignore" || base === "package.json" || /^\.env(\..*)?$|\.env$/.test(base)) return true;
+  if (base === ".gitignore" || base === "package.json" || /^\.env(\..*)?$|\.env$/.test(base))
+    return true;
   const dot = base.lastIndexOf(".");
   return dot >= 0 && (SCANNABLE_EXTENSIONS as readonly string[]).includes(base.slice(dot));
 }
@@ -116,7 +123,8 @@ export async function runWatch(targetDir: string, options: WatchOptions = {}): P
   // appear, so a rescan does not repeat them; NDJSON events always carry the full list.
   let shownWarnings = new Set<string>();
   const sayNewWarnings = (warnings: string[]) => {
-    for (const w of warnings) if (!shownWarnings.has(w)) say(chalk.yellow(`Warning: ${stripControl(w)}`));
+    for (const w of warnings)
+      if (!shownWarnings.has(w)) say(chalk.yellow(`Warning: ${stripControl(w)}`));
     shownWarnings = new Set(warnings);
   };
 

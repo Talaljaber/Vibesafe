@@ -284,10 +284,10 @@ describe("action.yml", () => {
   });
 
   it("runs npx outside the repo with its npm config ignored and ends options with --", () => {
-    expect(action).toContain("cd \"$cleandir\"");
+    expect(action).toContain('cd "$cleandir"');
     expect(action).toContain("NPM_CONFIG_USERCONFIG");
     expect(action).toContain("NPM_CONFIG_REGISTRY");
-    expect(action).toContain("-- \"$GITHUB_WORKSPACE/$VS_PATH\"");
+    expect(action).toContain('-- "$GITHUB_WORKSPACE/$VS_PATH"');
   });
 
   it("only updates comments by the token's own login that start with the marker", () => {

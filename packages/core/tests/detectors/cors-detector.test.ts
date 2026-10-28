@@ -53,7 +53,9 @@ describe("CorsDetector", () => {
   });
 
   it("does not flag bare cors() without cookie usage", async () => {
-    expect(await run({ "server.ts": `import cors from "cors";\napp.use(cors());` })).toHaveLength(0);
+    expect(await run({ "server.ts": `import cors from "cors";\napp.use(cors());` })).toHaveLength(
+      0,
+    );
   });
 
   it("does not flag allowlist array, regex, string or checking function", async () => {
@@ -117,7 +119,9 @@ describe("CorsDetector", () => {
       "server.js": `app.use((req, res, next) => {\n  res.setHeader("Access-Control-Allow-Origin", req.headers.origin);\n  next();\n});`,
     });
     expect(f).toHaveLength(2);
-    expect(f.every((x) => x.ruleId === "security_config/cors-reflected-origin" && x.severity === "high")).toBe(true);
+    expect(
+      f.every((x) => x.ruleId === "security_config/cors-reflected-origin" && x.severity === "high"),
+    ).toBe(true);
   });
 
   it("does not flag reflection guarded by an allowlist", async () => {
@@ -229,7 +233,9 @@ describe("CorsDetector", () => {
     expect(f[0]?.severity).toBe("medium");
   });
   it("produces stable ids with the CFG prefix", async () => {
-    const files = { "s.ts": `import cors from "cors";\napp.use(cors({ origin: "*", credentials: true }));` };
+    const files = {
+      "s.ts": `import cors from "cors";\napp.use(cors({ origin: "*", credentials: true }));`,
+    };
     const a = await run(files);
     const b = await run(files);
     expect(a[0]?.id).toBe(b[0]?.id);
@@ -251,9 +257,10 @@ describe("CorsDetector", () => {
     expect(f).toHaveLength(1);
   });
 
-  it("recognises `import { default as x } from \"cors\"`", async () => {
+  it('recognises `import { default as x } from "cors"`', async () => {
     const f = await run({
       "server.ts": `import { default as corsMw } from "cors";\napp.use(corsMw({ origin: true, credentials: true }));`,
     });
     expect(f).toHaveLength(1);
-  });});
+  });
+});

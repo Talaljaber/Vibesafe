@@ -10,7 +10,14 @@ import {
 } from "./utils/file-classifier.js";
 
 const CODE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx"];
-const PUBLIC_PREFIXES = ["NEXT_PUBLIC_", "VITE_", "REACT_APP_", "EXPO_PUBLIC_", "NUXT_PUBLIC_", "PUBLIC_"];
+const PUBLIC_PREFIXES = [
+  "NEXT_PUBLIC_",
+  "VITE_",
+  "REACT_APP_",
+  "EXPO_PUBLIC_",
+  "NUXT_PUBLIC_",
+  "PUBLIC_",
+];
 
 /** A public-prefixed variable whose name looks like a secret (not preceded by another name char). */
 const PUBLIC_SECRET_REGEX =
@@ -28,7 +35,8 @@ const VITE_DEFINE_LEAK_REGEX =
 const ENV_ALIAS_REGEX =
   /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:process\.env(?![\w$.[(?])|loadEnv\((?:[^()]|\([^()]*\))*,\s*(?:""|'')\s*\))/g;
 
-const SERVER_ENV_REGEX = /process\.env(?:\.([A-Za-z_][A-Za-z0-9_]*)|\[\s*["']([A-Za-z_][A-Za-z0-9_]*)["']\s*\])/g;
+const SERVER_ENV_REGEX =
+  /process\.env(?:\.([A-Za-z_][A-Za-z0-9_]*)|\[\s*["']([A-Za-z_][A-Za-z0-9_]*)["']\s*\])/g;
 const SECRET_LOOKING_NAME = /SERVICE_ROLE|SECRET|PRIVATE|PASSWORD|TOKEN|API_KEY|APIKEY/i;
 const SERVICE_ROLE_REGEX = /SERVICE_ROLE_KEY|service_role/;
 /** firebase-admin (or a subpath) pulled in via import/require/dynamic import; `import type` is erased at build time. */
@@ -41,7 +49,8 @@ const TYPE_ONLY_IMPORT_REGEX =
 const SERVICE_ACCOUNT_JSON_REGEX =
   /(?:firebase[-_.]?adminsdk[^"'/\\]*|service[-_.]?account[^"'/\\]*?(?:key|credentials?)|service[-_.]?account)\.json$/i;
 const REQUIRE_REGEX = /\b(?:require|import)\s*\(\s*["']([^"']+)["']\s*\)/g;
-const IMPORT_REGEX = /(?:import|export)\s[^"';]*?from\s*["']([^"']+)["']|import\s*["']([^"']+)["']/g;
+const IMPORT_REGEX =
+  /(?:import|export)\s[^"';]*?from\s*["']([^"']+)["']|import\s*["']([^"']+)["']/g;
 
 /** Removes block and line comments, keeping line structure so line numbers stay valid. */
 function stripComments(content: string): string[] {
@@ -95,7 +104,9 @@ export class FrontendExposureDetector implements Detector {
           ...CODE_EXTENSIONS.map((e) => base + e),
           ...CODE_EXTENSIONS.map((e) => `${base}/index${e}`),
         ];
-        const hit = candidates.find((c) => fileSet.has(c) && CODE_EXTENSIONS.some((e) => c.endsWith(e)));
+        const hit = candidates.find(
+          (c) => fileSet.has(c) && CODE_EXTENSIONS.some((e) => c.endsWith(e)),
+        );
         if (hit) return hit;
       }
       return undefined;
@@ -173,7 +184,9 @@ export class FrontendExposureDetector implements Detector {
         const importLine = noBlock.slice(0, m.index).split("\n").length;
         if ((lines[importLine - 1] ?? "").trim() === "") continue; // commented-out import
         if (SERVICE_ACCOUNT_JSON_REGEX.test(spec)) {
-          findings.push(this.firebaseAdminFinding(filePath, importLine, rawLines[importLine - 1] ?? "", spec));
+          findings.push(
+            this.firebaseAdminFinding(filePath, importLine, rawLines[importLine - 1] ?? "", spec),
+          );
           continue;
         }
         const target = resolveImport(filePath, spec);
@@ -181,7 +194,11 @@ export class FrontendExposureDetector implements Detector {
 
         const targetContent = await context.readFile(target);
         // server-only modules and Server Actions ("use server") are never bundled for the browser
-        if (/^\s*import\s+["']server-only["']/m.test(targetContent) || hasUseServerDirective(targetContent)) continue;
+        if (
+          /^\s*import\s+["']server-only["']/m.test(targetContent) ||
+          hasUseServerDirective(targetContent)
+        )
+          continue;
         const targetLines = stripComments(targetContent);
         const raw = rawLines[importLine - 1] ?? "";
 
@@ -205,7 +222,12 @@ export class FrontendExposureDetector implements Detector {
           let e: RegExpExecArray | null;
           while ((e = SERVER_ENV_REGEX.exec(l)) !== null) {
             const name = e[1] ?? e[2];
-            if (name && !hasPublicPrefix(name) && SECRET_LOOKING_NAME.test(name) && !seen.has(name)) {
+            if (
+              name &&
+              !hasPublicPrefix(name) &&
+              SECRET_LOOKING_NAME.test(name) &&
+              !seen.has(name)
+            ) {
               seen.add(name);
               findings.push(this.serverEnvImportFinding(filePath, importLine, raw, target, name));
             }
@@ -227,7 +249,9 @@ export class FrontendExposureDetector implements Detector {
     const code = stripComments(content).join("\n");
     const rawLines = content.split("\n");
     const out: Finding[] = [];
-    const aliases = [...code.matchAll(ENV_ALIAS_REGEX)].map((a) => (a[1] ?? "").replace(/\$/g, "\\$"));
+    const aliases = [...code.matchAll(ENV_ALIAS_REGEX)].map((a) =>
+      (a[1] ?? "").replace(/\$/g, "\\$"),
+    );
     const aliasRe = aliases.length
       ? new RegExp(
           `\\.\\.\\.\\s*(?:${aliases.join("|")})(?![\\w$.[(?])|["'\`]?process\\.env["'\`]?\\s*:\\s*(?:JSON\\.stringify\\(\\s*)?(?:${aliases.join("|")})(?![\\w$.[(?])`,
@@ -261,7 +285,12 @@ export class FrontendExposureDetector implements Detector {
 
   private viteDefineFinding(file: string, line: number, evidence: string): Finding {
     return {
-      id: createFindingId(CATEGORY_PREFIX.frontend_exposure, "frontend_exposure/vite-define-process-env", file, line),
+      id: createFindingId(
+        CATEGORY_PREFIX.frontend_exposure,
+        "frontend_exposure/vite-define-process-env",
+        file,
+        line,
+      ),
       ruleId: "frontend_exposure/vite-define-process-env",
       title: "vite.config exposes all environment variables to the browser",
       severity: "critical",
@@ -284,7 +313,12 @@ export class FrontendExposureDetector implements Detector {
     };
   }
 
-  private serviceRoleFinding(file: string, line: number, evidence: string, importedFile?: string): Finding {
+  private serviceRoleFinding(
+    file: string,
+    line: number,
+    evidence: string,
+    importedFile?: string,
+  ): Finding {
     const via = importedFile ? ` (via imported module ${importedFile})` : "";
     return {
       id: createFindingId(
@@ -315,10 +349,21 @@ export class FrontendExposureDetector implements Detector {
     };
   }
 
-  private firebaseAdminFinding(file: string, line: number, evidence: string, via?: string): Finding {
+  private firebaseAdminFinding(
+    file: string,
+    line: number,
+    evidence: string,
+    via?: string,
+  ): Finding {
     const where = via ? ` (via ${via})` : "";
     return {
-      id: createFindingId(CATEGORY_PREFIX.frontend_exposure, "frontend_exposure/firebase-admin", file, line, via),
+      id: createFindingId(
+        CATEGORY_PREFIX.frontend_exposure,
+        "frontend_exposure/firebase-admin",
+        file,
+        line,
+        via,
+      ),
       ruleId: "frontend_exposure/firebase-admin",
       title: "Firebase Admin SDK or service account used in client code",
       severity: "critical",
@@ -381,9 +426,20 @@ export class FrontendExposureDetector implements Detector {
    * cannot be sure the value is a real secret (e.g. `NEXT_PUBLIC_SECRET_SANTA`); the documented
    * convention reserves critical + blocking for confirmed exposures such as service-role keys.
    */
-  private publicSecretFinding(file: string, line: number, evidence: string, varName: string): Finding {
+  private publicSecretFinding(
+    file: string,
+    line: number,
+    evidence: string,
+    varName: string,
+  ): Finding {
     return {
-      id: createFindingId(CATEGORY_PREFIX.frontend_exposure, "frontend_exposure/public-secret-var", file, line, varName),
+      id: createFindingId(
+        CATEGORY_PREFIX.frontend_exposure,
+        "frontend_exposure/public-secret-var",
+        file,
+        line,
+        varName,
+      ),
       ruleId: "frontend_exposure/public-secret-var",
       title: "Sensitive variable exposed to frontend",
       severity: "high",

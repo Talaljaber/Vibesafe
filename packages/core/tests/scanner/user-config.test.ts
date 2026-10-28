@@ -3,7 +3,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { Detector, Finding, ScanContext, Severity } from "@vibesafe/shared";
-import { loadUserConfig, findScriptConfig, CONFIG_FILE_NAMES } from "../../src/config/load-config.js";
+import {
+  loadUserConfig,
+  findScriptConfig,
+  CONFIG_FILE_NAMES,
+} from "../../src/config/load-config.js";
 import { validateUserConfig } from "../../src/config/schema.js";
 import { defineConfig } from "../../src/config/user-config.js";
 import { applyRuleOverrides, resolveOverride } from "../../src/scanner/rule-overrides.js";
@@ -140,7 +144,9 @@ describe("user config file (#7)", () => {
 
     it("throws a clear error when the script throws", async () => {
       await write(".vibesafe.config.js", `throw new Error("boom");`);
-      await expect(loadUserConfig(tmp, { allowScripts: true })).rejects.toThrow(/Failed to load .*boom/);
+      await expect(loadUserConfig(tmp, { allowScripts: true })).rejects.toThrow(
+        /Failed to load .*boom/,
+      );
     });
 
     it("never executes script configs by default", async () => {
@@ -178,7 +184,9 @@ describe("user config file (#7)", () => {
 
     it("throws listing every validation problem", async () => {
       await write(".vibesafe.config.json", `{"rules":{"a":"nope"},"bogus":1,"deep":"yes"}`);
-      await expect(loadUserConfig(tmp)).rejects.toThrow(/Invalid \.vibesafe\.config\.json[\s\S]*unknown option "bogus"[\s\S]*rules\["a"\][\s\S]*"deep"/);
+      await expect(loadUserConfig(tmp)).rejects.toThrow(
+        /Invalid \.vibesafe\.config\.json[\s\S]*unknown option "bogus"[\s\S]*rules\["a"\][\s\S]*"deep"/,
+      );
     });
   });
 
@@ -219,7 +227,11 @@ describe("user config file (#7)", () => {
 
   describe("rule overrides", () => {
     it("exact beats glob; longer glob beats shorter", () => {
-      const o = { "code_quality/*": "off", "code_quality/console-log": "high", "*": "low" } as const;
+      const o = {
+        "code_quality/*": "off",
+        "code_quality/console-log": "high",
+        "*": "low",
+      } as const;
       expect(resolveOverride("code_quality/console-log", o)).toBe("high");
       expect(resolveOverride("code_quality/huge-file", o)).toBe("off");
       expect(resolveOverride("xss/x", o)).toBe("low");
@@ -279,7 +291,10 @@ describe("user config file (#7)", () => {
     });
 
     it("warns about unknown disabledDetectors ids", async () => {
-      await write(".vibesafe.config.json", JSON.stringify({ disabledDetectors: ["quality", "git-histroy"] }));
+      await write(
+        ".vibesafe.config.json",
+        JSON.stringify({ disabledDetectors: ["quality", "git-histroy"] }),
+      );
       const { pipeline, ran } = makePipeline();
       const res = await pipeline.scan({ rootPath: tmp });
       expect(ran).toEqual(["sec"]);
@@ -291,7 +306,9 @@ describe("user config file (#7)", () => {
     it("applies config file: rules off + severity re-score", async () => {
       await write(
         ".vibesafe.config.json",
-        JSON.stringify({ rules: { "code_quality/console-log": "off", "code_quality/huge-file": "critical" } }),
+        JSON.stringify({
+          rules: { "code_quality/console-log": "off", "code_quality/huge-file": "critical" },
+        }),
       );
       const { pipeline } = makePipeline();
       const base = await pipeline.scan({ rootPath: tmp, useConfigFile: false });
@@ -326,9 +343,16 @@ describe("user config file (#7)", () => {
     });
 
     it("explicit options win over file values", async () => {
-      await write(".vibesafe.config.json", JSON.stringify({ categories: ["code_quality"], minSeverity: "critical" }));
+      await write(
+        ".vibesafe.config.json",
+        JSON.stringify({ categories: ["code_quality"], minSeverity: "critical" }),
+      );
       const { pipeline, ran } = makePipeline();
-      const res = await pipeline.scan({ rootPath: tmp, enabledCategories: ["secret"], minSeverity: "low" });
+      const res = await pipeline.scan({
+        rootPath: tmp,
+        enabledCategories: ["secret"],
+        minSeverity: "low",
+      });
       expect(ran).toEqual(["sec"]);
       expect(res.findings.map((f) => f.ruleId)).toEqual(["secret/key"]);
     });
@@ -359,7 +383,10 @@ describe("user config file (#7)", () => {
       expect(seen[0]).toContain("legacy/old.ts");
       expect(seen[0]).not.toContain("tests/t.ts");
 
-      await write(".vibesafe.config.json", JSON.stringify({ exclude: ["legacy/**"], includeTests: true }));
+      await write(
+        ".vibesafe.config.json",
+        JSON.stringify({ exclude: ["legacy/**"], includeTests: true }),
+      );
       await pipeline.scan({ rootPath: tmp });
       expect(seen[1]).not.toContain("legacy/old.ts");
       expect(seen[1]).toContain("tests/t.ts");

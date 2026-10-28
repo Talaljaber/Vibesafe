@@ -12,7 +12,7 @@ export class VibeSafeDeployStatusProvider implements vscode.WebviewViewProvider 
   public resolveWebviewView(
     webviewView: vscode.WebviewView,
     _context: vscode.WebviewViewResolveContext,
-    _token: vscode.CancellationToken
+    _token: vscode.CancellationToken,
   ) {
     this._view = webviewView;
 
@@ -37,10 +37,11 @@ export class VibeSafeDeployStatusProvider implements vscode.WebviewViewProvider 
     }
 
     const { score, deployStatus, summary } = this._latestResult;
-    
+
     let statusColor = "var(--vscode-testing-iconPassed)";
     if (deployStatus === "warning") statusColor = "var(--vscode-testing-iconFailed)";
-    if (deployStatus === "danger" || deployStatus === "blocker") statusColor = "var(--vscode-errorForeground)";
+    if (deployStatus === "danger" || deployStatus === "blocker")
+      statusColor = "var(--vscode-errorForeground)";
 
     return `<!DOCTYPE html>
       <html lang="en">

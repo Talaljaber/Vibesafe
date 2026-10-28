@@ -91,10 +91,7 @@ function main() {
     ) + "\n",
   );
 
-  write(
-    path.join(outDir, ".gitignore"),
-    ["node_modules/", ".env", ".env.local", ""].join("\n"),
-  );
+  write(path.join(outDir, ".gitignore"), ["node_modules/", ".env", ".env.local", ""].join("\n"));
 
   write(
     path.join(outDir, "README.md"),
@@ -167,7 +164,9 @@ function main() {
   console.log(`\nDemo repo created at: ${outDir}`);
   console.log("\nDemo script:");
   console.log(`  vibesafe scan "${outDir}"          # looks clean, no secret in the working tree`);
-  console.log(`  vibesafe scan "${outDir}" --deep   # CRITICAL: AWS key committed 3 commits ago, deleted but recoverable`);
+  console.log(
+    `  vibesafe scan "${outDir}" --deep   # CRITICAL: AWS key committed 3 commits ago, deleted but recoverable`,
+  );
 }
 
 main();

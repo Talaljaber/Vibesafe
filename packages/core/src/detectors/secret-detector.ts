@@ -13,7 +13,7 @@ export class SecretDetector implements Detector {
 
   async detect(context: ScanContext): Promise<Finding[]> {
     const findings: Finding[] = [];
-    
+
     // Check that every discovered .env* file is actually ignored by the root .gitignore
     const envFiles = context.files.filter((f) => isEnvFile(f));
     if (envFiles.length > 0) {
@@ -33,20 +33,31 @@ export class SecretDetector implements Detector {
 
     // Scan all files for hardcoded secrets
     for (const filePath of context.files) {
-      if (filePath.endsWith("package-lock.json") || filePath.endsWith("pnpm-lock.yaml") || filePath.endsWith("yarn.lock")) continue;
+      if (
+        filePath.endsWith("package-lock.json") ||
+        filePath.endsWith("pnpm-lock.yaml") ||
+        filePath.endsWith("yarn.lock")
+      )
+        continue;
 
       const content = await context.readFile(filePath);
-      const lines = content.split('\n');
+      const lines = content.split("\n");
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         if (line === undefined) continue;
-        
+
         for (const pattern of SECRET_PATTERNS) {
           const match = matchSecretPattern(pattern, line);
           if (match) {
             findings.push({
-              id: createFindingId(CATEGORY_PREFIX.secret, `secret/${pattern.id}`, filePath, i + 1, match[0]),
+              id: createFindingId(
+                CATEGORY_PREFIX.secret,
+                `secret/${pattern.id}`,
+                filePath,
+                i + 1,
+                match[0],
+              ),
               ruleId: `secret/${pattern.id}`,
               title: `Exposed ${pattern.name}`,
               severity: pattern.severity,
@@ -62,10 +73,10 @@ export class SecretDetector implements Detector {
                 `Remove the key from this file.`,
                 `Move the key to a .env file (e.g., \`MY_KEY=your_key_here\`).`,
                 `Update this file to use \`process.env.MY_KEY\` instead.`,
-                `Ensure your .env file is added to your .gitignore.`
+                `Ensure your .env file is added to your .gitignore.`,
               ],
               autoFixAvailable: false,
-              aiFixPrompt: `I have a hardcoded secret in this file. Please modify the code to read this value from an environment variable instead, and show me what I need to add to my .env file.`
+              aiFixPrompt: `I have a hardcoded secret in this file. Please modify the code to read this value from an environment variable instead, and show me what I need to add to my .env file.`,
             });
           }
         }
@@ -97,7 +108,8 @@ export class SecretDetector implements Detector {
       confidence: "high",
       file: envFile,
       plainEnglishProblem: `You have a ${envFile} file that probably contains secrets, but your .gitignore does not ignore it.`,
-      whyItMatters: "When you commit your code, git will include your env file and push it to GitHub. This exposes all your database passwords and API keys to the public.",
+      whyItMatters:
+        "When you commit your code, git will include your env file and push it to GitHub. This exposes all your database passwords and API keys to the public.",
       fixSteps: [
         "Open your .gitignore file.",
         "Add a new line with exactly `.env`",

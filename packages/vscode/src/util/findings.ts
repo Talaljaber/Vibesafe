@@ -22,7 +22,7 @@ export function resolveFindingId(arg: unknown): string | undefined {
 /** Look up a finding by id in a scan result. */
 export function findFindingById(
   result: ScanResult | null | undefined,
-  id: string | undefined
+  id: string | undefined,
 ): Finding | undefined {
   if (!result || !id) return undefined;
   return result.findings.find((f) => f.id === id);
@@ -43,7 +43,7 @@ export function isFindingInsideRoot(root: string, finding: Finding): boolean {
 /** Find a finding by id across several scan results (one per workspace folder). */
 export function findFindingInResults(
   results: Iterable<ScanResult>,
-  id: string | undefined
+  id: string | undefined,
 ): { finding: Finding; result: ScanResult } | undefined {
   if (!id) return undefined;
   for (const result of results) {

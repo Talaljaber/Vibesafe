@@ -45,7 +45,10 @@ describe("AWS secret access keys", () => {
     ["JSON", `  "secretAccessKey": "${SECRET}"`],
     ["JSON upper", `{"AWS_SECRET_ACCESS_KEY": "${SECRET}"}`],
     ["YAML", `AWS_SECRET_ACCESS_KEY: ${SECRET}`],
-    ["SDK credentials", `credentials: { accessKeyId: "${ACCESS_ID}", secretAccessKey: "${SECRET}" }`],
+    [
+      "SDK credentials",
+      `credentials: { accessKeyId: "${ACCESS_ID}", secretAccessKey: "${SECRET}" }`,
+    ],
     ["slash and plus", `secretAccessKey = "wJalrXUtnFEMI/K7MDENG+bPxRfiCYq8Zr3KpL0v"`],
   ])("detects %s", (_name, line) => {
     expect(hitsSecret(line)).toBe(true);
@@ -55,7 +58,11 @@ describe("AWS secret access keys", () => {
     ["env line", `AWS_SECRET_ACCESS_KEY=${SECRET}`, "AWS_SECRET_ACCESS_KEY="],
     ["JSON", `  "secretAccessKey": "${SECRET}"`, "secretAccessKey"],
     ["object literal", `  secretAccessKey: "${SECRET}",`, "secretAccessKey:"],
-    ["SDK credentials", `credentials: { accessKeyId: "${ACCESS_ID}", secretAccessKey: "${SECRET}" }`, "secretAccessKey"],
+    [
+      "SDK credentials",
+      `credentials: { accessKeyId: "${ACCESS_ID}", secretAccessKey: "${SECRET}" }`,
+      "secretAccessKey",
+    ],
   ])("redacts only the value in evidence (%s)", (_name, line, keyName) => {
     const out = sanitizeEvidence(line);
     expect(out).not.toContain(SECRET);
@@ -84,7 +91,9 @@ describe("AWS secret access keys", () => {
   });
 
   it("surfaces redacted evidence through SecretDetector", async () => {
-    const files: Record<string, string> = { "src/aws.ts": `const c = { secretAccessKey: "${SECRET}" };` };
+    const files: Record<string, string> = {
+      "src/aws.ts": `const c = { secretAccessKey: "${SECRET}" };`,
+    };
     const context = {
       files: Object.keys(files),
       readFile: async (f: string) => files[f] ?? "",
@@ -97,7 +106,9 @@ describe("AWS secret access keys", () => {
   });
 
   it("ignores the AWS documentation example", () => {
-    expect(hitsSecret("aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")).toBe(false);
+    expect(hitsSecret("aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")).toBe(
+      false,
+    );
   });
 
   it.each([
@@ -107,7 +118,10 @@ describe("AWS secret access keys", () => {
     ["low entropy", `AWS_SECRET_ACCESS_KEY=${"ab12".repeat(10)}`],
     ["all digits", `AWS_SECRET_ACCESS_KEY=${"1234567890".repeat(4)}`],
     ["all letters", `AWS_SECRET_ACCESS_KEY=${"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN"}`],
-    ["your-placeholder (fails length/charset)",`aws_secret_access_key = "your-aws-secret-access-key"`],
+    [
+      "your-placeholder (fails length/charset)",
+      `aws_secret_access_key = "your-aws-secret-access-key"`,
+    ],
     ["env reference", `secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY`],
     ["too short", `AWS_SECRET_ACCESS_KEY=${SECRET.slice(0, 39)}`],
     ["too long", `AWS_SECRET_ACCESS_KEY=${SECRET}Z`],

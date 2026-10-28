@@ -27,7 +27,7 @@ inputs:
     required: false
     default: "false"
   version:
-    description: "Version of @vibesafe/cli to run via npx. Needs the first release that ships --format markdown (0.3.0, not yet published to npm at the time of writing; 0.2.0 and older do not support it). Prefer a pinned version over latest."
+    description: "Version of @vibesafe/cli to run via npx. Needs 0.3.0 or later, the first release with --format markdown (not yet published to npm at the time of writing). Prefer a pinned version over latest."
     required: false
     default: "0.3.0"
   node-version:

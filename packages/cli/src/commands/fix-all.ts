@@ -92,7 +92,10 @@ export async function runFixAllCommand(
  * confirmation, apply each fix (a failing fix never stops the rest), then rescan to report
  * the score before and after. Reusable by other front ends (e.g. a setup wizard).
  */
-export async function runFixAll(rootPath: string, options: FixAllOptions = {}): Promise<FixAllResult> {
+export async function runFixAll(
+  rootPath: string,
+  options: FixAllOptions = {},
+): Promise<FixAllResult> {
   const log = options.log ?? ((line: string) => console.log(line));
   const interactive = options.interactive ?? Boolean(process.stdin.isTTY);
   const root = path.resolve(rootPath);
@@ -115,12 +118,16 @@ export async function runFixAll(rootPath: string, options: FixAllOptions = {}): 
     try {
       const preview = await fixer.preview(finding, root);
       if (preview.filesToModify.length === 0 && preview.filesToCreate.length === 0) {
-        skipped.push(`${sanitizeTerminal(finding.ruleId)}${location(finding)}: ${sanitizeTerminal(preview.description)}`);
+        skipped.push(
+          `${sanitizeTerminal(finding.ruleId)}${location(finding)}: ${sanitizeTerminal(preview.description)}`,
+        );
       } else {
         candidates.push({ finding, fixer, preview });
       }
     } catch (err) {
-      skipped.push(`${sanitizeTerminal(finding.ruleId)}${location(finding)}: preview unavailable (${sanitizeTerminal((err as Error).message)})`);
+      skipped.push(
+        `${sanitizeTerminal(finding.ruleId)}${location(finding)}: preview unavailable (${sanitizeTerminal((err as Error).message)})`,
+      );
     }
   }
 
@@ -142,18 +149,28 @@ export async function runFixAll(rootPath: string, options: FixAllOptions = {}): 
   };
 
   if (candidates.length === 0) {
-    log(chalk.green("\nNothing to auto-fix. No findings have an automatic fix that can be applied."));
+    log(
+      chalk.green("\nNothing to auto-fix. No findings have an automatic fix that can be applied."),
+    );
     logSkipped();
     return result;
   }
 
-  log(chalk.cyan.bold(`\nFix preview: ${candidates.length} fix${candidates.length === 1 ? "" : "es"} available`));
+  log(
+    chalk.cyan.bold(
+      `\nFix preview: ${candidates.length} fix${candidates.length === 1 ? "" : "es"} available`,
+    ),
+  );
   for (const { finding, preview } of candidates) printPreview(log, finding, preview);
   logSkipped();
 
   if (!options.yes) {
     if (!interactive) {
-      log(chalk.red("\nCannot prompt without an interactive terminal. Re-run with --yes to skip confirmation."));
+      log(
+        chalk.red(
+          "\nCannot prompt without an interactive terminal. Re-run with --yes to skip confirmation.",
+        ),
+      );
       result.status = "no-tty";
       return result;
     }
@@ -201,7 +218,11 @@ export async function runFixAll(rootPath: string, options: FixAllOptions = {}): 
     });
     if (fixResult.success) {
       result.succeeded++;
-      log(chalk.green(`  OK   ${finding.ruleId}${location(finding)}: ${sanitizeTerminal(fixResult.message)}`));
+      log(
+        chalk.green(
+          `  OK   ${finding.ruleId}${location(finding)}: ${sanitizeTerminal(fixResult.message)}`,
+        ),
+      );
     } else {
       result.failed++;
       log(chalk.red(`  FAIL ${finding.ruleId}${location(finding)}: ${sanitizeTerminal(message)}`));

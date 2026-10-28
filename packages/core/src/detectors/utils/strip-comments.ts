@@ -18,7 +18,12 @@ function blank(ch: string, on: boolean): string {
   return on && ch !== "\n" ? " " : ch;
 }
 
-function scanCode(s: string, start: number, inTemplateExpr: boolean, blankStrings: boolean): ScanResult {
+function scanCode(
+  s: string,
+  start: number,
+  inTemplateExpr: boolean,
+  blankStrings: boolean,
+): ScanResult {
   const n = s.length;
   let out = "";
   let i = start;
@@ -87,7 +92,10 @@ function scanCode(s: string, start: number, inTemplateExpr: boolean, blankString
       }
       lastSig = "`";
       tail = "";
-    } else if (c === "/" && (lastSig === "" || REGEX_PRECEDERS.includes(lastSig) || REGEX_KEYWORD_RE.test(tail))) {
+    } else if (
+      c === "/" &&
+      (lastSig === "" || REGEX_PRECEDERS.includes(lastSig) || REGEX_KEYWORD_RE.test(tail))
+    ) {
       // Regex literal (heuristic: a slash where an expression is expected). Never spans lines.
       out += c;
       i++;

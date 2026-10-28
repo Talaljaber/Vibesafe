@@ -23,11 +23,12 @@ jobs:
         # with:
         #   fetch-depth: 0 # required when using deep: true
 
-      - uses: Talaljaber/Vibesafe@main # pin a release tag or commit SHA in real use
+      # Pin a release tag or a full commit SHA; do not use a moving branch like @main.
+      - uses: Talaljaber/Vibesafe@<release-tag-or-commit-sha>
         with:
           path: "."
           fail-on: blocker # blocker | danger | warning | none
           comment: "true"
           deep: "false"
-          version: 0.3.0 # first release that ships --format markdown (not yet published; 0.2.0 and older lack it)
+          version: 0.3.0 # @vibesafe/cli 0.3.0 or later (first release with --format markdown; not yet published to npm)
           github-token: ${{ github.token }}

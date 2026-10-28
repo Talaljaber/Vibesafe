@@ -28,10 +28,11 @@ export class ProjectStructureDetector implements Detector {
         deployBlocking: false,
         confidence: "high",
         plainEnglishProblem: "Your project doesn't have a `.gitignore` file.",
-        whyItMatters: "Without a .gitignore, you will accidentally commit node_modules, build files, and sensitive environment variables to your git repository.",
+        whyItMatters:
+          "Without a .gitignore, you will accidentally commit node_modules, build files, and sensitive environment variables to your git repository.",
         fixSteps: [
           "Create a file named `.gitignore` in the root of your project.",
-          "Add `node_modules`, `.env`, and your build output folders to it."
+          "Add `node_modules`, `.env`, and your build output folders to it.",
         ],
         autoFixAvailable: false,
       });
@@ -48,13 +49,15 @@ export class ProjectStructureDetector implements Detector {
         deployBlocking: false,
         confidence: "high",
         plainEnglishProblem: "There is no README.md file in the root of your project.",
-        whyItMatters: "A README explains what your project does and how to run it. Without it, other developers (and future you) will struggle to understand the codebase.",
+        whyItMatters:
+          "A README explains what your project does and how to run it. Without it, other developers (and future you) will struggle to understand the codebase.",
         fixSteps: [
           "Create a `README.md` file.",
-          "Add a title, description, and instructions on how to install and run the project."
+          "Add a title, description, and instructions on how to install and run the project.",
         ],
         autoFixAvailable: false,
-        aiFixPrompt: "Please write a comprehensive README.md for this project based on the code provided."
+        aiFixPrompt:
+          "Please write a comprehensive README.md for this project based on the code provided.",
       });
     }
 
@@ -69,10 +72,11 @@ export class ProjectStructureDetector implements Detector {
         deployBlocking: false,
         confidence: "high",
         plainEnglishProblem: "You have a `.env` file, but no `.env.example` file.",
-        whyItMatters: "Without an example file, other developers won't know which environment variables they need to set up to run the project.",
+        whyItMatters:
+          "Without an example file, other developers won't know which environment variables they need to set up to run the project.",
         fixSteps: [
           "Create a `.env.example` file.",
-          "Copy the keys from your `.env` file into it, but leave the values blank."
+          "Copy the keys from your `.env` file into it, but leave the values blank.",
         ],
         autoFixAvailable: true,
       });
@@ -89,10 +93,11 @@ export class ProjectStructureDetector implements Detector {
         deployBlocking: false,
         confidence: "low", // It's possible tests exist in a way we didn't detect
         plainEnglishProblem: "We couldn't find any test files in your project.",
-        whyItMatters: "Shipping code without tests means you rely entirely on manual clicking to verify things work. This guarantees bugs will slip into production as your app grows.",
+        whyItMatters:
+          "Shipping code without tests means you rely entirely on manual clicking to verify things work. This guarantees bugs will slip into production as your app grows.",
         fixSteps: [
           "Install a test runner like Vitest or Jest.",
-          "Create a `tests/` directory or add `.test.ts` files next to your components."
+          "Create a `tests/` directory or add `.test.ts` files next to your components.",
         ],
         autoFixAvailable: false,
       });

@@ -1,8 +1,14 @@
 import { describe, it, expect } from "vitest";
 import type { Finding, ScanResult, ProjectContext } from "@vibesafe/shared";
-import { summarizeScanResult, formatScanSummaryText, DEFAULT_TOP_FINDINGS_LIMIT } from "../src/format.js";
+import {
+  summarizeScanResult,
+  formatScanSummaryText,
+  DEFAULT_TOP_FINDINGS_LIMIT,
+} from "../src/format.js";
 
-function makeFinding(overrides: Partial<Finding> & { id: string; severity: Finding["severity"] }): Finding {
+function makeFinding(
+  overrides: Partial<Finding> & { id: string; severity: Finding["severity"] },
+): Finding {
   return {
     ruleId: "mock/rule",
     title: "Mock finding",

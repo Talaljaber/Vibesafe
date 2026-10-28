@@ -33,7 +33,11 @@ async function connect(policy: ServerPolicy): Promise<Client> {
   return client;
 }
 
-async function call(client: Client, name: string, args: Record<string, unknown>): Promise<ToolResult> {
+async function call(
+  client: Client,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<ToolResult> {
   return (await client.callTool({ name, arguments: args })) as unknown as ToolResult;
 }
 
@@ -47,12 +51,13 @@ function makeProject(): string {
 async function fixableId(client: Client, dir: string): Promise<string> {
   const scan = await call(client, "vibesafe_scan", { path: dir });
   expect(scan.isError).toBeFalsy();
-  const ids = (JSON.parse(scan.content[1]!.text) as { topFindings: { id: string }[] }).topFindings.map(
-    (f) => f.id,
-  );
+  const ids = (
+    JSON.parse(scan.content[1]!.text) as { topFindings: { id: string }[] }
+  ).topFindings.map((f) => f.id);
   for (const id of ids) {
     const d = await call(client, "vibesafe_explain", { findingId: id });
-    if ((JSON.parse(d.content[1]!.text) as { autoFixAvailable: boolean }).autoFixAvailable) return id;
+    if ((JSON.parse(d.content[1]!.text) as { autoFixAvailable: boolean }).autoFixAvailable)
+      return id;
   }
   throw new Error("no fixable finding in test project");
 }

@@ -28,7 +28,11 @@ async function connect(
   return { client, close: () => client.close() };
 }
 
-async function call(client: Client, name: string, args: Record<string, unknown> = {}): Promise<ToolResult> {
+async function call(
+  client: Client,
+  name: string,
+  args: Record<string, unknown> = {},
+): Promise<ToolResult> {
   return (await client.callTool({ name, arguments: args })) as unknown as ToolResult;
 }
 

@@ -50,7 +50,13 @@ export class DependencyDetector implements Detector {
       if (scriptKey in scripts) {
         const scriptValue = scripts[scriptKey];
         findings.push({
-          id: createFindingId(CATEGORY_PREFIX.dependency, "dependency/risky-install-script", packageJsonPath, undefined, scriptKey),
+          id: createFindingId(
+            CATEGORY_PREFIX.dependency,
+            "dependency/risky-install-script",
+            packageJsonPath,
+            undefined,
+            scriptKey,
+          ),
           ruleId: "dependency/risky-install-script",
           title: `Risky lifecycle script: "${scriptKey}"`,
           severity: isPrivate ? "low" : "high",
@@ -75,7 +81,11 @@ export class DependencyDetector implements Detector {
     const directDepCount = Object.keys(deps).length;
     if (directDepCount > MAX_DIRECT_DEPS) {
       findings.push({
-        id: createFindingId(CATEGORY_PREFIX.dependency, "dependency/excessive-dependencies", packageJsonPath),
+        id: createFindingId(
+          CATEGORY_PREFIX.dependency,
+          "dependency/excessive-dependencies",
+          packageJsonPath,
+        ),
         ruleId: "dependency/excessive-dependencies",
         title: `High dependency count: ${directDepCount} direct dependencies`,
         severity: "low",

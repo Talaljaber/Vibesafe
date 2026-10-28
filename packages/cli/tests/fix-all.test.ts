@@ -121,7 +121,10 @@ describe("runFixAll", () => {
   });
 
   it("skips findings whose fixer cannot change anything and does not count them as failures", async () => {
-    await write("src/index.js", "const a = 1;\nif (a) console.log(a);\nconst f = () => console.log(a);\nconsole.log(\"ok\");\n");
+    await write(
+      "src/index.js",
+      'const a = 1;\nif (a) console.log(a);\nconst f = () => console.log(a);\nconsole.log("ok");\n',
+    );
     const res = await runFixAll(proj, { yes: true, log });
     expect(res.failed).toBe(0);
     expect(res.skipped).toBe(2);
@@ -149,7 +152,7 @@ describe("runFixAll", () => {
   });
 
   it("strips terminal escape sequences from repo content before printing", async () => {
-    await write("src/index.js", "const a = 1;\nconsole.log(\"\u001b[2K\u001b[1A\rspoofed\", a);\n");
+    await write("src/index.js", 'const a = 1;\nconsole.log("\u001b[2K\u001b[1A\rspoofed", a);\n');
     await runFixAll(proj, { interactive: true, log, confirm: async () => false });
     const out = lines.join("\n");
     expect(out).not.toContain("\u001b[2K");
@@ -157,15 +160,23 @@ describe("runFixAll", () => {
     expect(out).not.toContain("\r");
     expect(out).toContain("spoofed");
     expect(sanitizeTerminal("a\u001b[31mb\u001b]0;title\u0007c\u009bd\te\nf")).toBe("abcd\te\nf");
-    expect(sanitizeTerminal("It\u2019s\u2026 \u20ac5 \u00a92026 \u2122 \u00a0x")).toBe("It\u2019s\u2026 \u20ac5 \u00a92026 \u2122 \u00a0x");
+    expect(sanitizeTerminal("It\u2019s\u2026 \u20ac5 \u00a92026 \u2122 \u00a0x")).toBe(
+      "It\u2019s\u2026 \u20ac5 \u00a92026 \u2122 \u00a0x",
+    );
     expect(sanitizeTerminal("a\u2028b\u2029c")).toBe("abc");
   });
 
   it("a failing or throwing fix does not stop the rest, and is counted as failed", async () => {
-    await write("src/index.js", "const a = 1;\nconsole.log(\"one\");\nconst b = 2;\nconsole.log(\"two\");\nexport { a, b };\n");
+    await write(
+      "src/index.js",
+      'const a = 1;\nconsole.log("one");\nconst b = 2;\nconsole.log("two");\nexport { a, b };\n',
+    );
     const real = ConsoleLogFixer.prototype.apply;
     let calls = 0;
-    vi.spyOn(ConsoleLogFixer.prototype, "apply").mockImplementation(async function (this: ConsoleLogFixer, ...args) {
+    vi.spyOn(ConsoleLogFixer.prototype, "apply").mockImplementation(async function (
+      this: ConsoleLogFixer,
+      ...args
+    ) {
       if (++calls === 1) throw new Error("boom");
       return real.apply(this, args);
     });
@@ -225,14 +236,19 @@ describe("runFixAll idempotence", () => {
 
 describe("vibesafe fix --all (built binary)", () => {
   it("exits 1 with a clear message without --yes and no TTY, leaving files untouched", async () => {
-    const res = spawnSync(process.execPath, [BIN, "fix", "--all", proj], { encoding: "utf-8", input: "" });
+    const res = spawnSync(process.execPath, [BIN, "fix", "--all", proj], {
+      encoding: "utf-8",
+      input: "",
+    });
     expect(res.status).toBe(1);
     expect(res.stdout).toContain("--yes");
     expect(await read(".gitignore")).toBe("node_modules\n");
   }, 30000);
 
   it("--yes applies the fixes and exits 0", async () => {
-    const res = spawnSync(process.execPath, [BIN, "fix", "--all", proj, "--yes"], { encoding: "utf-8" });
+    const res = spawnSync(process.execPath, [BIN, "fix", "--all", proj, "--yes"], {
+      encoding: "utf-8",
+    });
     expect(res.status).toBe(0);
     expect(res.stdout).toMatch(/Score: \d+ -> \d+/);
     expect(await read(".gitignore")).toContain(".env");
@@ -245,7 +261,9 @@ describe("vibesafe fix --all (built binary)", () => {
   }, 30000);
 
   it("rejects a finding id combined with --all", () => {
-    const res = spawnSync(process.execPath, [BIN, "fix", "some-id", proj, "--all", "--yes"], { encoding: "utf-8" });
+    const res = spawnSync(process.execPath, [BIN, "fix", "some-id", proj, "--all", "--yes"], {
+      encoding: "utf-8",
+    });
     expect(res.status).toBe(1);
     expect(res.stderr).toContain("--all takes no finding id");
   }, 30000);

@@ -70,7 +70,9 @@ export function registerFixTool(server: McpServer, state: ScanState, policy: Ser
       if (!fixer || !fixer.canFix(finding)) {
         return {
           isError: true,
-          content: [{ type: "text", text: `No registered fixer can handle rule "${finding.ruleId}".` }],
+          content: [
+            { type: "text", text: `No registered fixer can handle rule "${finding.ruleId}".` },
+          ],
         };
       }
 
@@ -87,10 +89,18 @@ export function registerFixTool(server: McpServer, state: ScanState, policy: Ser
         ];
 
         if (preview.filesToCreate.length > 0) {
-          lines.push("", "Files that would be created:", ...preview.filesToCreate.map((f) => `  + ${f}`));
+          lines.push(
+            "",
+            "Files that would be created:",
+            ...preview.filesToCreate.map((f) => `  + ${f}`),
+          );
         }
         if (preview.filesToModify.length > 0) {
-          lines.push("", "Files that would be modified:", ...preview.filesToModify.map((f) => `  ~ ${f}`));
+          lines.push(
+            "",
+            "Files that would be modified:",
+            ...preview.filesToModify.map((f) => `  ~ ${f}`),
+          );
         }
         if (preview.diff) {
           lines.push("", "Diff:", preview.diff);

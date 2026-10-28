@@ -177,7 +177,8 @@ export function usesExpress(fileContent: string, dependencies?: Record<string, s
   return Boolean(dependencies?.["express"]) || EXPRESS_IMPORT_RE.test(fileContent);
 }
 
-const REGEX_PREV_KEYWORD_RE = /\b(?:return|typeof|case|in|of|delete|void|throw|else|do|yield|await)\s*$/;
+const REGEX_PREV_KEYWORD_RE =
+  /\b(?:return|typeof|case|in|of|delete|void|throw|else|do|yield|await)\s*$/;
 const REGEX_PREV_CHARS = "(,=:[!&|?{};+-*%<>~^";
 
 /**

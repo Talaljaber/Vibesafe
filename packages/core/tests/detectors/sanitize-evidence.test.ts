@@ -45,9 +45,11 @@ describe("sanitizeEvidence", () => {
     };
     const findings = (
       await Promise.all(
-        [new FrontendExposureDetector(), new HardcodedLocalhostDetector(), new CodebaseMessDetector()].map(
-          (d) => d.detect(ctx(files)),
-        ),
+        [
+          new FrontendExposureDetector(),
+          new HardcodedLocalhostDetector(),
+          new CodebaseMessDetector(),
+        ].map((d) => d.detect(ctx(files))),
       )
     ).flat();
     expect(findings.length).toBeGreaterThan(0);

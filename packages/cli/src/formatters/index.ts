@@ -14,7 +14,8 @@ export interface FormatContext {
  */
 export const OUTPUT_FORMATS = {
   json: (result: ScanResult) => JSON.stringify(result, null, 2),
-  sarif: (result: ScanResult, ctx: FormatContext) => JSON.stringify(formatSarif(result, ctx.version), null, 2),
+  sarif: (result: ScanResult, ctx: FormatContext) =>
+    JSON.stringify(formatSarif(result, ctx.version), null, 2),
   /** Concise PR-comment summary; starts with the sticky marker the GitHub Action looks for. */
   markdown: (result: ScanResult) => formatMarkdownReport(result),
 } satisfies Record<string, (result: ScanResult, ctx: FormatContext) => string>;

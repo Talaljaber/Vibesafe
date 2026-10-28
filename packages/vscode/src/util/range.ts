@@ -5,7 +5,7 @@
  */
 export function diagnosticRangeCoords(
   line1Based: number,
-  lineText?: string
+  lineText?: string,
 ): [number, number, number, number] {
   const line = Math.max(0, line1Based - 1);
   const start = lineText === undefined ? 0 : lineText.length - lineText.trimStart().length;

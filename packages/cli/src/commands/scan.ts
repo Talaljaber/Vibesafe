@@ -10,7 +10,12 @@ import { runFixWizard } from "./fix-wizard.js";
 import { pathToFileURL } from "node:url";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
-import { OUTPUT_FORMAT_NAMES, isOutputFormat, renderOutput, type OutputFormat } from "../formatters/index.js";
+import {
+  OUTPUT_FORMAT_NAMES,
+  isOutputFormat,
+  renderOutput,
+  type OutputFormat,
+} from "../formatters/index.js";
 import { buildScanOptions } from "./scan-options.js";
 import { sanitizeTerminal } from "../ui/sanitize.js";
 
@@ -89,7 +94,8 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
     // Only draw a progress bar for interactive terminals, never in --json mode.
     const showProgress = !options.json && Boolean(process.stdout.isTTY);
     const progressBar = new cliProgress.SingleBar({
-      format: chalk.cyan("{bar}") + " {percentage}% | {value}/{total} | " + chalk.magenta("{message}"),
+      format:
+        chalk.cyan("{bar}") + " {percentage}% | {value}/{total} | " + chalk.magenta("{message}"),
       barCompleteChar: "█",
       barIncompleteChar: "░",
       hideCursor: true,
@@ -110,10 +116,7 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
 
     let result;
     try {
-      result = await pipeline.scan(
-        buildScanOptions(rootPath, options),
-        onProgress,
-      );
+      result = await pipeline.scan(buildScanOptions(rootPath, options), onProgress);
     } finally {
       if (barStarted) {
         progressBar.stop();
@@ -124,7 +127,9 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
     if (format) {
       // Machine mode keeps stdout clean, so surface an incomplete scan on stderr.
       if (result.errors && result.errors.length > 0) {
-        console.error(`Warning: ${result.errors.length} detector(s) failed. Scan may be incomplete.`);
+        console.error(
+          `Warning: ${result.errors.length} detector(s) failed. Scan may be incomplete.`,
+        );
         for (const e of result.errors) console.error(`  - ${e.detectorName}: ${e.message}`);
       }
       for (const w of result.warnings ?? []) console.error(`Warning: ${sanitizeTerminal(w)}`);
@@ -177,7 +182,8 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
           const fileUrl = pathToFileURL(htmlReportPath).href;
           await open(fileUrl);
         } catch {
-          if (!options.json) console.log(chalk.gray("Could not automatically open the report in your browser."));
+          if (!options.json)
+            console.log(chalk.gray("Could not automatically open the report in your browser."));
         }
       }
     }
@@ -186,11 +192,16 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
     // process.exit) so piped stdout is fully flushed.
     if (result.deployStatus === "blocker" || result.deployStatus === "danger") {
       if (!options.json) {
-        console.log(chalk.red.bold("\n❌ Scan failed: Blocking issues found. Please fix them before deploying."));
+        console.log(
+          chalk.red.bold(
+            "\n❌ Scan failed: Blocking issues found. Please fix them before deploying.",
+          ),
+        );
       }
       process.exitCode = 1;
     } else {
-      if (!options.json) console.log(chalk.green.bold("\n✅ Scan passed! You are clear to deploy."));
+      if (!options.json)
+        console.log(chalk.green.bold("\n✅ Scan passed! You are clear to deploy."));
       process.exitCode = 0;
     }
 
@@ -228,7 +239,8 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
     }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    if (!options.json) console.error(chalk.red.bold(`\n❌ Error during scan: ${sanitizeTerminal(message)}`));
+    if (!options.json)
+      console.error(chalk.red.bold(`\n❌ Error during scan: ${sanitizeTerminal(message)}`));
     else console.error(`Error during scan: ${sanitizeTerminal(message)}`);
     process.exitCode = 2;
   }

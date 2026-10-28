@@ -124,9 +124,7 @@ export async function loadUserConfig(
   rootPath: string,
   options: LoadUserConfigOptions = {},
 ): Promise<LoadedUserConfig | undefined> {
-  const names = options.allowScripts
-    ? CONFIG_FILE_NAMES
-    : CONFIG_FILE_NAMES.filter(isJsonName);
+  const names = options.allowScripts ? CONFIG_FILE_NAMES : CONFIG_FILE_NAMES.filter(isJsonName);
   const filePath = await findConfigFile(rootPath, names);
   if (!filePath) return undefined;
   const name = path.basename(filePath);

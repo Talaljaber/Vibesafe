@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import type { Finding } from "@vibesafe/shared";
-import { formatDelta, isExcludedPath, isRelevantPath, stripControl } from "../src/commands/watch.js";
+import {
+  formatDelta,
+  isExcludedPath,
+  isRelevantPath,
+  stripControl,
+} from "../src/commands/watch.js";
 
 const finding = (over: Partial<Finding> = {}): Finding => ({
   id: "SEC-1",
@@ -30,21 +35,34 @@ const delta = (over = {}) => ({
 });
 
 describe("isExcludedPath", () => {
-  it.each(["node_modules/x/index.js", "src/node_modules/x.js", ".git/config", "dist/a.js", "build/a.js", "packages/cli/dist/a.js", "apps/web/build/x/a.js"])(
-    "excludes %s",
-    (p) => expect(isExcludedPath(p)).toBe(true),
-  );
-  it.each(["src/dist/a.ts", "src/build/a.ts", "src/app.ts", "dist", "", "packages/cli/src/a.ts", "packages/dist/a.js", "other/x/dist/a.js"])("keeps %s", (p) =>
-    expect(isExcludedPath(p)).toBe(false),
-  );
+  it.each([
+    "node_modules/x/index.js",
+    "src/node_modules/x.js",
+    ".git/config",
+    "dist/a.js",
+    "build/a.js",
+    "packages/cli/dist/a.js",
+    "apps/web/build/x/a.js",
+  ])("excludes %s", (p) => expect(isExcludedPath(p)).toBe(true));
+  it.each([
+    "src/dist/a.ts",
+    "src/build/a.ts",
+    "src/app.ts",
+    "dist",
+    "",
+    "packages/cli/src/a.ts",
+    "packages/dist/a.js",
+    "other/x/dist/a.js",
+  ])("keeps %s", (p) => expect(isExcludedPath(p)).toBe(false));
   it("handles windows separators", () => {
     expect(isExcludedPath("a\\node_modules\\b.js")).toBe(true);
   });
 });
 
 describe("isRelevantPath", () => {
-  it.each(["src/a.ts", "package.json", ".gitignore", ".env", ".env.local", "x/prod.env"])("true for %s", (p) =>
-    expect(isRelevantPath(p)).toBe(true),
+  it.each(["src/a.ts", "package.json", ".gitignore", ".env", ".env.local", "x/prod.env"])(
+    "true for %s",
+    (p) => expect(isRelevantPath(p)).toBe(true),
   );
   it.each(["image.png", "notes.xyz"])("false for %s", (p) => expect(isRelevantPath(p)).toBe(false));
 });
@@ -64,7 +82,12 @@ describe("formatDelta", () => {
 
   it("lists added and resolved findings with a signed score and truncates files", () => {
     const out = formatDelta(
-      delta({ added: [finding()], resolved: [finding({ title: "Old", file: "b.ts", line: undefined })], scoreChange: 5, scoreAfter: 105 }),
+      delta({
+        added: [finding()],
+        resolved: [finding({ title: "Old", file: "b.ts", line: undefined })],
+        scoreChange: 5,
+        scoreAfter: 105,
+      }),
       ["1", "2", "3", "4", "5", "6", "7"],
     ).join("\n");
     expect(out).toContain("+ new");
@@ -76,9 +99,10 @@ describe("formatDelta", () => {
   });
 
   it("strips terminal control sequences from untrusted names", () => {
-    const out = formatDelta(delta({ added: [finding({ file: "evil\u001b[2J.ts", title: "t\u001b]0;x\u0007" })] }), [
-      "f\u001b[31m.ts",
-    ]).join("\n");
+    const out = formatDelta(
+      delta({ added: [finding({ file: "evil\u001b[2J.ts", title: "t\u001b]0;x\u0007" })] }),
+      ["f\u001b[31m.ts"],
+    ).join("\n");
     // eslint-disable-next-line no-control-regex
     expect(out.replace(/\u001b\[[0-9;]*m/g, "")).not.toMatch(/[\u0000-\u0009\u000b-\u001f\u007f]/);
   });

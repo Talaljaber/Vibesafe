@@ -23,7 +23,14 @@ const HEADER_MARKER = "\x1eVIBESAFE-COMMIT\x1e";
 const FIELD_SEP = "\x1f";
 
 /** Config overrides applied to every git invocation so repo-local config can't run helpers. */
-const HARDENED_CONFIG_ARGS = ["-c", "core.fsmonitor=false", "-c", "core.pager=cat", "-c", "diff.external="];
+const HARDENED_CONFIG_ARGS = [
+  "-c",
+  "core.fsmonitor=false",
+  "-c",
+  "core.pager=cat",
+  "-c",
+  "diff.external=",
+];
 
 /** Builds the environment for git child processes (inherits the current env). */
 export function buildGitEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {

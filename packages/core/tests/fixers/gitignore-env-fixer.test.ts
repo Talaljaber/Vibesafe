@@ -28,7 +28,7 @@ describe("GitignoreEnvFixer", () => {
     plainEnglishProblem: "Test",
     whyItMatters: "Test",
     fixSteps: [],
-    autoFixAvailable: true
+    autoFixAvailable: true,
   };
 
   it("should create .gitignore if it doesn't exist", async () => {
@@ -37,7 +37,7 @@ describe("GitignoreEnvFixer", () => {
 
     const result = await fixer.apply(finding, tempDir);
     expect(result.success).toBe(true);
-    
+
     const content = await fs.readFile(path.join(tempDir, ".gitignore"), "utf-8");
     expect(content).toContain("node_modules");
     expect(content).toContain(".env");
@@ -45,7 +45,7 @@ describe("GitignoreEnvFixer", () => {
 
   it("should append .env to existing .gitignore", async () => {
     await fs.writeFile(path.join(tempDir, ".gitignore"), "node_modules\n");
-    
+
     const preview = await fixer.preview(finding, tempDir);
     expect(preview.filesToModify).toContain(".gitignore");
 
@@ -60,7 +60,7 @@ describe("GitignoreEnvFixer", () => {
     await fs.writeFile(path.join(tempDir, ".gitignore"), "node_modules");
     await fixer.apply(finding, tempDir);
     expect(await fs.readFile(path.join(tempDir, ".gitignore"), "utf-8")).toBe(
-      "node_modules\n.env\n.env.*\n!.env.example\n"
+      "node_modules\n.env\n.env.*\n!.env.example\n",
     );
   });
 
@@ -68,7 +68,9 @@ describe("GitignoreEnvFixer", () => {
     await fs.writeFile(path.join(tempDir, ".gitignore"), ".env\n.env.*\n");
     await fixer.apply(finding, tempDir);
     await fixer.apply(finding, tempDir);
-    expect(await fs.readFile(path.join(tempDir, ".gitignore"), "utf-8")).toBe(".env\n.env.*\n!.env.example\n");
+    expect(await fs.readFile(path.join(tempDir, ".gitignore"), "utf-8")).toBe(
+      ".env\n.env.*\n!.env.example\n",
+    );
   });
 
   it("does not overwrite or follow a symlinked .gitignore", async (ctx) => {
@@ -89,7 +91,7 @@ describe("GitignoreEnvFixer", () => {
 
   it("should not append .env if it already exists", async () => {
     await fs.writeFile(path.join(tempDir, ".gitignore"), "node_modules\n.env\n");
-    
+
     const result = await fixer.apply(finding, tempDir);
     expect(result.success).toBe(true);
     expect(result.message).toContain("already in");

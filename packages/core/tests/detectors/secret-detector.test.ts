@@ -29,7 +29,7 @@ describe("SecretDetector", () => {
       ".gitignore": "node_modules\n",
     });
     const findings = await detector.detect(context);
-    expect(findings.some(f => f.ruleId === "secret/env-not-ignored")).toBe(true);
+    expect(findings.some((f) => f.ruleId === "secret/env-not-ignored")).toBe(true);
   });
 
   it("should not flag if .env is in .gitignore", async () => {
@@ -38,7 +38,7 @@ describe("SecretDetector", () => {
       ".gitignore": "node_modules\n.env\n",
     });
     const findings = await detector.detect(context);
-    expect(findings.some(f => f.ruleId === "secret/env-not-ignored")).toBe(false);
+    expect(findings.some((f) => f.ruleId === "secret/env-not-ignored")).toBe(false);
   });
 
   const envFindings = async (files: Record<string, string>) =>
@@ -62,7 +62,9 @@ describe("SecretDetector", () => {
       ".gitignore": ".env\n",
     });
     expect(found.map((f) => f.file)).toEqual([".env.production"]);
-    expect(await envFindings({ ".env.production": "A=1", ".gitignore": ".env*\n" })).toHaveLength(0);
+    expect(await envFindings({ ".env.production": "A=1", ".gitignore": ".env*\n" })).toHaveLength(
+      0,
+    );
   });
 
   it("skips yarn.lock", async () => {

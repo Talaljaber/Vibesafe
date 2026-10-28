@@ -10,7 +10,7 @@ describe("FileDiscovery", () => {
     const files = await discovery.discoverFiles();
 
     // Normalizing paths for cross-platform comparison
-    const normalizedFiles = files.map(f => f.replace(/\\/g, "/"));
+    const normalizedFiles = files.map((f) => f.replace(/\\/g, "/"));
 
     expect(normalizedFiles).toContain("package.json");
     expect(normalizedFiles).toContain("next.config.js");
@@ -32,7 +32,7 @@ describe("FileDiscovery", () => {
   it("should respect additional excludes", async () => {
     const discovery = new FileDiscovery(fixturePath);
     const files = await discovery.discoverFiles(["app/**"]);
-    const normalizedFiles = files.map(f => f.replace(/\\/g, "/"));
+    const normalizedFiles = files.map((f) => f.replace(/\\/g, "/"));
 
     expect(normalizedFiles).not.toContain("app/page.tsx");
     expect(normalizedFiles).toContain("lib/supabase.ts");

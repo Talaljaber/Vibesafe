@@ -24,7 +24,8 @@ describe("nextjs-vibecoded-bad-app fixture (#40)", () => {
 
     const findings = await new FrontendExposureDetector().detect(context);
     const hit = findings.find(
-      (f) => f.ruleId === "frontend_exposure/service-role-key" && f.file === "app/dashboard/page.tsx",
+      (f) =>
+        f.ruleId === "frontend_exposure/service-role-key" && f.file === "app/dashboard/page.tsx",
     );
     expect(hit).toBeDefined();
     expect(hit?.line).toBe(3);
