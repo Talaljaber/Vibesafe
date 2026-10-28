@@ -20,7 +20,9 @@ export type FindingCategory =
   | "dependency"
   | "code_quality"
   | "structure"
-  | "xss";
+  | "xss"
+  /** Web/framework security configuration: CORS, security headers, rate limiting, framework settings. */
+  | "security_config";
 
 /** How confident is the detector in this finding? */
 export type Confidence = "high" | "medium" | "low";
@@ -167,8 +169,8 @@ export interface ScanResult {
  * tsconfig.json, and file structure analysis.
  */
 export interface ProjectContext {
-  framework: "nextjs" | "vite" | "express" | "unknown";
-  language: "typescript" | "javascript" | "mixed";
+  framework: "nextjs" | "vite" | "express" | "django" | "unknown";
+  language: "typescript" | "javascript" | "python" | "mixed";
   hasTypeScript: boolean;
   packageManager: "npm" | "pnpm" | "yarn" | "unknown";
   /** Direct dependencies from package.json. */
@@ -225,6 +227,29 @@ export interface ScanConfig {
    * mock routes.
    */
   includeTests?: boolean | undefined;
+
+  /**
+   * Per-rule overrides applied after detection. Keys are ruleIds or `*` globs
+   * (e.g. `code_quality/*`); values are `"off"` (drop) or a replacement severity.
+   */
+  ruleOverrides?: Record<string, "off" | Severity> | undefined;
+
+  /** Detector ids that must not run. */
+  disabledDetectors?: string[] | undefined;
+
+  /**
+   * Load `.vibesafe.config.*` / `vibesafe.config.*` from rootPath. Defaults to
+   * true; set false to ignore config files. Explicit options always win.
+   */
+  useConfigFile?: boolean | undefined;
+
+  /**
+   * Allow executable config files (.ts/.js/.mjs/.cjs) to be loaded. They run
+   * arbitrary code from the scanned directory, so this is off by default; only
+   * the declarative `.json` config is read otherwise. Enable only for projects
+   * you trust.
+   */
+  trustConfigScripts?: boolean | undefined;
 }
 
 // ─── Repair Plan ─────────────────────────────────────────────────────────────

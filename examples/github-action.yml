@@ -1,0 +1,33 @@
+# Example workflow: scan every pull request with VibeSafe and keep one sticky comment up to date.
+# Copy to .github/workflows/vibesafe.yml in your repository.
+#
+# Inline line-by-line review comments are not supported; findings are listed
+# (with file:line) in a single PR comment and in the job summary.
+#
+# Security: use the plain pull_request trigger. Do not use pull_request_target
+# with a checkout of the PR head; it would run untrusted code with a write token.
+name: VibeSafe
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write # needed to post the PR comment
+
+jobs:
+  vibesafe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        # with:
+        #   fetch-depth: 0 # required when using deep: true
+
+      - uses: Talaljaber/Vibesafe@main # pin a release tag or commit SHA in real use
+        with:
+          path: "."
+          fail-on: blocker # blocker | danger | warning | none
+          comment: "true"
+          deep: "false"
+          version: 0.3.0 # first release that ships --format markdown (not yet published; 0.2.0 and older lack it)
+          github-token: ${{ github.token }}

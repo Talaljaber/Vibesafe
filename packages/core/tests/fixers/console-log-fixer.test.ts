@@ -80,6 +80,18 @@ describe("ConsoleLogFixer", () => {
     expect(await read()).toBe("a();\n// console.log(\n  // 'x',\n  // fn(1, ')')\n// );\nb();\n");
   });
 
+  it("fixes consecutive semicolon-less console.log lines", async () => {
+    await write("const x = 1\nconsole.log(a)\nconsole.log(b)\nexport {}\n");
+    expect((await fixer.apply(at(2), tempDir)).success).toBe(true);
+    expect((await fixer.apply(at(3), tempDir)).success).toBe(true);
+    expect(await read()).toBe("const x = 1\n// console.log(a)\n// console.log(b)\nexport {}\n");
+  });
+
+  it("still refuses a control statement separated by a comment line", async () => {
+    await write("if (x)\n// note\nconsole.log(a)\n");
+    expect((await fixer.apply(at(3), tempDir)).success).toBe(false);
+  });
+
   it("is idempotent", async () => {
     await write("a();\nconsole.log(a);\nb();\n");
     expect((await fixer.apply(at(2), tempDir)).success).toBe(true);

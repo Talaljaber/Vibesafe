@@ -18,6 +18,8 @@ const CATEGORIES = [
   "dependency",
   "code_quality",
   "structure",
+  "xss",
+  "security_config",
 ] as const;
 
 export const scanInputShape = {
@@ -85,8 +87,8 @@ export function registerScanTool(server: McpServer, state: ScanState, policy: Se
         // to stdout, which would corrupt the stdio JSON-RPC stream.
         result = await pipeline.scan({
           rootPath,
-          deep: deep ?? false,
-          includeTests: includeTests ?? false,
+          deep,
+          includeTests,
           minSeverity: minSeverity as Severity | undefined,
           enabledCategories: category ? ([category] as FindingCategory[]) : undefined,
         });

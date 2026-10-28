@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { CodebaseMessDetector } from "../../src/detectors/codebase-mess-detector";
-import type { ScanContext } from "@vibesafe/shared";
+import { ConsoleLogFixer } from "../../src/fixers/console-log-fixer";
+import type { Finding, ScanContext } from "@vibesafe/shared";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
 describe("CodebaseMessDetector", () => {
   const detector = new CodebaseMessDetector();
@@ -43,5 +47,37 @@ describe("CodebaseMessDetector", () => {
     });
     const findings = await detector.detect(context);
     expect(findings.some((f) => f.ruleId === "code_quality/console-log")).toBe(true);
+  });
+
+  it("ignores console.log lines that are already commented out", async () => {
+    const context = createContext({
+      "app/page.tsx": `// console.log("a");\n  /* console.log("b"); */\n/**\n * console.log("c")\n */\nconst z = 1;`,
+    });
+    const findings = await detector.detect(context);
+    expect(findings.some(f => f.ruleId === "code_quality/console-log")).toBe(false);
+  });
+
+  it("still flags live code that follows a leading block comment", async () => {
+    const context = createContext({
+      "app/page.tsx": `/* tmp */ console.log(user.token);\n/* a */ /* b */ console.log(2);`,
+    });
+    const findings = await detector.detect(context);
+    expect(findings.filter(f => f.ruleId === "code_quality/console-log").map(f => f.line)).toEqual([1, 2]);
+  });
+
+  it("does not re-flag lines rewritten by ConsoleLogFixer", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "vibesafe-mess-"));
+    try {
+      await fs.writeFile(path.join(dir, "index.js"), "const a = 1;\nconsole.log(a);\n");
+      const finding = { ruleId: "code_quality/console-log", file: "index.js", line: 2 } as Finding;
+      const res = await new ConsoleLogFixer().apply(finding, dir);
+      expect(res.success).toBe(true);
+      const src = await fs.readFile(path.join(dir, "index.js"), "utf-8");
+      expect(src).toContain("// console.log(a)");
+      const findings = await detector.detect(createContext({ "index.js": src }));
+      expect(findings.some(f => f.ruleId === "code_quality/console-log")).toBe(false);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
   });
 });

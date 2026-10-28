@@ -88,10 +88,11 @@ npx vibesafe scan .
 - `npx @vibesafe/cli scan . --deep` - Also scans git history for leaked secrets (slower).
 - `npx @vibesafe/cli scan . --include-tests` - Also scans test files and fixtures, which are excluded by default.
 - `npx @vibesafe/cli scan . --no-config` / `--trust-config` - Ignore the config file, or allow script configs (`.ts` / `.js`) to run. See Configuration below.
+- `npx @vibesafe/cli scan . -i` - After the scan, offers to walk through the findings one by one (apply the safe auto-fix, skip, or quit). Needs an interactive terminal; the scan's exit code is preserved.
 - `npx @vibesafe/cli watch .` - Scans once, then re-scans on every file change and prints what is new or resolved (`--json` emits NDJSON events).
 - `npx @vibesafe/cli fix <finding-id> .` - Previews and applies a safe auto-fix for one finding (`--yes` skips the confirmation).
 - `npx @vibesafe/cli fix --all .` - Previews and applies every available auto-fix after a single confirmation.
-- `npx @vibesafe/cli fix --interactive .` - Walks through the repair plan step by step (apply, skip or quit). `scan -i` offers the same walkthrough after a scan.
+- `npx @vibesafe/cli fix -i [dir]` - Scans, then runs the same interactive fix wizard (no `--deep` or `--include-tests` flags; it takes those from the config file described below, or use `scan -i`).
 - `npx @vibesafe/cli --help` - Shows all available options and commands.
 
 The CLI exits with a non-zero code when the deploy status is a blocker or danger, so it can gate CI.
@@ -259,7 +260,53 @@ Prefer working entirely within your editor? Install the **VibeSafe** extension!
 
 ---
 
-## ⚠️ Known Limitations
+## ⚙️ Configuration File
+
+Create `.vibesafe.config.json` (or `vibesafe.config.json`) in the project root. It is plain JSON and is never executed.
+
+> **Security:** `.ts/.mts/.js/.mjs/.cjs` configs run code from the scanned directory (loaded with [jiti](https://github.com/unjs/jiti)). Because VibeSafe is meant to scan untrusted repos, they are **ignored by default** (a warning is added to the scan). Opt in only for projects you trust: `vibesafe scan --trust-config` or `trustConfigScripts: true` in the API. The MCP server and VS Code extension never run script configs. A config file can also hide findings, so every scan that applies one reports it, and how many findings it suppressed, in the scan warnings.
+
+```json
+{
+  "rules": { "code_quality/*": "off", "secret/hardcoded-api-key": "high" },
+  "disabledDetectors": ["git-history"],
+  "categories": ["secret", "auth"],
+  "exclude": ["legacy/**"],
+  "includeTests": false,
+  "minSeverity": "medium",
+  "deep": false
+}
+```
+
+TypeScript variant (`.vibesafe.config.ts`, only loaded with `--trust-config`):
+
+```ts
+import { defineConfig } from "@vibesafe/core";
+
+export default defineConfig({
+  rules: { "code_quality/*": "off", "secret/hardcoded-api-key": "high" }, // "off" or a severity; "*" globs allowed
+  disabledDetectors: ["git-history"],
+  categories: ["secret", "auth"], // omit for all
+  exclude: ["legacy/**"],
+  includeTests: false,
+  minSeverity: "medium",
+  deep: false,
+});
+```
+
+Explicit CLI flags / API options always win over file values (`--deep` / `--no-deep`, `--include-tests` / `--no-include-tests`); `--no-config` ignores the file entirely.
+
+The config file applies to every command that scans, and they all accept `--no-config` / `--trust-config`:
+
+| Command | Config handling |
+| --- | --- |
+| `vibesafe scan` (incl. `--format json\|sarif\|markdown`, `--output`, `-i`) | Full config. Flags: `--deep` / `--no-deep`, `--include-tests` / `--no-include-tests`. `scan -i` hands the same flags to the fix wizard. |
+| `vibesafe fix <id>`, `fix --all`, `fix -i` | Full config, for both the scan that finds the fixes and the rescan after them, so the findings offered match what `scan` reports. |
+| `vibesafe watch` | Full config, re-read on every rescan, plus `--include-tests` / `--no-include-tests`. Git history is never scanned in watch mode, so `deep` is ignored. |
+
+Config warnings (applied config file, suppressed findings, ignored script configs) go to stderr in machine-output modes (`--json`, `--format`, `--output`), so stdout stays a clean report; `watch --json` carries them in a `warnings` field on its `ready` and `change` events. `exclude` and `categories` in the file replace the defaults rather than extending them. An exact rule id beats a glob; among globs the longest wins. Rule overrides run after detection, so severity changes are re-sorted and re-scored. API users can skip the file with `useConfigFile: false`.
+
+## ⚠️ Known Limitations (v0.1)
 
 VibeSafe is in early release and is meant to catch the most common "vibe-coding" mistakes. Please be aware of the following:
 
