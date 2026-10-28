@@ -26,6 +26,7 @@ export const SCANNABLE_EXTENSIONS = [
   ".mjs",
   ".cjs",
   ".json",
+  ".sql",
 ] as const;
 
 /** File name patterns that are always included regardless of extension. */
