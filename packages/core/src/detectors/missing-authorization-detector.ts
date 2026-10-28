@@ -6,6 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
+import { CATEGORY_PREFIX } from "@vibesafe/shared";
 import { isApiRoute, hasAuthCheck } from "./utils/route-analyzer.js";
 import crypto from "crypto";
 
@@ -55,7 +56,7 @@ export class MissingAuthorizationDetector implements Detector {
 
         if (!hasAuthzCheck) {
           findings.push({
-            id: `AUTHZ-${crypto.randomBytes(3).toString("hex")}`,
+            id: `${CATEGORY_PREFIX.authorization}-${crypto.randomBytes(3).toString("hex")}`,
             ruleId: "authorization/missing-role-check",
             title: "Admin route missing role check",
             severity: "high",

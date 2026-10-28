@@ -37,7 +37,7 @@ export type DeployStatus = "safe" | "warning" | "danger" | "blocker";
  * aiFixPrompt) are what make VibeSafe different from a raw scanner.
  */
 export interface Finding {
-  /** Unique ID for this finding instance (e.g., "SEC-001-a1b2c3"). */
+  /** Unique ID for this finding instance (e.g., "SEC-1a2b3c"). */
   id: string;
 
   /** Rule that produced this finding (e.g., "secret/hardcoded-api-key"). */

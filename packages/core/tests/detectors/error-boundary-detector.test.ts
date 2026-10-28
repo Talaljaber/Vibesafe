@@ -25,7 +25,7 @@ describe("ErrorBoundaryDetector", () => {
     const findings = await detector.detect(context);
 
     expect(findings).toHaveLength(1);
-    expect(findings[0].ruleId).toBe("react/missing-error-boundary");
+    expect(findings[0].ruleId).toBe("structure/missing-error-boundary");
   });
 
   it("should not report when ErrorBoundary exists", async () => {
@@ -88,6 +88,6 @@ describe("ErrorBoundaryDetector", () => {
     const findings = await detector.detect(context);
 
     expect(findings).toHaveLength(1);
-    expect(findings[0].ruleId).toBe("react/missing-error-boundary");
+    expect(findings[0].ruleId).toBe("structure/missing-error-boundary");
   });
 });

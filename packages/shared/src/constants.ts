@@ -71,13 +71,13 @@ export const ALWAYS_EXCLUDED_DIRS = [
 
 /**
  * Category-to-prefix mapping for finding IDs.
- * e.g., a secret finding gets ID "SEC-001-a1b2"
+ * e.g., a secret finding gets ID "SEC-1a2b3c"
  */
 export const CATEGORY_PREFIX: Record<FindingCategory, string> = {
   secret: "SEC",
   auth: "AUTH",
   authorization: "AUTHZ",
-  frontend_exposure: "EXPO",
+  frontend_exposure: "FE",
   validation: "VAL",
   dependency: "DEP",
   code_quality: "QUAL",

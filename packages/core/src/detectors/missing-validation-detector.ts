@@ -1,4 +1,5 @@
 import { type Detector, type Finding, type ScanContext } from "@vibesafe/shared";
+import { CATEGORY_PREFIX } from "@vibesafe/shared";
 import { isApiRoute } from "./utils/route-analyzer.js";
 import { VALIDATION_LIB_IMPORTS, VALIDATION_METHOD_CALLS } from "./patterns/validation-patterns.js";
 import crypto from "crypto";
@@ -28,7 +29,7 @@ export class MissingValidationDetector implements Detector {
 
         if (!hasValidationImport && !hasValidationCall) {
           findings.push({
-            id: `VAL-${crypto.randomBytes(3).toString("hex")}`,
+            id: `${CATEGORY_PREFIX.validation}-${crypto.randomBytes(3).toString("hex")}`,
             ruleId: "validation/missing-body-validation",
             title: "Unvalidated Request Body",
             severity: "high",

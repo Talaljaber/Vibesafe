@@ -6,6 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
+import { CATEGORY_PREFIX } from "@vibesafe/shared";
 import crypto from "crypto";
 
 const MAX_FILE_LINES = 500;
@@ -33,7 +34,7 @@ export class CodebaseMessDetector implements Detector {
       // 1. File size checks
       if (lines.length > MAX_FILE_LINES) {
         findings.push({
-          id: `QUAL-${crypto.randomBytes(3).toString("hex")}`,
+          id: `${CATEGORY_PREFIX.code_quality}-${crypto.randomBytes(3).toString("hex")}`,
           ruleId: "code_quality/huge-file",
           title: "Huge file detected",
           severity: "low",
@@ -67,7 +68,7 @@ export class CodebaseMessDetector implements Detector {
         // 2. Empty catch blocks
         if (line.includes("catch") && line.includes("{}") || (line.includes("catch") && lines[i+1]?.trim() === "}")) {
           findings.push({
-            id: `QUAL-${crypto.randomBytes(3).toString("hex")}`,
+            id: `${CATEGORY_PREFIX.code_quality}-${crypto.randomBytes(3).toString("hex")}`,
             ruleId: "code_quality/empty-catch",
             title: "Empty catch block",
             severity: "medium",
@@ -91,7 +92,7 @@ export class CodebaseMessDetector implements Detector {
         // 3. console.log leftovers
         if (line.includes("console.log(")) {
           findings.push({
-            id: `QUAL-${crypto.randomBytes(3).toString("hex")}`,
+            id: `${CATEGORY_PREFIX.code_quality}-${crypto.randomBytes(3).toString("hex")}`,
             ruleId: "code_quality/console-log",
             title: "Leftover console.log",
             severity: "low",
@@ -113,7 +114,7 @@ export class CodebaseMessDetector implements Detector {
     // Flag if there are too many 'any's globally (arbitrary threshold for demo: 20)
     if (totalAnyCount > 20) {
       findings.push({
-        id: `QUAL-${crypto.randomBytes(3).toString("hex")}`,
+        id: `${CATEGORY_PREFIX.code_quality}-${crypto.randomBytes(3).toString("hex")}`,
         ruleId: "code_quality/excessive-any",
         title: "Excessive use of 'any' types",
         severity: "medium",

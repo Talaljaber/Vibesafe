@@ -1,4 +1,5 @@
 import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
+import { CATEGORY_PREFIX } from "@vibesafe/shared";
 import crypto from "crypto";
 
 const SCANNABLE_SUFFIXES = [".tsx", ".jsx", ".js", ".mjs", ".cjs"] as const;
@@ -41,7 +42,7 @@ export class DangerousHtmlDetector implements Detector {
 
   private createFinding(filePath: string, line: number, evidence: string): Finding {
     return {
-      id: `XSS-${crypto.randomBytes(3).toString("hex")}`,
+      id: `${CATEGORY_PREFIX.xss}-${crypto.randomBytes(3).toString("hex")}`,
       ruleId: "xss/dangerously-set-inner-html",
       title: "dangerouslySetInnerHTML usage",
       severity: "high",
