@@ -1,6 +1,14 @@
 import { type Detector, type Finding, type ScanContext } from "@vibesafe/shared";
 import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
-import { isApiRoute, hasRiskyHttpMethods, hasAuthCheck, isRiskyRoutePattern } from "./utils/route-analyzer.js";
+import {
+  isApiRoute,
+  findHandlerLine,
+  findAnyHandlerLine,
+  hasAuthCheck,
+  isRiskyRoutePattern,
+  middlewareProtectsApi,
+} from "./utils/route-analyzer.js";
+import { RISKY_HTTP_METHODS } from "./patterns/auth-patterns.js";
 
 export class MissingAuthDetector implements Detector {
   id = "missing-auth-detector";
@@ -10,6 +18,7 @@ export class MissingAuthDetector implements Detector {
 
   async detect(context: ScanContext): Promise<Finding[]> {
     const findings: Finding[] = [];
+    const protectedByMiddleware = await middlewareProtectsApi(context.files, (f) => context.readFile(f));
 
     for (const filePath of context.files) {
       if (!isApiRoute(filePath)) {
@@ -18,20 +27,27 @@ export class MissingAuthDetector implements Detector {
 
       const content = await context.readFile(filePath);
 
-      const isMutatingRoute = hasRiskyHttpMethods(content);
+      const riskyLine = findHandlerLine(content, RISKY_HTTP_METHODS);
+      const isMutatingRoute = riskyLine !== undefined;
       const isSensitivePath = isRiskyRoutePattern(filePath);
 
+      // Severity: sensitive path + mutating method -> critical (deploy blocking);
+      // sensitive path with only read handlers, or a mutating non-sensitive route -> high.
+      const critical = isSensitivePath && isMutatingRoute;
+
       if (isMutatingRoute || isSensitivePath) {
-        if (!hasAuthCheck(content)) {
+        if (!hasAuthCheck(content) && !protectedByMiddleware) {
+          const line = riskyLine ?? findAnyHandlerLine(content) ?? 1;
           findings.push({
-            id: createFindingId(CATEGORY_PREFIX.auth, "auth/missing-route-auth", filePath),
+            id: createFindingId(CATEGORY_PREFIX.auth, "auth/missing-route-auth", filePath, line),
             ruleId: "auth/missing-route-auth",
             title: "Missing authentication in API Route",
-            severity: isSensitivePath ? "critical" : "high",
+            severity: critical ? "critical" : "high",
             category: "auth",
-            deployBlocking: isSensitivePath,
-            confidence: "medium", 
+            deployBlocking: critical,
+            confidence: "medium",
             file: filePath,
+            line,
             plainEnglishProblem: "This API route appears to modify data or access sensitive info, but we couldn't find any code verifying who the user is.",
             whyItMatters: "Without an auth check, anyone on the internet can call this API directly and modify your database or view private data.",
             fixSteps: [
