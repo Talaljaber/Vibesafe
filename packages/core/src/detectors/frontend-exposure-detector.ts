@@ -16,9 +16,9 @@ const SECRET_LOOKING_NAME = /SERVICE_ROLE|SECRET|PRIVATE|PASSWORD|TOKEN|API_KEY|
 const SERVICE_ROLE_REGEX = /SERVICE_ROLE_KEY|service_role/;
 /** firebase-admin (or a subpath) pulled in via import/require/dynamic import; `import type` is erased at build time. */
 const FIREBASE_ADMIN_REGEX =
-  /(?:from\s*|require\s*\(\s*|import\s*\(?\s*)["']firebase-admin(?:\/[^"']*)?["']/;
-const FIREBASE_ADMIN_TYPE_ONLY = /^\s*import\s+type/;
-const SERVICE_ACCOUNT_JSON_REGEX = /(?:service[-_.]?account|firebase[-_.]?adminsdk)[^"'/\]*\.json$/i;
+  /(?:\bfrom\s*|\brequire\s*\(\s*|\bimport\s*\(?\s*)["']firebase-admin(?:\/[^"']*)?["']/;
+const FIREBASE_ADMIN_TYPE_ONLY = /^\s*import\s+type\b/;
+const SERVICE_ACCOUNT_JSON_REGEX = /(?:service[-_.]?account|firebase[-_.]?adminsdk)[^"'/\\]*\.json$/i;
 const IMPORT_REGEX = /(?:import|export)\s[^"';]*?from\s*["']([^"']+)["']|import\s*["']([^"']+)["']/g;
 
 /** Removes block and line comments, keeping line structure so line numbers stay valid. */

@@ -25,7 +25,7 @@ export function hasUseClientDirective(fileContent: string): boolean {
 
 /** True when the file starts with a `"use server"` directive (after comments/blank lines). */
 export function hasUseServerDirective(fileContent: string): boolean {
-  return /^(["'])use server/.test(stripLeadingComments(fileContent));
+  return /^(["'])use server\1/.test(stripLeadingComments(fileContent));
 }
 
 /**

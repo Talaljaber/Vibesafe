@@ -213,4 +213,47 @@ describe("FrontendExposureDetector", () => {
     const findings = await detector.detect(context);
     expect(findings).toHaveLength(0);
   });
+
+  it("flags a client file that imports a module using firebase-admin", async () => {
+    const findings = await detector.detect(
+      createContext({
+        "app/page.tsx": `"use client";\nimport { adminDb } from "../lib/admin";\n`,
+        "lib/admin.ts": `import { getFirestore } from "firebase-admin/firestore";\nexport const adminDb = getFirestore();\n`,
+      }),
+    );
+    const hits = findings.filter((f) => f.ruleId === "frontend_exposure/firebase-admin");
+    expect(hits).toHaveLength(1);
+    expect(hits[0]?.file).toBe("app/page.tsx");
+    expect(hits[0]?.line).toBe(2);
+    expect(hits[0]?.severity).toBe("critical");
+    expect(hits[0]?.id).toMatch(/^FE-/);
+  });
+
+  it("flags a service account JSON imported from client code", async () => {
+    const findings = await detector.detect(
+      createContext({
+        "app/page.tsx": `"use client";\nimport sa from "../serviceAccountKey.json";\n`,
+      }),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.ruleId).toBe("frontend_exposure/firebase-admin");
+    expect(findings[0]?.deployBlocking).toBe(true);
+  });
+
+  it("does not flag firebase-admin in a src/pages/api route or a client-side firebase import", async () => {
+    const findings = await detector.detect(
+      createContext({
+        "src/pages/api/x.ts": `const admin = require("firebase-admin");\n`,
+        "app/page.tsx": `"use client";\nimport { initializeApp } from "firebase/app";\n`,
+      }),
+    );
+    expect(findings).toHaveLength(0);
+  });
+
+  it("flags firebase-admin in a src/pages file", async () => {
+    const findings = await detector.detect(
+      createContext({ "src/pages/index.tsx": `import admin from "firebase-admin";\n` }),
+    );
+    expect(findings).toHaveLength(1);
+  });
 });
