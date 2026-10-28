@@ -1,4 +1,4 @@
-import type * as vscode from "vscode";
+import * as vscode from "vscode";
 import type { ScanResult } from "@vibesafe/shared";
 
 export class VibeSafeDeployStatusProvider implements vscode.WebviewViewProvider {
@@ -17,7 +17,7 @@ export class VibeSafeDeployStatusProvider implements vscode.WebviewViewProvider 
 
     webviewView.webview.options = {
       enableScripts: true,
-      localResourceRoots: [this._extensionUri],
+      localResourceRoots: [vscode.Uri.joinPath(this._extensionUri, "media")],
     };
 
     webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
