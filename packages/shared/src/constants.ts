@@ -45,27 +45,72 @@ export const SCANNABLE_FILENAMES = [
 ] as const;
 
 /**
- * Directories always excluded from scanning.
- * Never scan these — includes node_modules, build outputs, VCS, and caches.
+ * Directories excluded at ANY depth (dependency, VCS and tool-cache dirs whose
+ * names are unambiguous).
  */
-export const ALWAYS_EXCLUDED_DIRS = [
+export const ALWAYS_EXCLUDED_ANYWHERE_DIRS = [
   "node_modules",
   ".git",
   ".svn",
-  "dist",
-  "build",
-  "out",
   ".next",
   ".nuxt",
   ".turbo",
   ".vercel",
-  "coverage",
   ".nyc_output",
   "storybook-static",
   ".cache",
+] as const;
+
+/**
+ * Generic build-output directory names. These are only excluded at the project
+ * root or at a workspace-package root (see WORKSPACE_PACKAGE_CONTAINERS), so a
+ * source folder such as `src/lib/build/` or `src/out/` is still scanned.
+ */
+export const ROOT_ANCHORED_EXCLUDED_DIRS = [
+  "dist",
+  "build",
+  "out",
+  "coverage",
   "tmp",
   "temp",
 ] as const;
+
+/** Directories whose immediate children are workspace packages. */
+export const WORKSPACE_PACKAGE_CONTAINERS = [
+  "packages",
+  "apps",
+  "libs",
+  "services",
+  "examples",
+] as const;
+
+/**
+ * Every directory name treated as excluded somewhere (union of the two lists
+ * above). Prefer buildExcludedDirGlobs() for the scoping rules.
+ */
+export const ALWAYS_EXCLUDED_DIRS = [
+  ...ALWAYS_EXCLUDED_ANYWHERE_DIRS,
+  ...ROOT_ANCHORED_EXCLUDED_DIRS,
+] as const;
+
+/**
+ * Glob patterns (gitignore/fast-glob compatible) for the default directory
+ * exclusions: dependency/VCS dirs at any depth, build-ish dirs only at the
+ * root or a workspace-package root.
+ */
+export function buildExcludedDirGlobs(): string[] {
+  const globs: string[] = [];
+  for (const dir of ALWAYS_EXCLUDED_ANYWHERE_DIRS) globs.push(`**/${dir}/**`);
+  const containers = `{${WORKSPACE_PACKAGE_CONTAINERS.join(",")}}`;
+  for (const dir of ROOT_ANCHORED_EXCLUDED_DIRS) {
+    globs.push(`${dir}/**`);
+    globs.push(`${containers}/*/${dir}/**`);
+  }
+  return globs;
+}
+
+/** Files larger than this are skipped by the scanner (with a warning). */
+export const MAX_FILE_SIZE_BYTES = 1_000_000;
 
 // ─── Finding ID Prefixes ──────────────────────────────────────────────────────
 

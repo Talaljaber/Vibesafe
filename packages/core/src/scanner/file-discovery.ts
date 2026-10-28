@@ -2,80 +2,104 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import fg from "fast-glob";
 import ignore from "ignore";
-import { ALWAYS_EXCLUDED_DIRS, SCANNABLE_EXTENSIONS, SCANNABLE_FILENAMES } from "@vibesafe/shared";
+import { SCANNABLE_EXTENSIONS, SCANNABLE_FILENAMES, buildExcludedDirGlobs } from "@vibesafe/shared";
+
+type Ignore = ReturnType<typeof ignore>;
+
+function createIgnore(): Ignore {
+  // The ignore package's default export might need to be called directly
+  // @ts-ignore - ignore package typings can be weird with esm
+  return typeof ignore === "function" ? ignore() : ignore.default();
+}
 
 export class FileDiscovery {
   private rootPath: string;
-  private ig: ReturnType<typeof ignore>;
 
   constructor(rootPath: string) {
     this.rootPath = rootPath;
-    // The ignore package's default export might need to be called directly
-    // @ts-ignore - ignore package typings can be weird with esm
-    this.ig = typeof ignore === "function" ? ignore() : ignore.default();
   }
 
   /**
-   * Discovers all scannable files in the rootPath, respecting .gitignore and
-   * additional exclude patterns.
+   * Discovers all scannable files in the rootPath, respecting .gitignore files
+   * (root and nested, each scoped to its own directory) and additional exclude
+   * patterns. Symbolic links are never followed or returned.
    */
   async discoverFiles(additionalExcludes: string[] = []): Promise<string[]> {
-    // 1. Parse .gitignore if it exists
-    await this.loadGitignore();
+    const defaultExcludes = buildExcludedDirGlobs();
 
-    // 2. Add custom ignores and always-excluded dirs
-    this.ig.add(additionalExcludes);
-    
-    // Add always excluded dirs to the ignore instance
-    this.ig.add(ALWAYS_EXCLUDED_DIRS.map(dir => `${dir}/**`));
-    this.ig.add(ALWAYS_EXCLUDED_DIRS.map(dir => `**/${dir}/**`));
+    // 1. Load every .gitignore, scoped to the directory that contains it.
+    const scopedIgnores = await this.loadGitignores(defaultExcludes);
 
-    // 3. Glob all files
-    // We use a broad glob and let fast-glob do some initial filtering for speed,
-    // then apply our stricter `ignore` rules and extension matching.
-    const globPattern = "**/*";
+    // 2. Custom excludes + default directory exclusions (relative to root)
+    const rootIg = createIgnore();
+    rootIg.add(additionalExcludes);
+    rootIg.add(defaultExcludes);
 
-    const allFiles = await fg([globPattern], {
+    // 3. Glob all files. Symlinks are not followed; symlink entries themselves
+    // are dropped below.
+    const entries = await fg(["**/*"], {
       cwd: this.rootPath,
       dot: true,
       onlyFiles: true,
-      // Pass the top-level excluded dirs to fast-glob to save traversing them
-      ignore: ALWAYS_EXCLUDED_DIRS.map((dir) => `**/${dir}/**`),
+      followSymbolicLinks: false,
+      objectMode: true,
+      ignore: defaultExcludes,
     });
 
     // 4. Filter through `ignore` and extension checks
-    const filteredFiles = allFiles.filter((file) => {
-      // Check against gitignore rules
-      if (this.ig.ignores(file)) {
-        return false;
-      }
+    const files: string[] = [];
+    for (const entry of entries) {
+      const file = entry.path;
+      if (entry.dirent.isSymbolicLink()) continue;
+      if (rootIg.ignores(file)) continue;
+      if (this.isIgnoredByGitignore(file, scopedIgnores)) continue;
 
       const basename = path.basename(file);
       const ext = path.extname(file);
 
-      // Check if it's a specific scannable filename (e.g. .env)
-      if ((SCANNABLE_FILENAMES as readonly string[]).includes(basename)) {
-        return true;
+      if (
+        (SCANNABLE_FILENAMES as readonly string[]).includes(basename) ||
+        (SCANNABLE_EXTENSIONS as readonly string[]).includes(ext)
+      ) {
+        files.push(file);
       }
-
-      // Check if it has a scannable extension (e.g. .ts, .tsx)
-      if ((SCANNABLE_EXTENSIONS as readonly string[]).includes(ext)) {
-        return true;
-      }
-
-      return false;
-    });
-
-    return filteredFiles;
+    }
+    return files;
   }
 
-  private async loadGitignore(): Promise<void> {
-    const gitignorePath = path.join(this.rootPath, ".gitignore");
-    try {
-      const content = await fs.readFile(gitignorePath, "utf-8");
-      this.ig.add(content);
-    } catch {
-      // It's okay if .gitignore doesn't exist
+  /** Finds all .gitignore files (outside excluded dirs) and builds one `ignore` per directory. */
+  private async loadGitignores(defaultExcludes: string[]): Promise<Map<string, Ignore>> {
+    const result = new Map<string, Ignore>();
+    const gitignores = await fg(["**/.gitignore"], {
+      cwd: this.rootPath,
+      dot: true,
+      onlyFiles: true,
+      followSymbolicLinks: false,
+      ignore: defaultExcludes,
+    });
+
+    for (const rel of gitignores) {
+      try {
+        const content = await fs.readFile(path.join(this.rootPath, rel), "utf-8");
+        const dir = path.posix.dirname(rel); // "." for the root
+        result.set(dir === "." ? "" : dir, createIgnore().add(content));
+      } catch {
+        // Unreadable .gitignore: ignore it
+      }
     }
+    return result;
+  }
+
+  /** A file is ignored if any ancestor directory's .gitignore ignores its path relative to that directory. */
+  private isIgnoredByGitignore(file: string, scoped: Map<string, Ignore>): boolean {
+    const parts = file.split("/");
+    for (let i = 0; i < parts.length; i++) {
+      const dir = parts.slice(0, i).join("/");
+      const ig = scoped.get(dir);
+      if (!ig) continue;
+      const rel = parts.slice(i).join("/");
+      if (ig.ignores(rel)) return true;
+    }
+    return false;
   }
 }

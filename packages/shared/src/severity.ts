@@ -4,7 +4,7 @@
 // Helper functions and mappings for working with severity levels.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { DeployStatus, FindingCategory, Severity } from "./types.js";
+import type { DeployStatus, Finding, FindingCategory, Severity } from "./types.js";
 
 // ─── Severity Order ───────────────────────────────────────────────────────────
 
@@ -50,12 +50,18 @@ export const CATEGORY_MULTIPLIERS: Record<FindingCategory, number> = {
 
 // ─── Deploy Status Thresholds ────────────────────────────────────────────────
 
+/** A finding blocks deployment if it is critical or explicitly marked deployBlocking. */
+export function isDeployBlocker(finding: Pick<Finding, "severity" | "deployBlocking">): boolean {
+  return finding.severity === "critical" || finding.deployBlocking === true;
+}
+
 /**
  * Derive the human-readable deploy status from a score and whether any
- * findings are critical (which always triggers "blocker" regardless of score).
+ * finding is a deploy blocker (critical severity or `deployBlocking: true`),
+ * which always triggers "blocker" regardless of score.
  */
-export function getDeployStatus(score: number, hasCritical: boolean): DeployStatus {
-  if (hasCritical) return "blocker";
+export function getDeployStatus(score: number, hasBlocker: boolean): DeployStatus {
+  if (hasBlocker) return "blocker";
   if (score < 40) return "danger";
   if (score < 70) return "warning";
   return "safe";
