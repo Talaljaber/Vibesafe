@@ -10,6 +10,7 @@ import {
   CATEGORY_MULTIPLIERS,
 } from "@vibesafe/shared";
 import { FileDiscovery } from "./file-discovery.js";
+import { applyInlineIgnores } from "./inline-ignores.js";
 import { ProjectContextBuilder } from "./project-context.js";
 import type { DetectorRegistry } from "./detector-registry.js";
 import { mergeConfig } from "../config/defaults.js";
@@ -91,7 +92,7 @@ export class ScannerPipeline {
     let findings = runResult.findings;
 
     // 4.5. Apply inline ignores
-    findings = await this.applyInlineIgnores(findings, scanContext);
+    findings = await applyInlineIgnores(findings, scanContext.readFile);
 
     // 5. Score BEFORE the minSeverity filter. minSeverity only controls which
     // findings are displayed; filtering must not inflate the score or hide a
@@ -142,52 +143,6 @@ export class ScannerPipeline {
       errors: detectorErrors,
       ...(warnings.length > 0 ? { warnings } : {}),
     };
-  }
-
-  private async applyInlineIgnores(findings: Finding[], context: ScanContext): Promise<Finding[]> {
-    const validFindings: Finding[] = [];
-    const fileContents = new Map<string, string[]>();
-
-    for (const finding of findings) {
-      if (!finding.file || !finding.line) {
-        validFindings.push(finding);
-        continue;
-      }
-
-      if (!fileContents.has(finding.file)) {
-        const content = await context.readFile(finding.file);
-        fileContents.set(finding.file, content.split('\n'));
-      }
-      
-      const lines = fileContents.get(finding.file)!;
-      
-      // Check for file-level ignore
-      const hasFileIgnore = lines.some(l => l.includes('vibesafe-disable-file'));
-      if (hasFileIgnore) continue;
-
-      // Check for line-level ignore (previous line)
-      const prevLineIndex = finding.line - 2; // finding.line is 1-indexed
-      let hasLineIgnore = false;
-      
-      const prevLine = lines[prevLineIndex];
-      if (prevLine) {
-        hasLineIgnore = prevLine.includes('vibesafe-disable-next-line');
-      }
-
-      // Also check if the ignore is on the exact same line at the end
-      if (!hasLineIgnore) {
-         const currentLineIndex = finding.line - 1;
-         const currentLine = lines[currentLineIndex];
-         if (currentLine) {
-           hasLineIgnore = currentLine.includes('vibesafe-disable-line');
-         }
-      }
-
-      if (!hasLineIgnore) {
-        validFindings.push(finding);
-      }
-    }
-    return validFindings;
   }
 
   public calculateScore(findings: Finding[]): { score: number; deployStatus: ReturnType<typeof getDeployStatus> } {
