@@ -1,6 +1,6 @@
 {
   "name": "@vibesafe/mcp",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "The don't-deploy-that-yet tool for vibe-coded apps — MCP server",
   "license": "MIT",
   "type": "module",
