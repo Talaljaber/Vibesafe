@@ -46,6 +46,7 @@ export const CATEGORY_MULTIPLIERS: Record<FindingCategory, number> = {
   dependency: 0.8,
   code_quality: 0.5,
   structure: 0.3,
+  security_config: 1.0,
 };
 
 // ─── Deploy Status Thresholds ────────────────────────────────────────────────

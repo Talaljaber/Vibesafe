@@ -124,6 +124,7 @@ describe("constants", () => {
         "dependency",
         "code_quality",
         "structure",
+        "security_config",
       ] as const;
 
       for (const cat of categories) {

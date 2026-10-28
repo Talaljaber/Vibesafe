@@ -140,6 +140,7 @@ export const CATEGORY_PREFIX: Record<FindingCategory, string> = {
   code_quality: "QUAL",
   structure: "STRUCT",
   xss: "XSS",
+  security_config: "SECCFG",
 };
 
 // ─── Version ──────────────────────────────────────────────────────────────────
