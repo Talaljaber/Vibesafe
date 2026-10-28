@@ -109,6 +109,18 @@ export function buildExcludedDirGlobs(): string[] {
   return globs;
 }
 
+/**
+ * Test and fixture paths excluded by default (opt in with ScanConfig.includeTests).
+ * `fixtures/**` is anchored at the scan root.
+ */
+export const TEST_PATH_GLOBS = [
+  "**/tests/**",
+  "**/__tests__/**",
+  "**/*.test.*",
+  "**/*.spec.*",
+  "fixtures/**",
+] as const;
+
 /** Files larger than this are skipped by the scanner (with a warning). */
 export const MAX_FILE_SIZE_BYTES = 1_000_000;
 

@@ -217,6 +217,14 @@ export interface ScanConfig {
    * Defaults to false — a default scan spawns zero git processes.
    */
   deep?: boolean | undefined;
+
+  /**
+   * Include test and fixture paths (`**\/tests/**`, `**\/__tests__/**`,
+   * `*.test.*`, `*.spec.*`, `fixtures/**`) in the scan. Defaults to false:
+   * these paths are excluded because they hold intentionally fake secrets and
+   * mock routes.
+   */
+  includeTests?: boolean | undefined;
 }
 
 // ─── Repair Plan ─────────────────────────────────────────────────────────────

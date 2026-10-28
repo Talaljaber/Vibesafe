@@ -2,7 +2,12 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import fg from "fast-glob";
 import ignore from "ignore";
-import { SCANNABLE_EXTENSIONS, SCANNABLE_FILENAMES, buildExcludedDirGlobs } from "@vibesafe/shared";
+import {
+  SCANNABLE_EXTENSIONS,
+  SCANNABLE_FILENAMES,
+  TEST_PATH_GLOBS,
+  buildExcludedDirGlobs,
+} from "@vibesafe/shared";
 
 type Ignore = ReturnType<typeof ignore>;
 
@@ -24,8 +29,14 @@ export class FileDiscovery {
    * (root and nested, each scoped to its own directory) and additional exclude
    * patterns. Symbolic links are never followed or returned.
    */
-  async discoverFiles(additionalExcludes: string[] = []): Promise<string[]> {
+  async discoverFiles(
+    additionalExcludes: string[] = [],
+    options: { includeTests?: boolean | undefined } = {},
+  ): Promise<string[]> {
     const defaultExcludes = buildExcludedDirGlobs();
+    // Test/fixture paths are excluded unless the caller opts in. Patterns are
+    // relative to rootPath, so scanning a fixtures directory directly still works.
+    const testExcludes = options.includeTests ? [] : [...TEST_PATH_GLOBS];
 
     // 1. Load every .gitignore, scoped to the directory that contains it.
     const scopedIgnores = await this.loadGitignores(defaultExcludes);
@@ -34,6 +45,7 @@ export class FileDiscovery {
     const rootIg = createIgnore();
     rootIg.add(additionalExcludes);
     rootIg.add(defaultExcludes);
+    rootIg.add(testExcludes);
 
     // 3. Glob all files. Symlinks are not followed; symlink entries themselves
     // are dropped below.
@@ -43,7 +55,7 @@ export class FileDiscovery {
       onlyFiles: true,
       followSymbolicLinks: false,
       objectMode: true,
-      ignore: defaultExcludes,
+      ignore: [...defaultExcludes, ...testExcludes],
     });
 
     // 4. Filter through `ignore` and extension checks
