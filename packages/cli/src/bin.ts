@@ -3,6 +3,7 @@ import { Command } from "commander";
 import { printBanner } from "./ui/banner.js";
 import { runScan } from "./commands/scan.js";
 import { runFix } from "./commands/fix.js";
+import { runFixWizard } from "./commands/fix-wizard.js";
 import { createRequire } from "node:module";
 
 // Real CLI version; both dist/bin.js and src/bin.ts sit one level below package.json.
@@ -26,7 +27,7 @@ program
   .command("scan")
   .description("Scan a directory for vibe-coding security and quality issues")
   .argument("[dir]", "Directory to scan", ".")
-  .option("-i, --interactive", "Prompt for confirmation before scanning", false)
+  .option("-i, --interactive", "After the scan, offer to walk through the fixes interactively", false)
   .option("--html", "Generate HTML report", false)
   .option("--open-report", "Automatically open the HTML report after scan", false)
   .option("-j, --json", "Output pure JSON without console formatting", false)
@@ -38,12 +39,23 @@ program
 
 program
   .command("fix")
-  .description("Automatically apply a safe fix for a specific finding or rule ID")
-  .argument("<finding-id>", "The ID of the finding or rule to fix")
+  .description("Apply a safe fix for a finding or rule ID, or walk through all fixes with --interactive")
+  .argument("[finding-id]", "The ID of the finding or rule to fix (with --interactive, this is the directory)")
   .argument("[dir]", "Directory to run the fix in", ".")
   .option("-y, --yes", "Skip confirmation (needs an exact finding id or a single match)", false)
-  .action(async (findingId, dir, options) => {
-    await runFix(findingId, dir, { yes: Boolean(options.yes) });
+  .option("-i, --interactive", "Walk through the repair plan step by step", false)
+  .action(async (first, second, options) => {
+    if (options.interactive) {
+      // In wizard mode the only positional is the directory.
+      await runFixWizard(first ?? second);
+      return;
+    }
+    if (!first) {
+      console.error("error: missing required argument 'finding-id' (or use --interactive)");
+      process.exitCode = 1;
+      return;
+    }
+    await runFix(first, second, { yes: Boolean(options.yes) });
   });
 
 program.parse(process.argv);
