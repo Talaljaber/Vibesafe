@@ -156,6 +156,8 @@ describe("runFixAll", () => {
     expect(out).not.toContain("\r");
     expect(out).toContain("spoofed");
     expect(sanitizeTerminal("a\u001b[31mb\u001b]0;title\u0007c\u009bd\te\nf")).toBe("abcd\te\nf");
+    expect(sanitizeTerminal("It\u2019s\u2026 \u20ac5 \u00a92026 \u2122 \u00a0x")).toBe("It\u2019s\u2026 \u20ac5 \u00a92026 \u2122 \u00a0x");
+    expect(sanitizeTerminal("a\u2028b\u2029c")).toBe("abc");
   });
 
   it("a failing or throwing fix does not stop the rest, and is counted as failed", async () => {
