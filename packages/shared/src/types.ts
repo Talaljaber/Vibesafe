@@ -21,6 +21,7 @@ export type FindingCategory =
   | "code_quality"
   | "structure"
   | "xss"
+  /** Web/framework security configuration: CORS, security headers, rate limiting, framework settings. */
   | "security_config";
 
 /** How confident is the detector in this finding? */
