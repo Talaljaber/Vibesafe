@@ -97,7 +97,8 @@ export class CodebaseMessDetector implements Detector {
         if (!line) continue;
 
         // 3. console.log leftovers
-        if (line.includes("console.log(")) {
+        // Skip lines that are already commented out (e.g. by the console-log auto-fix).
+        if (line.includes("console.log(") && !/^\s*(\/\/|\/\*|\*)/.test(line)) {
           findings.push({
             id: createFindingId(CATEGORY_PREFIX.code_quality, "code_quality/console-log", filePath, i + 1),
             ruleId: "code_quality/console-log",

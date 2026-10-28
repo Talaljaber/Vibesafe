@@ -44,4 +44,12 @@ describe("CodebaseMessDetector", () => {
     const findings = await detector.detect(context);
     expect(findings.some(f => f.ruleId === "code_quality/console-log")).toBe(true);
   });
+
+  it("ignores console.log lines that are already commented out", async () => {
+    const context = createContext({
+      "app/page.tsx": `// console.log("a");\n  /* console.log("b"); */\n * console.log("c")`,
+    });
+    const findings = await detector.detect(context);
+    expect(findings.some(f => f.ruleId === "code_quality/console-log")).toBe(false);
+  });
 });

@@ -3,6 +3,7 @@ import { Command } from "commander";
 import { printBanner } from "./ui/banner.js";
 import { runScan } from "./commands/scan.js";
 import { runFix } from "./commands/fix.js";
+import { runFixAllCommand } from "./commands/fix-all.js";
 import { createRequire } from "node:module";
 
 // Real CLI version; both dist/bin.js and src/bin.ts sit one level below package.json.
@@ -38,11 +39,22 @@ program
 
 program
   .command("fix")
-  .description("Automatically apply a safe fix for a specific finding or rule ID")
-  .argument("<finding-id>", "The ID of the finding or rule to fix")
+  .description("Automatically apply a safe fix for a finding or rule ID, or for all auto-fixable findings with --all")
+  .argument("[finding-id]", "The ID of the finding or rule to fix (omit with --all)")
   .argument("[dir]", "Directory to run the fix in", ".")
-  .option("-y, --yes", "Skip confirmation (needs an exact finding id or a single match)", false)
-  .action(async (findingId, dir, options) => {
+  .option("-a, --all", "Preview and apply every auto-fixable finding with a single confirmation", false)
+  .option("-y, --yes", "Skip confirmation (single fix: needs an exact finding id or a single match)", false)
+  .action(async (findingId: string | undefined, dir: string, options) => {
+    if (options.all) {
+      // With --all there is no finding id, so `vibesafe fix --all ./app` puts the dir in the first positional.
+      await runFixAllCommand(dir !== "." ? dir : (findingId ?? "."), { yes: Boolean(options.yes) });
+      return;
+    }
+    if (!findingId) {
+      console.error("error: missing required argument 'finding-id' (or use --all)");
+      process.exitCode = 1;
+      return;
+    }
     await runFix(findingId, dir, { yes: Boolean(options.yes) });
   });
 
