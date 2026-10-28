@@ -67,6 +67,7 @@ export const ALWAYS_EXCLUDED_ANYWHERE_DIRS = [
   ".tox",
   ".mypy_cache",
   ".pytest_cache",
+  ".eggs",
 ] as const;
 
 /**
@@ -126,6 +127,10 @@ export const TEST_PATH_GLOBS = [
   "**/__tests__/**",
   "**/*.test.*",
   "**/*.spec.*",
+  "**/test/**",
+  "**/test_*.py",
+  "**/*_test.py",
+  "**/conftest.py",
   "fixtures/**",
 ] as const;
 

@@ -7,8 +7,11 @@ interface DjangoRule {
   category: FindingCategory;
   title: string;
   severity: Severity;
+  /** Severity used instead when the file is a dev-only settings module. */
+  devSeverity?: Severity;
   /** Settings rules only run in settings modules; view rules run in any .py file. */
   scope: "settings" | "any";
+  /** Matched against the logical statement (bracketed continuation lines joined). */
   regex: RegExp;
   problem: string;
   why: string;
@@ -16,15 +19,23 @@ interface DjangoRule {
   aiFixPrompt: string;
 }
 
+/*
+ * Known limits (line/statement based, no real Python parser):
+ *  - Only bracket continuation is joined; backslash continuation is not.
+ *  - Values built by concatenation, helper functions or other variables are not followed.
+ *  - Multi-line triple-quoted SECRET_KEY values are only checked on their first line.
+ *  - Settings split across modules via `from .base import *` are scanned per file.
+ */
 const RULES: DjangoRule[] = [
   {
     id: "security_config/django-debug-true",
     category: "security_config",
     title: "Django DEBUG is enabled",
     severity: "high",
+    devSeverity: "low",
     scope: "settings",
-    regex: /^\s*DEBUG\s*=\s*True\b/,
-    problem: "DEBUG = True is hardcoded in your Django settings.",
+    regex: /^\s*DEBUG\s*=\s*(?:True\b|[\w.]+\((?=[^)]*(?:,\s*|default\s*=\s*)True\b))/,
+    problem: "DEBUG = True is hardcoded (or is the default) in your Django settings.",
     why: "With DEBUG on, Django shows detailed error pages with settings, environment details and source code to anyone who triggers an error.",
     fixSteps: [
       "Read DEBUG from an environment variable, defaulting to False.",
@@ -40,7 +51,7 @@ const RULES: DjangoRule[] = [
     title: "Django ALLOWED_HOSTS allows every host",
     severity: "medium",
     scope: "settings",
-    regex: /^\s*ALLOWED_HOSTS\s*=\s*[[(][^\])]*['"]\*['"][^\])]*[\])]/,
+    regex: /^\s*ALLOWED_HOSTS\s*\+?=\s*[[(][^\])]*['"]\*['"][^\])]*[\])]/,
     problem: 'ALLOWED_HOSTS contains "*", so Django accepts requests for any Host header.',
     why: "A wildcard disables Django's Host header validation, which enables host header poisoning (for example forged password reset links).",
     fixSteps: [
@@ -89,7 +100,7 @@ const RULES: DjangoRule[] = [
     severity: "medium",
     scope: "any",
     regex:
-      /^\s*@(?:\w+\.)*csrf_exempt\b|(?<!def\s)(?<![\w.])csrf_exempt\s*\(|method_decorator\(\s*csrf_exempt\b/,
+      /^\s*@(?:\w+\.)*csrf_exempt\b|(?<!def\s)(?<!\w)(?:\w+\.)*csrf_exempt\s*\(|method_decorator\(\s*(?:\w+\.)*csrf_exempt\b/,
     problem: "A view is marked @csrf_exempt, so Django skips CSRF checks for it.",
     why: "If the view changes data for logged-in users, other websites can trick their browsers into submitting requests to it.",
     fixSteps: [
@@ -105,7 +116,23 @@ const SECRET_KEY_RULE = {
   id: "secret/django-secret-key",
   title: "Hardcoded Django SECRET_KEY",
 };
-const SECRET_KEY_REGEX = /^(\s*SECRET_KEY\s*=\s*)(['"])((?:(?!\2).)+)\2/;
+const SECRET_KEY_FALLBACK_RULE = {
+  id: "secret/django-secret-key-fallback",
+  title: "Hardcoded fallback for Django SECRET_KEY",
+};
+
+/** A string literal with optional prefix; `q` is the group number of the quote capture. */
+const stringLiteral = (q: number) =>
+  "([rbfuRBFU]{0,2})(\"\"\"|'''|\"|')((?:\\\\.|(?!\\" + q + ")[^\\\\])*)";
+/** `SECRET_KEY = 'literal'` (optionally parenthesised, prefixed or triple-quoted). */
+const SECRET_KEY_REGEX = new RegExp(String.raw`^(\s*SECRET_KEY\s*=\s*\(?\s*)` + stringLiteral(3), "s");
+/** `SECRET_KEY = f(...)`: group 1 is everything from the first argument on. */
+const SECRET_KEY_CALL_REGEX = /^\s*SECRET_KEY\s*=\s*\(?\s*\w+(?:\.\w+)*\(([\s\S]*)$/;
+/** Second positional argument or default=/fallback= keyword that is a string literal. */
+const FALLBACK_LITERAL_REGEX = new RegExp(
+  String.raw`(?:\b(?:default|fallback)\s*=\s*|,\s*)` + stringLiteral(2),
+  "gs",
+);const MIN_FALLBACK_LENGTH = 8;
 
 /** `settings.py`, `settings_prod.py`, or any module inside a `settings/` package. */
 function isSettingsFile(filePath: string): boolean {
@@ -122,22 +149,51 @@ function isDevOnlySettings(filePath: string): boolean {
   return /(^|[_.-])(dev|local|development|test|testing)($|[_.-])/.test(stem);
 }
 
-/** Removes a trailing `# comment` that is not inside a string literal. */
-function stripTrailingComment(line: string): string {
+interface ScannedLine {
+  /** Line without its trailing comment. */
+  code: string;
+  /** Net bracket depth change, ignoring brackets inside strings. */
+  delta: number;
+  /** True when the line starts inside a triple-quoted string (docstring body). */
+  startsInString: boolean;
+}
+
+/** Tokenises one line, tracking triple-quoted strings across lines. */
+function scanLine(line: string, tripleState: string | null): { scanned: ScannedLine; state: string | null } {
+  const startsInString = tripleState !== null;
+  let state = tripleState;
   let quote: string | null = null;
+  let delta = 0;
+  let end = line.length;
   for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (quote) {
+    const ch = line[i]!;
+    if (state) {
+      if (ch === "\\") i++;
+      else if (line.startsWith(state, i)) {
+        state = null;
+        i += 2;
+      }
+    } else if (quote) {
       if (ch === "\\") i++;
       else if (ch === quote) quote = null;
+    } else if (line.startsWith('"""', i) || line.startsWith("'''", i)) {
+      state = line.slice(i, i + 3);
+      i += 2;
     } else if (ch === '"' || ch === "'") {
       quote = ch;
     } else if (ch === "#") {
-      return line.slice(0, i);
+      end = i;
+      break;
+    } else if (ch === "(" || ch === "[" || ch === "{") {
+      delta++;
+    } else if (ch === ")" || ch === "]" || ch === "}") {
+      delta--;
     }
   }
-  return line;
+  return { scanned: { code: line.slice(0, end), delta, startsInString }, state };
 }
+
+const MAX_STATEMENT_LINES = 40;
 
 export class DjangoSettingsDetector implements Detector {
   id = "django-settings-detector";
@@ -161,24 +217,42 @@ export class DjangoSettingsDetector implements Detector {
       }
       if (!settings && !content.includes("csrf_exempt")) continue;
 
-      const lines = content.split("\n");
+      const rawLines = content.split("\n").map((l) => l.replace(/\r$/, ""));
+      const lines: ScannedLine[] = [];
+      let state: string | null = null;
+      for (const raw of rawLines) {
+        const r = scanLine(raw, state);
+        lines.push(r.scanned);
+        state = r.state;
+      }
+
       for (let i = 0; i < lines.length; i++) {
-        const raw = lines[i];
-        if (!raw) continue;
-        const line = stripTrailingComment(raw.replace(/\r$/, ""));
+        const first = lines[i]!;
+        if (first.startsInString) continue;
+        const line = first.code;
         if (!line.trim() || /^\s*(import|from)\s/.test(line)) continue;
 
+        // Join bracketed continuation lines into one logical statement.
+        let stmt = line;
+        let depth = first.delta;
+        for (let j = i + 1; depth > 0 && j < lines.length && j - i < MAX_STATEMENT_LINES; j++) {
+          const next = lines[j]!;
+          if (next.startsInString) break;
+          stmt += " " + next.code.trim();
+          depth += next.delta;
+        }
+
         if (settings) {
-          const secret = SECRET_KEY_REGEX.exec(line);
-          if (secret && secret[1] && secret[3]) {
-            findings.push(this.secretKeyFinding(filePath, i + 1, line, secret[1], secret[3]));
+          const secret = this.matchSecretKey(stmt);
+          if (secret) {
+            findings.push(this.secretKeyFinding(filePath, i + 1, secret));
             continue;
           }
         }
 
         for (const rule of RULES) {
           if (rule.scope === "settings" && !settings) continue;
-          if (!rule.regex.test(line)) continue;
+          if (!rule.regex.test(stmt)) continue;
           findings.push(this.ruleFinding(rule, filePath, i + 1, line));
           break;
         }
@@ -188,11 +262,35 @@ export class DjangoSettingsDetector implements Detector {
     return findings;
   }
 
+  private matchSecretKey(stmt: string): SecretMatch | null {
+    const literal = SECRET_KEY_REGEX.exec(stmt);
+    if (literal) {
+      const head = literal[1] ?? "";
+      const prefix = literal[2] ?? "";
+      const value = literal[4] ?? "";
+      const interpolated = prefix.toLowerCase().includes("f") && value.includes("{");
+      if (value && !interpolated) return { kind: "literal", head, value };
+      return null;
+    }
+
+    const call = SECRET_KEY_CALL_REGEX.exec(stmt);
+    if (!call?.[1]) return null;
+    const head = stmt.slice(0, stmt.length - call[1].length);
+    for (const m of call[1].matchAll(FALLBACK_LITERAL_REGEX)) {
+      const prefix = m[1] ?? "";
+      const value = m[3] ?? "";
+      if (value.length < MIN_FALLBACK_LENGTH) continue;
+      if (prefix.toLowerCase().includes("f") && value.includes("{")) continue;
+      return { kind: "fallback", head: head.replace(/\s+/g, " "), value };
+    }
+    return null;
+  }
+
   private ruleFinding(rule: DjangoRule, filePath: string, lineNo: number, line: string): Finding {
     let severity = rule.severity;
-    // DEBUG in a clearly dev-only settings module is expected
-    const devOnly = rule.id.endsWith("django-debug-true") && isDevOnlySettings(filePath);
-    if (devOnly) severity = "low";
+    // e.g. DEBUG in a clearly dev-only settings module is expected
+    const devOnly = rule.devSeverity !== undefined && isDevOnlySettings(filePath);
+    if (devOnly && rule.devSeverity) severity = rule.devSeverity;
     const indented = /^\s+/.test(line);
 
     return {
@@ -214,31 +312,28 @@ export class DjangoSettingsDetector implements Detector {
     };
   }
 
-  private secretKeyFinding(
-    filePath: string,
-    lineNo: number,
-    line: string,
-    prefix: string,
-    value: string,
-  ): Finding {
+  private secretKeyFinding(filePath: string, lineNo: number, m: SecretMatch): Finding {
+    const fallback = m.kind === "fallback";
+    const rule = fallback ? SECRET_KEY_FALLBACK_RULE : SECRET_KEY_RULE;
     return {
-      id: createFindingId(CATEGORY_PREFIX.secret, SECRET_KEY_RULE.id, filePath, lineNo, value),
-      ruleId: SECRET_KEY_RULE.id,
-      title: SECRET_KEY_RULE.title,
-      severity: "critical",
+      id: createFindingId(CATEGORY_PREFIX.secret, rule.id, filePath, lineNo, m.value),
+      ruleId: rule.id,
+      title: rule.title,
+      severity: fallback ? "high" : "critical",
       category: "secret",
       deployBlocking: true,
-      confidence: "high",
+      confidence: fallback ? "medium" : "high",
       file: filePath,
       line: lineNo,
-      evidence: sanitizeEvidence(`${prefix}"${redactSecret(value)}"`),
-      plainEnglishProblem:
-        "Django's SECRET_KEY is written directly in your settings file instead of being read from the environment.",
+      evidence: sanitizeEvidence(`${m.head.replace(/\s+/g, " ")}"${redactSecret(m.value)}"${fallback ? ", ...)" : ""}`),
+      plainEnglishProblem: fallback
+        ? "Django's SECRET_KEY falls back to a key written directly in your settings file when the environment variable is not set."
+        : "Django's SECRET_KEY is written directly in your settings file instead of being read from the environment.",
       whyItMatters:
-        "SECRET_KEY signs sessions, password reset tokens and cookies. Anyone who sees it (for example in a public repo) can forge them and may be able to take over accounts.",
+        "SECRET_KEY signs sessions, password reset tokens and cookies. Anyone who sees it (for example in a public repo) can forge them and may be able to take over accounts. A committed fallback is what production silently uses when the variable is missing.",
       fixSteps: [
         "Generate a new SECRET_KEY, since the committed one is compromised.",
-        'Read it from the environment: SECRET_KEY = os.environ["DJANGO_SECRET_KEY"].',
+        'Read it from the environment with no fallback: SECRET_KEY = os.environ["DJANGO_SECRET_KEY"].',
         "Keep the real value in a .env file or your host's secret store and make sure it is gitignored.",
       ],
       autoFixAvailable: false,
@@ -246,4 +341,11 @@ export class DjangoSettingsDetector implements Detector {
         "My Django SECRET_KEY is hardcoded in settings. Please change it to read from an environment variable (failing loudly when missing in production) and tell me what to add to my .env file.",
     };
   }
+}
+
+interface SecretMatch {
+  kind: "literal" | "fallback";
+  /** Source text before the literal, used for evidence. */
+  head: string;
+  value: string;
 }
