@@ -113,9 +113,10 @@ describe("StripeWebhookDetector", () => {
         import { constructEvent } from "@/lib/stripe-helper";
 
         export default async function handler(req: any, res: any) {
-          const event = constructEvent(req.body, req.headers["stripe-signature"]);
+          const event = constructEvent(await getRawBody(req), req.headers["stripe-signature"]);
           res.json({ ok: true });
         }
+        export const config = { api: { bodyParser: false } };
       `,
     });
     const findings = await detector.detect(context);
@@ -167,5 +168,56 @@ describe("StripeWebhookDetector", () => {
     const stripeFindings = await detector.detect(context);
     expect(stripeFindings).toHaveLength(1);
     expect(stripeFindings[0].ruleId).toBe("auth/stripe-webhook-unsigned");
+  });
+
+  it("accepts constructEventAsync and ignores test files", async () => {
+    const context = createContext({
+      "app/api/webhooks/stripe/route.ts": `
+        export async function POST(req: Request) {
+          const event = await stripe.webhooks.constructEventAsync(await req.text(), req.headers.get("stripe-signature")!, secret);
+          return Response.json({ ok: event.id });
+        }
+      `,
+      "app/api/webhooks/stripe/route.test.ts": `export async function POST() { const e = 1; }`,
+    });
+    expect(await detector.detect(context)).toHaveLength(0);
+  });
+
+  it("flags verification against a parsed body", async () => {
+    const context = createContext({
+      "app/api/stripe/webhook/route.ts": `
+        export async function POST(req: Request) {
+          const event = stripe.webhooks.constructEvent(JSON.stringify(await req.json()), sig, secret);
+          return Response.json({ ok: true });
+        }
+      `,
+    });
+    const findings = await detector.detect(context);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.ruleId).toBe("auth/stripe-webhook-parsed-body");
+    expect(findings[0]?.deployBlocking).toBe(false);
+  });
+
+  it("flags Pages Router verification using the parsed req.body", async () => {
+    const context = createContext({
+      "pages/api/stripe/webhook.ts": `
+        export default async function handler(req: any, res: any) {
+          const event = stripe.webhooks.constructEvent(req.body, req.headers["stripe-signature"], secret);
+          res.json({ ok: true });
+        }
+      `,
+    });
+    const findings = await detector.detect(context);
+    expect(findings.map((f) => f.ruleId)).toEqual(["auth/stripe-webhook-parsed-body"]);
+  });
+
+  it("produces stable ids", async () => {
+    const files = {
+      "app/api/webhooks/stripe/route.ts": `export async function POST(req: Request) { return Response.json(await req.json()); }`,
+    };
+    const a = await detector.detect(createContext(files));
+    const b = await detector.detect(createContext(files));
+    expect(a[0]?.id).toBe(b[0]?.id);
+    expect(a[0]?.id).toMatch(/^AUTH-/);
   });
 });
