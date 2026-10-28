@@ -7,22 +7,9 @@
 
 import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
 import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
-import { isApiRoute, hasAuthCheck } from "./utils/route-analyzer.js";
+import { isApiRoute, hasAuthCheck, findAnyHandlerLine, middlewareProtectsApi } from "./utils/route-analyzer.js";
+import { AUTHZ_CHECK_PATTERNS } from "./patterns/auth-patterns.js";
 
-/** Patterns that indicate a proper authorization check (role, ownership, admin). */
-const AUTHZ_PATTERNS = [
-  "isAdmin",
-  "role",
-  "hasPermission",
-  "permissions",
-  "ownerId",
-  "user.id ===",
-  "userId ===",
-  "req.user.id",
-  "session.user.id",
-  "canAccess",
-  "authorize",
-];
 
 /** Admin-sounding routes that need a role check, not just a session check. */
 const ADMIN_ROUTE_PATTERNS = ["/admin", "/superuser", "/manage", "/moderat"];
@@ -36,6 +23,7 @@ export class MissingAuthorizationDetector implements Detector {
 
   async detect(context: ScanContext): Promise<Finding[]> {
     const findings: Finding[] = [];
+    const protectedByMiddleware = await middlewareProtectsApi(context.files, (f) => context.readFile(f));
 
     for (const filePath of context.files) {
       if (!isApiRoute(filePath)) continue;
@@ -43,7 +31,7 @@ export class MissingAuthorizationDetector implements Detector {
       const content = await context.readFile(filePath);
 
       // Only flag routes that DO have an auth check — missing auth is caught by MissingAuthDetector
-      if (!hasAuthCheck(content)) continue;
+      if (!hasAuthCheck(content) && !protectedByMiddleware) continue;
 
       const normalizedPath = filePath.replace(/\\/g, "/");
       const isAdminRoute = ADMIN_ROUTE_PATTERNS.some((p) =>
@@ -51,11 +39,12 @@ export class MissingAuthorizationDetector implements Detector {
       );
 
       if (isAdminRoute) {
-        const hasAuthzCheck = AUTHZ_PATTERNS.some((p) => content.includes(p));
+        const hasAuthzCheck = AUTHZ_CHECK_PATTERNS.some((re) => re.test(content));
 
         if (!hasAuthzCheck) {
+          const line = findAnyHandlerLine(content) ?? 1;
           findings.push({
-            id: createFindingId(CATEGORY_PREFIX.authorization, "authorization/missing-role-check", filePath),
+            id: createFindingId(CATEGORY_PREFIX.authorization, "authorization/missing-role-check", filePath, line),
             ruleId: "authorization/missing-role-check",
             title: "Admin route missing role check",
             severity: "high",
@@ -63,6 +52,7 @@ export class MissingAuthorizationDetector implements Detector {
             deployBlocking: false,
             confidence: "medium",
             file: filePath,
+            line,
             plainEnglishProblem:
               "This admin route checks if a user is logged in, but not whether they are actually an admin.",
             whyItMatters:
