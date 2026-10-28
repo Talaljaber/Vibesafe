@@ -20,7 +20,8 @@ function isCodeFile(filePath: string): boolean {
   return (
     !normalizedPath.split("/").includes("__tests__") &&
     !fileName.includes(".test.") &&
-    !fileName.includes(".spec.")
+    !fileName.includes(".spec.") &&
+    !/\.config\.[cm]?[jt]s$/.test(fileName)
   );
 }
 
@@ -48,6 +49,10 @@ export class HardcodedLocalhostDetector implements Detector {
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         if (!line) continue;
+
+        // Comments and env-driven fallbacks (`process.env.X ?? "http://localhost"`) are fine
+        if (/^\s*(\/\/|\/\*|\*)/.test(line)) continue;
+        if (/process\.env|import\.meta\.env/.test(line)) continue;
 
         const match = LOCAL_NETWORK_HOST_REGEX.exec(line);
         if (!match || !match[0]) {
