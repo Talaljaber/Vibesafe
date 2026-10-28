@@ -10,9 +10,14 @@
 
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createServer } from "./server.js";
+import { resolvePolicy } from "./policy.js";
 
 async function main(): Promise<void> {
-  const server = await createServer();
+  const policy = resolvePolicy();
+  const server = await createServer(policy);
+  console.error(
+    `[vibesafe-mcp] allowed scan roots: ${policy.roots.join(", ")}; fix writes ${policy.allowFix ? "enabled" : "disabled (use --allow-fix)"}`,
+  );
   const transport = new StdioServerTransport();
   await server.connect(transport);
 

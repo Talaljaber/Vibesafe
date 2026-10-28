@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createScanState } from "./state.js";
+import { defaultPolicy, type ServerPolicy } from "./policy.js";
 import { registerScanTool } from "./tools/scan.js";
 import { registerExplainTool } from "./tools/explain.js";
 import { registerRepairPlanTool } from "./tools/repair-plan.js";
@@ -17,7 +18,7 @@ export function readServerVersion(): string {
   }
 }
 
-export async function createServer(): Promise<McpServer> {
+export async function createServer(policy: ServerPolicy = defaultPolicy()): Promise<McpServer> {
   const server = new McpServer({
     name: "vibesafe",
     version: readServerVersion(),
@@ -25,10 +26,10 @@ export async function createServer(): Promise<McpServer> {
 
   const state = createScanState();
 
-  registerScanTool(server, state);
+  registerScanTool(server, state, policy);
   registerExplainTool(server, state);
   registerRepairPlanTool(server, state);
-  registerFixTool(server, state);
+  registerFixTool(server, state, policy);
 
   return server;
 }

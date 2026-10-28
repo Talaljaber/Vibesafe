@@ -46,7 +46,7 @@ export async function generateHtmlReport(result: ScanResult): Promise<string> {
       <div class="error-banner">
         <h3>Some detectors failed. Results may be incomplete.</h3>
         <ul>
-          ${result.errors.map((e: any) => `<li>${escapeHtml(e.detector)}: ${escapeHtml(e.message)}</li>`).join('')}
+          ${result.errors.map((e) => `<li>${escapeHtml(e.detectorName)}: ${escapeHtml(e.message)}</li>`).join('')}
         </ul>
       </div>
     `;
@@ -61,7 +61,7 @@ export async function generateHtmlReport(result: ScanResult): Promise<string> {
       </div>
     `;
   } else {
-    stepsHtml = result.repairPlan.steps.map((step: any) => {
+    stepsHtml = result.repairPlan.steps.map((step) => {
       const sevClass = step.severity.toLowerCase();
       return `
         <div class="issue-card" data-severity="${sevClass}">
@@ -485,6 +485,35 @@ export async function generateHtmlReport(result: ScanResult): Promise<string> {
 </html>`;
 
   const reportPath = path.resolve(result.projectPath, "vibesafe-report.html");
-  await fs.writeFile(reportPath, html, "utf-8");
+  await writeReportSafely(reportPath, html);
   return reportPath;
+}
+
+/**
+ * Writes the report without following symlinks: refuses if the target is a
+ * symlink or not a regular file, and replaces it atomically (temp file in the
+ * same directory + rename).
+ */
+export async function writeReportSafely(reportPath: string, html: string): Promise<void> {
+  try {
+    const st = await fs.lstat(reportPath);
+    if (st.isSymbolicLink()) {
+      throw new Error(`Refusing to write HTML report: ${reportPath} is a symbolic link.`);
+    }
+    if (!st.isFile()) {
+      throw new Error(`Refusing to write HTML report: ${reportPath} is not a regular file.`);
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+
+  const tmpPath = `${reportPath}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    // "wx" fails if the temp path already exists (including as a symlink).
+    await fs.writeFile(tmpPath, html, { encoding: "utf-8", flag: "wx" });
+    await fs.rename(tmpPath, reportPath);
+  } catch (error) {
+    await fs.rm(tmpPath, { force: true }).catch(() => {});
+    throw error;
+  }
 }
