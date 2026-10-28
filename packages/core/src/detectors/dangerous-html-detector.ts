@@ -32,6 +32,12 @@ export class DangerousHtmlDetector implements Detector {
 
         const match = DANGEROUS_HTML_RE.exec(line);
         if (match && match[0]) {
+          if (/^\s*(\/\/|\/\*|\*)/.test(line)) continue;
+          // Look at the surrounding JSX (the attribute value often spans lines)
+          const window = lines.slice(Math.max(0, i - 3), i + 4).join("\n");
+          const sanitized = /\b(?:DOMPurify\.)?sanitize(?:Html)?\s*\(/.test(window);
+          const jsonLd = /application\/ld\+json/.test(window) && /JSON\.stringify\s*\(/.test(window);
+          if (sanitized || jsonLd) continue;
           findings.push(this.createFinding(filePath, i + 1, sanitizeEvidence(match[0])));
         }
       }
@@ -48,7 +54,7 @@ export class DangerousHtmlDetector implements Detector {
       severity: "high",
       category: "xss",
       deployBlocking: false,
-      confidence: "high",
+      confidence: "medium",
       file: filePath,
       line,
       evidence,

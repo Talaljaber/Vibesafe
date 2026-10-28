@@ -48,9 +48,12 @@ export class ErrorBoundaryDetector implements Detector {
       return [];
     }
 
-    let hasErrorBoundary = false;
+    // Next.js app router error boundaries (error.tsx / global-error.tsx) count as boundaries
+    let hasErrorBoundary = context.files.some((file) =>
+      /(^|\/)app\/(.*\/)?(global-)?error\.(tsx|jsx|js)$/.test(file.replace(/\\/g, "/")),
+    );
 
-    for (const file of reactFiles) {
+    for (const file of hasErrorBoundary ? [] : reactFiles) {
       const content = await context.readFile(file);
 
       if (

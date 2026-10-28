@@ -55,39 +55,46 @@ export class CodebaseMessDetector implements Detector {
       }
 
       // Track 'any' usage per file
-      const anyMatches = content.match(/\bany\b/g);
-      if (anyMatches) {
-        totalAnyCount += anyMatches.length;
+      // Only count `any` in type positions, and only in TypeScript files
+      if (filePath.endsWith(".ts") || filePath.endsWith(".tsx")) {
+        const anyMatches = content.match(/:\s*any\b|\bas\s+any\b|<any\s*[>,]|\bany\[\]/g);
+        if (anyMatches) {
+          totalAnyCount += anyMatches.length;
+        }
+      }
+
+      // 2. Empty catch blocks: `catch {}`, `catch (e) {}` or a block holding only blank lines.
+      // `.catch(handler)` promise calls are excluded.
+      const emptyCatchRe = /(?<!\.)\bcatch\s*(?:\([^)]*\))?\s*\{\s*\}/g;
+      let catchMatch: RegExpExecArray | null;
+      while ((catchMatch = emptyCatchRe.exec(content)) !== null) {
+        const catchLine = content.slice(0, catchMatch.index).split("\n").length;
+        findings.push({
+          id: createFindingId(CATEGORY_PREFIX.code_quality, "code_quality/empty-catch", filePath, catchLine),
+          ruleId: "code_quality/empty-catch",
+          title: "Empty catch block",
+          severity: "medium",
+          category: "code_quality",
+          deployBlocking: false,
+          confidence: "medium",
+          file: filePath,
+          line: catchLine,
+          evidence: sanitizeEvidence(lines[catchLine - 1] ?? catchMatch[0]),
+          plainEnglishProblem: "You are catching an error but doing nothing with it (swallowing the error).",
+          whyItMatters: "If this code fails, you will never know. The app might break silently, making it impossible to debug.",
+          fixSteps: [
+            "Add at least a `console.error(error)` inside the catch block.",
+            "If the error is expected, add a comment explaining why it's ignored."
+          ],
+          autoFixAvailable: false,
+          aiFixPrompt: "Please fix this empty catch block by adding proper error logging or handling."
+        });
       }
 
       // Line-by-line checks
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         if (!line) continue;
-
-        // 2. Empty catch blocks
-        if (line.includes("catch") && line.includes("{}") || (line.includes("catch") && lines[i+1]?.trim() === "}")) {
-          findings.push({
-            id: createFindingId(CATEGORY_PREFIX.code_quality, "code_quality/empty-catch", filePath, i + 1),
-            ruleId: "code_quality/empty-catch",
-            title: "Empty catch block",
-            severity: "medium",
-            category: "code_quality",
-            deployBlocking: false,
-            confidence: "medium",
-            file: filePath,
-            line: i + 1,
-            evidence: sanitizeEvidence(line),
-            plainEnglishProblem: "You are catching an error but doing nothing with it (swallowing the error).",
-            whyItMatters: "If this code fails, you will never know. The app might break silently, making it impossible to debug.",
-            fixSteps: [
-              "Add at least a `console.error(error)` inside the catch block.",
-              "If the error is expected, add a comment explaining why it's ignored."
-            ],
-            autoFixAvailable: false,
-            aiFixPrompt: "Please fix this empty catch block by adding proper error logging or handling."
-          });
-        }
 
         // 3. console.log leftovers
         if (line.includes("console.log(")) {
