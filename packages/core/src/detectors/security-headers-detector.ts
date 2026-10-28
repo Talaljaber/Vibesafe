@@ -3,11 +3,18 @@ import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
 import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
 
 const EXPRESS_SOURCE_RE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
-const NEXT_CONFIG_RE = /^next\.config\.(?:js|mjs|cjs|ts|mts)$/;
-const MIDDLEWARE_RE = /^(?:middleware|proxy)\.(?:js|mjs|cjs|ts|mts)$/;
+const NEXT_CONFIG_RE = /^next\.config\.(?:js|mjs|cjs|ts)$/;
+const MIDDLEWARE_RE = /^(?:middleware|proxy)\.(?:js|mjs|cjs|ts)$/;
+// Header sources we cannot follow statically: local modules and header helper packages.
+const NEXT_INDIRECT_RE =
+  /(?:from\s+|require\(\s*|import\(\s*)["'](?:\.{1,2}\/|@\/|~\/|next-secure-headers|next-safe|@next-safe\/)/;
+const NEXT_HEADERS_REF_RE =
+  /\bheaders\s*:\s*[A-Za-z_$][\w$.]*\s*[,}\n]|\.\.\.\s*[A-Za-z_$][\w$.]*[Hh]eaders/;
+const NEXT_HEADERS_LINE_RE = /\basync\s+headers\s*\(|\bheaders\s*[:(]/;
 
 const EXPRESS_IMPORT_RE = /(?:from\s+["']express["']|require\(\s*["']express["']\s*\))/;
-const HELMET_IMPORT_RE = /(?:from\s+["']helmet["']|require\(\s*["']helmet["']\s*\)|import\(\s*["']helmet["']\s*\))/;
+const HELMET_IMPORT_RE =
+  /(?:from\s+["']helmet["']|require\(\s*["']helmet["']\s*\)|import\(\s*["']helmet["']\s*\))/;
 const HELMET_USE_RE = /\.use\(\s*(?:[^()]*,\s*)?(?:helmet|[\w$.]*helmet\w*)\s*(?:\(|\))/i;
 
 interface HeaderCheck {
@@ -16,8 +23,11 @@ interface HeaderCheck {
 }
 
 const NEXT_HEADERS: HeaderCheck[] = [
-  { label: "Content-Security-Policy", patterns: [/content-security-policy/i] },
-  { label: "X-Frame-Options (or CSP frame-ancestors)", patterns: [/x-frame-options/i, /frame-ancestors/i] },
+  { label: "Content-Security-Policy", patterns: [/content-security-policy(?!-report-only)/i] },
+  {
+    label: "X-Frame-Options (or CSP frame-ancestors)",
+    patterns: [/x-frame-options/i, /frame-ancestors/i],
+  },
   { label: "X-Content-Type-Options", patterns: [/x-content-type-options/i] },
   { label: "Strict-Transport-Security", patterns: [/strict-transport-security/i] },
   { label: "Referrer-Policy", patterns: [/referrer-policy/i] },
@@ -48,10 +58,52 @@ function isTestFile(filePath: string): boolean {
   );
 }
 
+// Blanks out line and block comments while keeping line numbers and string contents.
+// Quote characters are tokenized first so a string such as "/api/*" or "https://x" is
+// never mistaken for a comment. Known limitation: regex literals are not tokenized.
 function stripComments(content: string): string {
-  return content.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " ")).replace(/^\s*\/\/.*$/gm, "");
+  let out = "";
+  let i = 0;
+  const n = content.length;
+  while (i < n) {
+    const ch = content[i] as string;
+    const next = content[i + 1];
+    if (ch === '"' || ch === "'" || ch === "`") {
+      let j = i + 1;
+      while (j < n && content[j] !== ch) {
+        if (content[j] === "\\") j++;
+        else if (ch !== "`" && content[j] === "\n") break;
+        j++;
+      }
+      out += content.slice(i, j + 1);
+      i = j + 1;
+    } else if (ch === "/" && next === "/") {
+      let j = i;
+      while (j < n && content[j] !== "\n") j++;
+      out += " ".repeat(j - i);
+      i = j;
+    } else if (ch === "/" && next === "*") {
+      const close = content.indexOf("*/", i + 2);
+      const j = close === -1 ? n : close + 2;
+      out += content.slice(i, j).replace(/[^\n]/g, " ");
+      i = j;
+    } else {
+      out += ch;
+      i++;
+    }
+  }
+  return out;
 }
 
+function packageRoot(filePath: string, packageDirs: Set<string>): string {
+  let dir = dirName(filePath);
+  for (;;) {
+    if (packageDirs.has(dir)) return dir;
+    if (dir === "") return "";
+    const idx = dir.lastIndexOf("/");
+    dir = idx === -1 ? "" : dir.slice(0, idx);
+  }
+}
 export class SecurityHeadersDetector implements Detector {
   id = "security-headers-detector";
   name = "Security Headers Detection";
@@ -65,7 +117,10 @@ export class SecurityHeadersDetector implements Detector {
   private async detectExpress(context: ScanContext): Promise<Finding[]> {
     const findings: Finding[] = [];
     const apps: { filePath: string; line: number; text: string }[] = [];
-    let helmetApplied = false;
+    const packageDirs = new Set(
+      context.files.filter((f) => baseName(f) === "package.json").map(dirName),
+    );
+    const helmetRoots = new Set<string>();
 
     for (const filePath of context.files) {
       if (!EXPRESS_SOURCE_RE.test(filePath) || isTestFile(filePath)) continue;
@@ -76,7 +131,7 @@ export class SecurityHeadersDetector implements Detector {
 
       const content = stripComments(raw);
       if (HELMET_IMPORT_RE.test(content) && HELMET_USE_RE.test(content)) {
-        helmetApplied = true;
+        helmetRoots.add(packageRoot(filePath, packageDirs));
       }
 
       if (!EXPRESS_IMPORT_RE.test(content)) continue;
@@ -90,11 +145,10 @@ export class SecurityHeadersDetector implements Detector {
       }
     }
 
-    // Helmet is often applied in a shared bootstrap file, so any helmet use in the
-    // project is treated as protecting every Express app in it.
-    if (helmetApplied) return findings;
-
+    // Helmet is often applied in a shared bootstrap file, so a helmet use protects every
+    // Express app in the same package (nearest package.json), but not other packages.
     for (const app of apps) {
+      if (helmetRoots.has(packageRoot(app.filePath, packageDirs))) continue;
       findings.push({
         id: createFindingId(
           CATEGORY_PREFIX.security_config,
@@ -137,15 +191,26 @@ export class SecurityHeadersDetector implements Detector {
     for (const configPath of configs) {
       const configRaw = await context.readFile(configPath);
       const configDir = dirName(configPath);
-      const sources: string[] = [stripComments(configRaw)];
+      const strippedConfig = stripComments(configRaw);
+      const sources: string[] = [strippedConfig];
 
       // Headers may also be set by middleware or by hosting config next to the app.
       for (const other of context.files) {
         const otherDir = dirName(other);
-        const sameApp = otherDir === configDir || otherDir === (configDir ? `${configDir}/src` : "src");
+        const sameApp =
+          otherDir === configDir || otherDir === (configDir ? `${configDir}/src` : "src");
         if (!sameApp) continue;
         const name = baseName(other);
-        if (MIDDLEWARE_RE.test(name) || name === "vercel.json") {
+        if (MIDDLEWARE_RE.test(name)) {
+          sources.push(stripComments(await context.readFile(other)));
+        }
+      }
+
+      // vercel.json may live at the repo root while next.config is in a sub-app.
+      for (const other of context.files) {
+        if (baseName(other) !== "vercel.json") continue;
+        const otherDir = dirName(other);
+        if (otherDir === "" || configDir === otherDir || configDir.startsWith(`${otherDir}/`)) {
           sources.push(stripComments(await context.readFile(other)));
         }
       }
@@ -155,9 +220,15 @@ export class SecurityHeadersDetector implements Detector {
       if (missing.length === 0) continue;
 
       const noneSet = missing.length === NEXT_HEADERS.length;
-      const severity: Severity = noneSet || missing.some((h) => h.label === "Content-Security-Policy") ? "medium" : "low";
+      const severity: Severity =
+        noneSet || missing.some((h) => h.label === "Content-Security-Policy") ? "medium" : "low";
       const lines = configRaw.split("\n");
-      const headersLineIdx = lines.findIndex((l) => /\bheaders\b/.test(l));
+      const headersLineIdx = strippedConfig
+        .split("\n")
+        .findIndex((l) => NEXT_HEADERS_LINE_RE.test(l));
+      // Headers may come from an imported module or helper package we cannot inspect.
+      const indirect =
+        NEXT_INDIRECT_RE.test(strippedConfig) || NEXT_HEADERS_REF_RE.test(strippedConfig);
       const line = headersLineIdx >= 0 ? headersLineIdx + 1 : 1;
       const missingList = missing.map((h) => h.label).join(", ");
 
@@ -174,7 +245,7 @@ export class SecurityHeadersDetector implements Detector {
         severity,
         category: "security_config",
         deployBlocking: false,
-        confidence: "medium",
+        confidence: indirect ? "low" : "medium",
         file: configPath,
         line,
         evidence: sanitizeEvidence(lines[line - 1] ?? ""),
@@ -182,7 +253,7 @@ export class SecurityHeadersDetector implements Detector {
         whyItMatters:
           "Security headers tell browsers to block clickjacking, MIME sniffing, insecure transport and leaky referrers. Next.js does not add them by default, and it also sends X-Powered-By: Next.js unless disabled.",
         fixSteps: [
-          "Add an async headers() function to next.config that returns these headers for source \"/(.*)\".",
+          'Add an async headers() function to next.config that returns these headers for source "/(.*)".',
           `Add the missing headers: ${missingList}.`,
           "Set poweredByHeader: false in next.config.",
         ],

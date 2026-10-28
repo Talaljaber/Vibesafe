@@ -66,7 +66,9 @@ describe("SecurityHeadersDetector: Express", () => {
 
   it("flags when helmet is imported but never applied", async () => {
     const findings = await detector.detect(
-      ctx({ "server.ts": `import express from "express";\nimport helmet from "helmet";\nconst app = express();` }),
+      ctx({
+        "server.ts": `import express from "express";\nimport helmet from "helmet";\nconst app = express();`,
+      }),
     );
     expect(findings).toHaveLength(1);
   });
@@ -103,9 +105,43 @@ describe("SecurityHeadersDetector: Express", () => {
   });
 });
 
+describe("SecurityHeadersDetector: Express edge cases", () => {
+  it("keeps app.use(helmet()) when an earlier string contains '/*' and a later doc block exists", async () => {
+    const src = `import express from "express";\nimport helmet from "helmet";\nconst app = express();\napp.use("/api/*", (_q, _r, n) => n());\napp.use(helmet());\n/** doc */\nexport default app;`;
+    expect(await detector.detect(ctx({ "server.ts": src }))).toHaveLength(0);
+  });
+
+  it("does not count helmet in a trailing comment", async () => {
+    const src = `import express from "express";\nimport helmet from "helmet";\nconst app = express(); // app.use(helmet());`;
+    expect(await detector.detect(ctx({ "server.ts": src }))).toHaveLength(1);
+  });
+
+  it("recognises dynamic import() of helmet and .mjs/.cjs files", async () => {
+    const mjs = `import express from "express";\nconst app = express();\nconst helmet = (await import("helmet")).default;\napp.use(helmet());`;
+    expect(await detector.detect(ctx({ "server.mjs": mjs }))).toHaveLength(0);
+    const cjs = `const express = require("express");\nconst app = express();`;
+    expect(await detector.detect(ctx({ "server.cjs": cjs }))).toHaveLength(1);
+  });
+
+  it("scopes helmet to the same package in a monorepo", async () => {
+    const findings = await detector.detect(
+      ctx({
+        "apps/a/package.json": "{}",
+        "apps/b/package.json": "{}",
+        "apps/a/server.ts": `import express from "express";\nimport helmet from "helmet";\nconst app = express();\napp.use(helmet());`,
+        "apps/b/server.ts": `import express from "express";\nconst app = express();`,
+      }),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.file).toBe("apps/b/server.ts");
+  });
+});
+
 describe("SecurityHeadersDetector: Next.js", () => {
   it("flags next.config without headers() as medium listing all headers", async () => {
-    const findings = await detector.detect(ctx({ "next.config.js": `module.exports = { reactStrictMode: true };` }));
+    const findings = await detector.detect(
+      ctx({ "next.config.js": `module.exports = { reactStrictMode: true };` }),
+    );
     expect(findings).toHaveLength(1);
     const f = findings[0]!;
     expect(f.ruleId).toBe("security_config/missing-security-headers");
@@ -170,8 +206,14 @@ describe("SecurityHeadersDetector: Next.js", () => {
       r.headers.set("Content-Security-Policy", "x"); r.headers.set("X-Frame-Options", "DENY");
       r.headers.set("X-Content-Type-Options", "nosniff"); r.headers.set("Strict-Transport-Security", "m");
       r.headers.set("Referrer-Policy", "r"); return r; }`;
-    expect(await detector.detect(ctx({ "next.config.js": "module.exports = {};", "middleware.ts": mw }))).toHaveLength(0);
-    expect(await detector.detect(ctx({ "next.config.js": "module.exports = {};", "src/middleware.ts": mw }))).toHaveLength(0);
+    expect(
+      await detector.detect(ctx({ "next.config.js": "module.exports = {};", "middleware.ts": mw })),
+    ).toHaveLength(0);
+    expect(
+      await detector.detect(
+        ctx({ "next.config.js": "module.exports = {};", "src/middleware.ts": mw }),
+      ),
+    ).toHaveLength(0);
   });
 
   it("does not use another app's middleware", async () => {
@@ -185,7 +227,104 @@ describe("SecurityHeadersDetector: Next.js", () => {
   it("ignores headers mentioned only in comments", async () => {
     const config = `// Content-Security-Policy, X-Frame-Options\nmodule.exports = {};`;
     const findings = await detector.detect(ctx({ "next.config.js": config }));
+    expect(findings[0]?.severity).toBe("medium");
+    for (const h of [
+      "Content-Security-Policy",
+      "X-Frame-Options",
+      "X-Content-Type-Options",
+      "Strict-Transport-Security",
+      "Referrer-Policy",
+    ]) {
+      expect(findings[0]?.plainEnglishProblem).toContain(h);
+    }
+  });
+
+  it("ignores block and trailing comments, and anchors the line on real code", async () => {
+    const config = `/* Content-Security-Policy X-Frame-Options */\n// add headers later\nmodule.exports = {\n  poweredByHeader: false, // Referrer-Policy\n  async headers() { return []; },\n};`;
+    const findings = await detector.detect(ctx({ "next.config.js": config }));
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.line).toBe(5);
+    expect(findings[0]?.plainEnglishProblem).toContain("Referrer-Policy");
     expect(findings[0]?.plainEnglishProblem).toContain("Content-Security-Policy");
+  });
+
+  it("does not let a '/*' inside a string blank out real headers", async () => {
+    const config = `module.exports = { async headers() { return [{ source: "/api/*", headers: [
+      { key: "Content-Security-Policy", value: "default-src https://*.example.com" },
+      { key: "X-Frame-Options", value: "DENY" },
+      { key: "X-Content-Type-Options", value: "nosniff" },
+      { key: "Strict-Transport-Security", value: "max-age=1" },
+      { key: "Referrer-Policy", value: "same-origin" },
+    ] }]; } };\n/** doc */`;
+    expect(await detector.detect(ctx({ "next.config.js": config }))).toHaveLength(0);
+  });
+
+  it("counts headers set in proxy.ts", async () => {
+    const proxy = `r.headers.set("Content-Security-Policy","x");r.headers.set("X-Frame-Options","DENY");r.headers.set("X-Content-Type-Options","nosniff");r.headers.set("Strict-Transport-Security","m");r.headers.set("Referrer-Policy","r");`;
+    expect(
+      await detector.detect(ctx({ "next.config.js": "module.exports = {};", "proxy.ts": proxy })),
+    ).toHaveLength(0);
+  });
+
+  it("counts headers from vercel.json beside the config or at the repo root", async () => {
+    const vercel = JSON.stringify({
+      headers: [
+        {
+          source: "/(.*)",
+          headers: [
+            { key: "Content-Security-Policy", value: "x" },
+            { key: "X-Frame-Options", value: "DENY" },
+            { key: "X-Content-Type-Options", value: "nosniff" },
+            { key: "Strict-Transport-Security", value: "m" },
+            { key: "Referrer-Policy", value: "r" },
+          ],
+        },
+      ],
+    });
+    expect(
+      await detector.detect(
+        ctx({ "next.config.js": "module.exports = {};", "vercel.json": vercel }),
+      ),
+    ).toHaveLength(0);
+    expect(
+      await detector.detect(
+        ctx({ "apps/web/next.config.js": "module.exports = {};", "vercel.json": vercel }),
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("lists the remaining headers when vercel.json sets only some", async () => {
+    const vercel = `{"headers":[{"source":"/(.*)","headers":[{"key":"X-Frame-Options","value":"DENY"}]}]}`;
+    const findings = await detector.detect(
+      ctx({ "next.config.js": "module.exports = {};", "vercel.json": vercel }),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.plainEnglishProblem).toContain("Strict-Transport-Security");
+    expect(findings[0]?.plainEnglishProblem).not.toContain("X-Frame-Options");
+  });
+
+  it("does not accept Content-Security-Policy-Report-Only as CSP", async () => {
+    const config = `module.exports = { async headers() { return [{ source: "/(.*)", headers: [
+      { key: "Content-Security-Policy-Report-Only", value: "default-src 'self'" },
+    ] }]; } };`;
+    const findings = await detector.detect(ctx({ "next.config.js": config }));
+    expect(findings[0]?.plainEnglishProblem).toContain("Content-Security-Policy");
+  });
+
+  it("lowers confidence when headers come from an imported module or helper package", async () => {
+    const imported = `import { securityHeaders } from "./security-headers";\nexport default { async headers() { return [{ source: "/(.*)", headers: securityHeaders }]; } };`;
+    const pkg = `const { createSecureHeaders } = require("next-secure-headers");\nmodule.exports = {};`;
+    for (const config of [imported, pkg]) {
+      const findings = await detector.detect(ctx({ "next.config.js": config }));
+      expect(findings).toHaveLength(1);
+      expect(findings[0]?.confidence).toBe("low");
+    }
+    const plain = await detector.detect(ctx({ "next.config.js": "module.exports = {};" }));
+    expect(plain[0]?.confidence).toBe("medium");
+  });
+
+  it("does not scan next.config.mts (not a scannable extension)", async () => {
+    expect(await detector.detect(ctx({ "next.config.mts": "export default {};" }))).toHaveLength(0);
   });
 
   it("produces stable ids", async () => {
