@@ -30,12 +30,52 @@ export function decodeJwtRole(token: string): string | undefined {
   }
 }
 
-/** Runs a pattern against a line, returning the match only if it passes the pattern's validator. */
+/**
+ * Runs a pattern against a line and returns the first match that passes the pattern's validator.
+ * Every candidate on the line is considered, so a placeholder cannot shadow a real secret after it.
+ */
 export function matchSecretPattern(pattern: SecretPattern, line: string): RegExpExecArray | null {
-  const match = pattern.regex.exec(line);
-  if (!match || !match[0]) return null;
-  if (pattern.validate && !pattern.validate(match[0])) return null;
-  return match;
+  const flags = pattern.regex.flags.includes("g") ? pattern.regex.flags : pattern.regex.flags + "g";
+  const re = new RegExp(pattern.regex.source, flags);
+  for (const match of line.matchAll(re)) {
+    if (!match[0]) continue;
+    if (pattern.validate && !pattern.validate(match[0])) continue;
+    return match as RegExpExecArray;
+  }
+  return null;
+}
+
+const AWS_DOC_EXAMPLE_SECRET = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
+
+/**
+ * True for documentation examples and obvious placeholders (EXAMPLE, xxxx, changeme, etc.).
+ * Values like `your-aws-secret` never reach this check: they fail the length/charset constraints.
+ * The substring match is intentionally loose; a random real key containing "example" is negligible.
+ */
+function isPlaceholderValue(value: string): boolean {
+  return (
+    /example|xxxx|changeme|placeholder|<[^>]*>/i.test(value) ||
+    value === AWS_DOC_EXAMPLE_SECRET ||
+    /^(.)\1+$/.test(value)
+  );
+}
+
+function shannonEntropy(value: string): number {
+  const counts = new Map<string, number>();
+  for (const ch of value) counts.set(ch, (counts.get(ch) ?? 0) + 1);
+  let entropy = 0;
+  for (const n of counts.values()) {
+    const p = n / value.length;
+    entropy -= p * Math.log2(p);
+  }
+  return entropy;
+}
+
+/** A 40-char base64-ish string that is not a placeholder and looks random enough to be a real key. */
+export function isLikelyAwsSecretValue(value: string): boolean {
+  if (value.length !== 40 || isPlaceholderValue(value)) return false;
+  if (!/[A-Za-z]/.test(value) || !/[0-9/+]/.test(value)) return false;
+  return new Set(value).size >= 15 && shannonEntropy(value) >= 3.5;
 }
 
 export const SECRET_PATTERNS: SecretPattern[] = [
@@ -77,14 +117,21 @@ export const SECRET_PATTERNS: SecretPattern[] = [
   {
     id: "sec-aws-access-key",
     name: "AWS Access Key ID",
-    regex: /(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}/,
+    regex: /(?<![A-Z0-9])(?:A3T[A-Z0-9]|AKIA|ASIA|ABIA|ACCA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA)[A-Z0-9]{16}(?![A-Z0-9])/,
+    validate: (match) => !isPlaceholderValue(match),
     severity: "critical",
     confidence: "high",
   },
   {
     id: "sec-aws-secret-key",
     name: "AWS Secret Access Key",
-    regex: /aws_secret_access_key\s*=\s*['"]?[A-Za-z0-9/+=]{40}['"]?/i,
+    // aws_secret_access_key / AWS_SECRET_ACCESS_KEY / secretAccessKey / awsSecretKey / secret_key,
+    // as an assignment, object literal, JSON/YAML `key: value`, Ruby `key => value`, Dockerfile
+    // `ENV KEY value` or .env line. Group 2 is the value.
+    regex:
+      /(aws[_-]?secret[_-]?(?:access[_-]?)?key|secret[_-]?access[_-]?key|secret_key)["']?(?:\s*(?:=>|[:=])\s*|\s+)["']?([A-Za-z0-9/+=]{40})(?![A-Za-z0-9/+=])/i,
+    validate: (match) => isLikelyAwsSecretValue(match.slice(-40)),
+    valueGroup: 2,
     severity: "critical",
     confidence: "medium",
   },
