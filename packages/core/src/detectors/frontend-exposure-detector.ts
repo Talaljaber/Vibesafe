@@ -2,7 +2,7 @@ import path from "node:path";
 import { type Detector, type Finding, type ScanContext } from "@vibesafe/shared";
 import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
 import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
-import { isClientFile } from "./utils/file-classifier.js";
+import { hasUseServerDirective, isClientFile, usesServerSideDataFetching } from "./utils/file-classifier.js";
 
 const CODE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx"];
 const PUBLIC_PREFIXES = ["NEXT_PUBLIC_", "VITE_", "REACT_APP_", "EXPO_PUBLIC_", "NUXT_PUBLIC_", "PUBLIC_"];
@@ -14,6 +14,16 @@ const PUBLIC_SECRET_REGEX =
 const SERVER_ENV_REGEX = /process\.env(?:\.([A-Za-z_][A-Za-z0-9_]*)|\[\s*["']([A-Za-z_][A-Za-z0-9_]*)["']\s*\])/g;
 const SECRET_LOOKING_NAME = /SERVICE_ROLE|SECRET|PRIVATE|PASSWORD|TOKEN|API_KEY|APIKEY/i;
 const SERVICE_ROLE_REGEX = /SERVICE_ROLE_KEY|service_role/;
+/** firebase-admin (or a subpath) pulled in via import/require/dynamic import; `import type` is erased at build time. */
+const FIREBASE_ADMIN_REGEX =
+  /(?:\bfrom\s*|\brequire\s*\(\s*|\bimport\s*\(?\s*)["']firebase-admin(?:\/[^"']*)?["']/;
+/** Whole-statement type-only imports/exports (multi-line and all-`type` specifier lists); erased at build time. */
+const TYPE_ONLY_IMPORT_REGEX =
+  /\b(?:import|export)\s+type\b[^;"']*?\bfrom\s*["'][^"']+["']|\bimport\s*\{\s*(?:type\s+[\w$]+(?:\s+as\s+[\w$]+)?\s*,?\s*)+\}\s*from\s*["'][^"']+["']/g;
+/** Service account key files: firebase-adminsdk-*.json, serviceAccount.json, serviceAccountKey.json, ...Credentials.json. */
+const SERVICE_ACCOUNT_JSON_REGEX =
+  /(?:firebase[-_.]?adminsdk[^"'/\\]*|service[-_.]?account[^"'/\\]*?(?:key|credentials?)|service[-_.]?account)\.json$/i;
+const REQUIRE_REGEX = /\b(?:require|import)\s*\(\s*["']([^"']+)["']\s*\)/g;
 const IMPORT_REGEX = /(?:import|export)\s[^"';]*?from\s*["']([^"']+)["']|import\s*["']([^"']+)["']/g;
 
 /** Removes block and line comments, keeping line structure so line numbers stay valid. */
@@ -24,6 +34,18 @@ function stripComments(content: string): string[] {
     if (idx === -1) return l;
     return l.slice(0, l.indexOf("//", idx));
   });
+}
+
+/** 1-based line numbers where firebase-admin is really imported (comments and type-only imports ignored). */
+function firebaseAdminLines(content: string): number[] {
+  const text = stripComments(content)
+    .join("\n")
+    .replace(TYPE_ONLY_IMPORT_REGEX, (m) => m.replace(/[^\n]/g, " "));
+  const re = new RegExp(FIREBASE_ADMIN_REGEX.source, "g");
+  const found = new Set<number>();
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) found.add(text.slice(0, m.index).split("\n").length);
+  return [...found];
 }
 
 function hasPublicPrefix(name: string): boolean {
@@ -88,6 +110,14 @@ export class FrontendExposureDetector implements Detector {
       const rawLines = content.split("\n");
       const lines = stripComments(content);
 
+      // Pages-router files with server-side data fetching have firebase-admin tree-shaken from the client bundle
+      const serverSideData = usesServerSideDataFetching(filePath, content);
+      if (!serverSideData) {
+        for (const ln of firebaseAdminLines(content)) {
+          findings.push(this.firebaseAdminFinding(filePath, ln, rawLines[ln - 1] ?? ""));
+        }
+      }
+
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i] ?? "";
         const raw = rawLines[i] ?? "";
@@ -108,18 +138,39 @@ export class FrontendExposureDetector implements Detector {
       const noBlock = content.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "));
       IMPORT_REGEX.lastIndex = 0;
       let m: RegExpExecArray | null;
+      REQUIRE_REGEX.lastIndex = 0;
+      while ((m = REQUIRE_REGEX.exec(noBlock)) !== null) {
+        const ln = noBlock.slice(0, m.index).split("\n").length;
+        if (m[1] && SERVICE_ACCOUNT_JSON_REGEX.test(m[1]) && (lines[ln - 1] ?? "").trim() !== "") {
+          findings.push(this.firebaseAdminFinding(filePath, ln, rawLines[ln - 1] ?? "", m[1]));
+        }
+      }
       while ((m = IMPORT_REGEX.exec(noBlock)) !== null) {
         const spec = m[1] ?? m[2];
         if (!spec) continue;
         const importLine = noBlock.slice(0, m.index).split("\n").length;
         if ((lines[importLine - 1] ?? "").trim() === "") continue; // commented-out import
+        if (SERVICE_ACCOUNT_JSON_REGEX.test(spec)) {
+          findings.push(this.firebaseAdminFinding(filePath, importLine, rawLines[importLine - 1] ?? "", spec));
+          continue;
+        }
         const target = resolveImport(filePath, spec);
         if (!target || target === filePath) continue;
 
         const targetContent = await context.readFile(target);
-        if (/^\s*import\s+["']server-only["']/m.test(targetContent)) continue;
+        // server-only modules and Server Actions ("use server") are never bundled for the browser
+        if (/^\s*import\s+["']server-only["']/m.test(targetContent) || hasUseServerDirective(targetContent)) continue;
         const targetLines = stripComments(targetContent);
         const raw = rawLines[importLine - 1] ?? "";
+
+        if (
+          !serverSideData &&
+          !usesServerSideDataFetching(target, targetContent) &&
+          firebaseAdminLines(targetContent).length > 0
+        ) {
+          findings.push(this.firebaseAdminFinding(filePath, importLine, raw, target));
+          continue;
+        }
 
         if (targetLines.some((l) => SERVICE_ROLE_REGEX.test(l))) {
           findings.push(this.serviceRoleFinding(filePath, importLine, raw, target));
@@ -170,6 +221,31 @@ export class FrontendExposureDetector implements Detector {
         "Never use service role keys in the browser.",
         "Use the regular anonymous/public key for the frontend client.",
         "If you need to perform admin actions, create a backend API route, do the action there, and call it from the frontend.",
+      ],
+      autoFixAvailable: false,
+    };
+  }
+
+  private firebaseAdminFinding(file: string, line: number, evidence: string, via?: string): Finding {
+    const where = via ? ` (via ${via})` : "";
+    return {
+      id: createFindingId(CATEGORY_PREFIX.frontend_exposure, "frontend_exposure/firebase-admin", file, line, via),
+      ruleId: "frontend_exposure/firebase-admin",
+      title: "Firebase Admin SDK or service account used in client code",
+      severity: "critical",
+      category: "frontend_exposure",
+      deployBlocking: true,
+      confidence: via ? "medium" : "high",
+      file,
+      line,
+      evidence: sanitizeEvidence(evidence),
+      plainEnglishProblem: `Client-side code uses the Firebase Admin SDK or a service account key${where}.`,
+      whyItMatters:
+        "The Firebase Admin SDK runs with full administrative privileges and needs a service account private key. Bundling it for the browser exposes those credentials or breaks the build.",
+      fixSteps: [
+        "Remove 'firebase-admin' and service account JSON imports from client components and pages.",
+        "Use the client Firebase SDK ('firebase/app', 'firebase/auth', 'firebase/firestore') in the browser.",
+        "Move administrative operations to a server-side API route or a Server Action marked with 'use server', and rotate the service account key if it was ever bundled.",
       ],
       autoFixAvailable: false,
     };
