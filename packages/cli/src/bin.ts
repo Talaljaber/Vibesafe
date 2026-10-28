@@ -39,23 +39,34 @@ program
 
 program
   .command("fix")
-  .description("Apply a safe fix for a finding or rule ID, or walk through all fixes with --interactive")
-  .argument("[finding-id]", "The ID of the finding or rule to fix (with --interactive, this is the directory)")
-  .argument("[dir]", "Directory to run the fix in", ".")
+  .description("Automatically apply a safe fix for a specific finding or rule ID, or walk through fixes with -i")
+  .argument("[finding-id]", "The ID of the finding or rule to fix (with -i: optional directory instead)")
+  .argument("[dir]", "Directory to run the fix in (default: .)")
   .option("-y, --yes", "Skip confirmation (needs an exact finding id or a single match)", false)
-  .option("-i, --interactive", "Walk through the repair plan step by step", false)
-  .action(async (first, second, options) => {
+  .option("-i, --interactive", "Scan, then walk through the fixes one by one", false)
+  .action(async (first: string | undefined, second: string | undefined, options) => {
     if (options.interactive) {
-      // In wizard mode the only positional is the directory.
-      await runFixWizard(first ?? second);
+      if (first !== undefined && second !== undefined) {
+        console.error(
+          "error: --interactive takes an optional directory, not a finding id. Use `vibesafe fix -i [dir]`.",
+        );
+        process.exitCode = 1;
+        return;
+      }
+      try {
+        await runFixWizard(first ?? ".");
+      } catch (err) {
+        console.error(`Error during fix wizard: ${err instanceof Error ? err.message : String(err)}`);
+        process.exitCode = 1;
+      }
       return;
     }
-    if (!first) {
+    if (first === undefined) {
       console.error("error: missing required argument 'finding-id' (or use --interactive)");
       process.exitCode = 1;
       return;
     }
-    await runFix(first, second, { yes: Boolean(options.yes) });
+    await runFix(first, second ?? ".", { yes: Boolean(options.yes) });
   });
 
 program.parse(process.argv);

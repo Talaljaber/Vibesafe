@@ -24,18 +24,34 @@ function isPromptAbort(err: unknown): boolean {
   return err instanceof Error && err.name === "ExitPromptError";
 }
 
+/**
+ * Strips ANSI/OSC escape sequences and control characters from untrusted text
+ * (file contents, names) so it cannot rewrite the terminal. Keeps \n and \t.
+ */
+export function sanitizeTerminal(text: string): string {
+  return (
+    text
+      // eslint-disable-next-line no-control-regex
+      .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "")
+      // eslint-disable-next-line no-control-regex
+      .replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)?/g, "")
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, "")
+  );
+}
+
 function location(f: Finding): string {
   if (!f.file) return "(project-wide)";
-  return f.line ? `${f.file}:${f.line}` : f.file;
+  return sanitizeTerminal(f.line ? `${f.file}:${f.line}` : f.file);
 }
 
 function printPreview(preview: FixPreview): void {
-  console.log(chalk.white(`\n${preview.description}`));
-  for (const f of preview.filesToCreate) console.log(chalk.green(`  + ${f}`));
-  for (const f of preview.filesToModify) console.log(chalk.yellow(`  ~ ${f}`));
+  console.log(chalk.white(`\n${sanitizeTerminal(preview.description)}`));
+  for (const f of preview.filesToCreate) console.log(chalk.green(`  + ${sanitizeTerminal(f)}`));
+  for (const f of preview.filesToModify) console.log(chalk.yellow(`  ~ ${sanitizeTerminal(f)}`));
   if (preview.diff) {
     console.log(
-      preview.diff
+      sanitizeTerminal(preview.diff)
         .split("\n")
         .map((line) => {
           if (line.startsWith("+")) return chalk.green(line);
@@ -113,32 +129,34 @@ export async function runFixWizard(
 
   for (const [i, step] of steps.entries()) {
     const finding = byId.get(step.findingId) as Finding;
-    console.log(chalk.bold(`\n[${i + 1}/${steps.length}] ${finding.title}`));
+    console.log(chalk.bold(`\n[${i + 1}/${steps.length}] ${sanitizeTerminal(finding.title)}`));
     console.log(`  Severity: ${finding.severity.toUpperCase()}   Location: ${location(finding)}`);
-    console.log(chalk.gray(`  Why it matters: ${finding.whyItMatters}`));
+    console.log(chalk.gray(`  Why it matters: ${sanitizeTerminal(finding.whyItMatters)}`));
 
     const fixer = finding.autoFixAvailable ? fixRegistry.getFixer(finding.ruleId) : undefined;
     let canApply = false;
     if (fixer) {
       try {
-        printPreview(await fixer.preview(finding, rootPath));
-        canApply = true;
+        const preview = await fixer.preview(finding, rootPath);
+        printPreview(preview);
+        // Fixers report "cannot fix" as an empty preview rather than throwing.
+        canApply = preview.filesToModify.length + preview.filesToCreate.length > 0;
       } catch (err) {
         console.log(
-          chalk.yellow(`  Could not preview the auto-fix: ${err instanceof Error ? err.message : String(err)}`),
+          chalk.yellow(`  Could not preview the auto-fix: ${sanitizeTerminal(err instanceof Error ? err.message : String(err))}`),
         );
       }
     }
     if (!canApply) {
       if (finding.fixSteps.length > 0) {
         console.log(chalk.white("\n  How to fix it:"));
-        finding.fixSteps.forEach((s, n) => console.log(`    ${n + 1}. ${s}`));
+        finding.fixSteps.forEach((s, n) => console.log(`    ${n + 1}. ${sanitizeTerminal(s)}`));
       }
       if (finding.aiFixPrompt) {
         console.log(chalk.white("\n  AI fix prompt (copy into Cursor / Claude Code):"));
         console.log(
           chalk.gray(
-            finding.aiFixPrompt
+            sanitizeTerminal(finding.aiFixPrompt)
               .split("\n")
               .map((l) => `    ${l}`)
               .join("\n"),
@@ -160,10 +178,10 @@ export async function runFixWizard(
       const res = await fixer.apply(finding, rootPath);
       if (res.success) {
         summary.applied++;
-        console.log(chalk.green(`  ✅ ${res.message}`));
+        console.log(chalk.green(`  ✅ ${sanitizeTerminal(res.message)}`));
       } else {
         summary.failed++;
-        console.log(chalk.red(`  ❌ Failed: ${res.message}`));
+        console.log(chalk.red(`  ❌ Failed: ${sanitizeTerminal(res.message)}`));
       }
     } catch (err) {
       summary.failed++;

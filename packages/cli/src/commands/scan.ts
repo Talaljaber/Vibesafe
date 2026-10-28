@@ -135,13 +135,19 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
       }
       if (start) {
         const scanExitCode = process.exitCode;
-        await runFixWizard(rootPath, {
-          initialResult: result,
-          deep: options.deep ?? false,
-          includeTests: options.includeTests ?? false,
-        });
-        // The wizard must not mask the scan's CI exit code.
-        process.exitCode = scanExitCode;
+        try {
+          await runFixWizard(rootPath, {
+            initialResult: result,
+            deep: options.deep ?? false,
+            includeTests: options.includeTests ?? false,
+          });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error(chalk.red.bold(`\n\u274c Error during fix wizard: ${message}`));
+        } finally {
+          // The wizard must not mask the scan's CI exit code.
+          process.exitCode = scanExitCode;
+        }
       }
     }
   } catch (error: unknown) {

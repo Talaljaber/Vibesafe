@@ -21,4 +21,25 @@ describe("vibesafe CLI (built binary)", () => {
     expect(["blocker", "danger"]).toContain(parsed.deployStatus);
     expect(parsed.findings.length).toBeGreaterThan(0);
   }, 30000);
+
+  // spawnSync gives the child a non-TTY stdin, so the wizard refuses to start.
+  it("fix -i and fix -i <dir> route to the wizard (no TTY -> exit 1)", () => {
+    for (const args of [["fix", "-i"], ["fix", "-i", FIXTURE]]) {
+      const res = spawnSync(process.execPath, [BIN, ...args], { encoding: "utf-8" });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain("interactive terminal");
+    }
+  }, 30000);
+
+  it("fix -i <id> <dir> errors instead of treating the id as a directory", () => {
+    const res = spawnSync(process.execPath, [BIN, "fix", "-i", "some-id", FIXTURE], { encoding: "utf-8" });
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain("--interactive takes an optional directory");
+  }, 30000);
+
+  it("fix with no arguments errors with exit code 1", () => {
+    const res = spawnSync(process.execPath, [BIN, "fix"], { encoding: "utf-8" });
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain("missing required argument 'finding-id'");
+  }, 30000);
 });
