@@ -14,17 +14,29 @@ import { isClientFile } from "./utils/file-classifier.js";
 const IDENT = String.raw`(?:"(?:[^"]|"")+"|[A-Za-z_][\w$]*)`;
 const QUAL = String.raw`(?:(${IDENT})\s*\.\s*)?(${IDENT})`;
 
+const MAX_STMT = 2048;
+const MAX_NAME = 63;
+
 const CREATE_TABLE_RE = new RegExp(
-  String.raw`\bcreate\s+(?:unlogged\s+)?table\s+(?:if\s+not\s+exists\s+)?${QUAL}`,
+  String.raw`\bcreate\s+(?:unlogged\s+)?table\s+(if\s+not\s+exists\s+)?${QUAL}`,
   "gi",
 );
 const ENABLE_RLS_RE = new RegExp(
   String.raw`\balter\s+table\s+(?:if\s+exists\s+)?(?:only\s+)?${QUAL}\s+(enable|disable)\s+row\s+level\s+security\b`,
   "gi",
 );
-const DROP_TABLE_RE = /\bdrop\s+table\s+(?:if\s+exists\s+)?([^;]*)/gi;
+const RENAME_TABLE_RE = new RegExp(
+  String.raw`\balter\s+table\s+(?:if\s+exists\s+)?(?:only\s+)?${QUAL}\s+rename\s+to\s+(${IDENT})`,
+  "gi",
+);
+const DROP_TABLE_RE = /\bdrop\s+table\s+(?:if\s+exists\s+)?/gi;
+const DROP_POLICY_RE = new RegExp(
+  String.raw`\bdrop\s+policy\s+(?:if\s+exists\s+)?(${IDENT})\s+on\s+${QUAL}`,
+  "gi",
+);
+const ALTER_POLICY_RE = new RegExp(String.raw`\balter\s+policy\s+(${IDENT})\s+on\s+${QUAL}`, "gi");
 const POLICY_RE = new RegExp(
-  String.raw`\bcreate\s+(?:or\s+replace\s+)?policy\s+(?:${IDENT})\s+on\s+${QUAL}`,
+  String.raw`\bcreate\s+(?:or\s+replace\s+)?policy\s+(${IDENT})\s+on\s+${QUAL}`,
   "gi",
 );
 const QUAL_G = new RegExp(QUAL, "g");
@@ -34,6 +46,7 @@ const SUPABASE_ENV_RE = /(?:NEXT_PUBLIC|VITE|REACT_APP|EXPO_PUBLIC|NUXT_PUBLIC)_
 const JS_FILE_RE = /\.(?:[cm]?[jt]sx?)$/;
 
 /** Replaces comments and string/dollar-quoted bodies with spaces, preserving offsets and newlines. */
+/** @internal Exported for tests only. */
 export function stripSqlNoise(sql: string): string {
   const out: string[] = [];
   const blank = (s: string) => s.replace(/[^\n]/g, " ");
@@ -147,10 +160,60 @@ function isAlwaysTrue(expr: string | null): boolean {
   return /^true$/i.test(e);
 }
 
-type TableEvent =
-  | { kind: "create"; offset: number; key: string; line: number; text: string }
+/** Statement text following `from`, capped and cut at the first semicolon. */
+function statementAfter(sql: string, from: number): string {
+  const window = sql.slice(from, from + MAX_STMT);
+  const semi = window.indexOf(";");
+  return semi === -1 ? window : window.slice(0, semi);
+}
+
+/** Display-safe identifier: control chars stripped, capped at the Postgres identifier limit. */
+function displayName(name: string): string {
+  // eslint-disable-next-line no-control-regex
+  const clean = name.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
+  return clean.length > MAX_NAME ? clean.slice(0, MAX_NAME) + "..." : clean;
+}
+
+interface PolicyData {
+  restrictive: boolean;
+  cmd: string;
+  roles: string[] | undefined;
+  using: string | null;
+  check: string | null;
+}
+
+function parsePolicyClauses(rest: string): Partial<PolicyData> {
+  const out: Partial<PolicyData> = {};
+  if (/\bas\s+restrictive\b/i.test(rest)) out.restrictive = true;
+  else if (/\bas\s+permissive\b/i.test(rest)) out.restrictive = false;
+  const cmd = /\bfor\s+(all|select|insert|update|delete)\b/i.exec(rest)?.[1];
+  if (cmd) out.cmd = cmd.toLowerCase();
+  const roles = /\bto\s+([\s\S]*?)(?=\busing\b|\bwith\s+check\b|$)/i.exec(rest)?.[1];
+  if (roles !== undefined) out.roles = roles.split(",").map((r) => r.trim().replace(/^"|"$/g, "").toLowerCase());
+  const using = parenAfter(rest, /\busing\b/i);
+  if (using !== null) out.using = using;
+  const check = parenAfter(rest, /\bwith\s+check\b/i);
+  if (check !== null) out.check = check;
+  return out;
+}
+
+type SqlEvent =
+  | { kind: "create"; offset: number; key: string; line: number; text: string; ifNotExists: boolean }
   | { kind: "rls"; offset: number; key: string; enabled: boolean }
-  | { kind: "drop"; offset: number; key: string };
+  | { kind: "drop"; offset: number; key: string }
+  | { kind: "rename"; offset: number; from: string; to: string }
+  | {
+      kind: "policy";
+      offset: number;
+      tableKey: string;
+      pname: string;
+      op: "create" | "alter" | "drop" | "rename";
+      line: number;
+      text: string;
+      tableName: string;
+      rest: string;
+      newName?: string;
+    };
 
 interface TableState {
   file: string;
@@ -159,6 +222,12 @@ interface TableState {
   rls: boolean;
 }
 
+interface PolicyState extends PolicyData {
+  file: string;
+  line: number;
+  text: string;
+  tableName: string;
+}
 export class SupabaseRlsDetector implements Detector {
   id = "supabase-rls-detector";
   name = "Supabase Row Level Security Detection";
@@ -176,7 +245,8 @@ export class SupabaseRlsDetector implements Detector {
 
     const findings: Finding[] = [];
     const tables = new Map<string, TableState>();
-    const policyFindings: Finding[] = [];
+    const policies = new Map<string, PolicyState>();
+    const policyKey = (tableKey: string, name: string) => `${tableKey}\u0000${name}`;
 
     for (const file of sqlFiles) {
       if (!inSupabaseDir(file) && !(await getUsage()).used) continue;
@@ -184,16 +254,25 @@ export class SupabaseRlsDetector implements Detector {
       const sql = stripSqlNoise(raw);
       const rawLines = raw.split("\n");
       const lineText = (line: number) => rawLines[line - 1] ?? "";
-      const events: TableEvent[] = [];
+      const events: SqlEvent[] = [];
+      const polTable = (schema: string | undefined, name: string) =>
+        `${schema === undefined ? "public" : normalizeIdent(schema)}.${normalizeIdent(name)}`;
 
       for (const m of sql.matchAll(CREATE_TABLE_RE)) {
         // Partitions are reached through their (protected) parent table.
         const after = sql.slice(m.index + m[0].length, m.index + m[0].length + 400);
         if (/^[^;(]*\bpartition\s+of\b/i.test(after)) continue;
-        const key = tableKey(m[1], m[2]!);
+        const key = tableKey(m[2], m[3]!);
         if (!key) continue;
         const line = lineAt(sql, m.index);
-        events.push({ kind: "create", offset: m.index, key, line, text: lineText(line) });
+        events.push({
+          kind: "create",
+          offset: m.index,
+          key,
+          line,
+          text: lineText(line),
+          ifNotExists: m[1] !== undefined,
+        });
       }
       for (const m of sql.matchAll(ENABLE_RLS_RE)) {
         const key = tableKey(m[1], m[2]!);
@@ -201,31 +280,113 @@ export class SupabaseRlsDetector implements Detector {
           events.push({ kind: "rls", offset: m.index, key, enabled: m[3]!.toLowerCase() === "enable" });
         }
       }
+      for (const m of sql.matchAll(RENAME_TABLE_RE)) {
+        const from = tableKey(m[1], m[2]!);
+        const to = tableKey(m[1], m[3]!);
+        if (from && to) events.push({ kind: "rename", offset: m.index, from, to });
+      }
       for (const m of sql.matchAll(DROP_TABLE_RE)) {
-        for (const q of m[1]!.matchAll(QUAL_G)) {
+        const list = statementAfter(sql, m.index + m[0].length).replace(/\b(?:cascade|restrict)\s*$/i, "");
+        for (const q of list.matchAll(QUAL_G)) {
           const key = tableKey(q[1], q[2]!);
           if (key) events.push({ kind: "drop", offset: m.index, key });
         }
+      }
+      for (const m of sql.matchAll(POLICY_RE)) {
+        const line = lineAt(sql, m.index);
+        events.push({
+          kind: "policy",
+          offset: m.index,
+          tableKey: polTable(m[2], m[3]!),
+          pname: normalizeIdent(m[1]!),
+          op: "create",
+          line,
+          text: lineText(line),
+          tableName: (m[2] ? `${normalizeIdent(m[2])}.` : "") + normalizeIdent(m[3]!),
+          rest: statementAfter(sql, m.index + m[0].length),
+        });
+      }
+      for (const m of sql.matchAll(ALTER_POLICY_RE)) {
+        const rest = statementAfter(sql, m.index + m[0].length);
+        const ren = /^\s*rename\s+to\s+(\S+)/i.exec(rest);
+        const line = lineAt(sql, m.index);
+        events.push({
+          kind: "policy",
+          offset: m.index,
+          tableKey: polTable(m[2], m[3]!),
+          pname: normalizeIdent(m[1]!),
+          op: ren ? "rename" : "alter",
+          line,
+          text: lineText(line),
+          tableName: "",
+          rest,
+          ...(ren ? { newName: normalizeIdent(ren[1]!) } : {}),
+        });
+      }
+      for (const m of sql.matchAll(DROP_POLICY_RE)) {
+        events.push({
+          kind: "policy",
+          offset: m.index,
+          tableKey: polTable(m[2], m[3]!),
+          pname: normalizeIdent(m[1]!),
+          op: "drop",
+          line: 0,
+          text: "",
+          tableName: "",
+          rest: "",
+        });
       }
 
       events.sort((a, b) => a.offset - b.offset);
       for (const ev of events) {
         if (ev.kind === "create") {
+          // `create table if not exists` on a known table is a no-op in SQL.
+          if (ev.ifNotExists && tables.has(ev.key)) continue;
           tables.set(ev.key, { file, line: ev.line, text: ev.text, rls: false });
         } else if (ev.kind === "rls") {
           const t = tables.get(ev.key);
           if (t) t.rls = ev.enabled;
-        } else {
+        } else if (ev.kind === "drop") {
           tables.delete(ev.key);
+          for (const k of [...policies.keys()]) if (k.startsWith(ev.key + "\u0000")) policies.delete(k);
+        } else if (ev.kind === "rename") {
+          const t = tables.get(ev.from);
+          if (!t) continue;
+          tables.delete(ev.from);
+          tables.set(ev.to, t);
+          for (const [k, p] of [...policies.entries()]) {
+            if (!k.startsWith(ev.from + "\u0000")) continue;
+            policies.delete(k);
+            policies.set(ev.to + k.slice(ev.from.length), p);
+          }
+        } else {
+          const pk = policyKey(ev.tableKey, ev.pname);
+          if (ev.op === "create") {
+            policies.set(pk, {
+              restrictive: false,
+              cmd: "all",
+              roles: undefined,
+              using: null,
+              check: null,
+              ...parsePolicyClauses(ev.rest),
+              file,
+              line: ev.line,
+              text: ev.text,
+              tableName: ev.tableName,
+            });
+          } else if (ev.op === "drop") {
+            policies.delete(pk);
+          } else {
+            const p = policies.get(pk);
+            if (!p) continue;
+            if (ev.op === "rename" && ev.newName) {
+              policies.delete(pk);
+              policies.set(policyKey(ev.tableKey, ev.newName), p);
+            } else {
+              Object.assign(p, parsePolicyClauses(ev.rest));
+            }
+          }
         }
-      }
-
-      for (const m of sql.matchAll(POLICY_RE)) {
-        const end = sql.indexOf(";", m.index);
-        const stmt = sql.slice(m.index + m[0].length, end === -1 ? sql.length : end);
-        const line = lineAt(sql, m.index);
-        const f = this.checkPolicy(stmt, file, line, lineText(line), m[1], m[2]!);
-        if (f) policyFindings.push(f);
       }
     }
 
@@ -234,36 +395,29 @@ export class SupabaseRlsDetector implements Detector {
       const clientSide = (await getUsage()).client;
       const severity: Severity = clientSide ? "critical" : "high";
       for (const [key, t] of missing) {
-        findings.push(this.missingRlsFinding(key.slice("public.".length), t, severity, clientSide));
+        findings.push(this.missingRlsFinding(displayName(key.slice("public.".length)), t, severity, clientSide));
       }
     }
-    findings.push(...policyFindings);
+    for (const p of policies.values()) {
+      const f = this.checkPolicy(p);
+      if (f) findings.push(f);
+    }
     return findings;
   }
 
-  private checkPolicy(
-    rest: string,
-    file: string,
-    line: number,
-    text: string,
-    schema: string | undefined,
-    table: string,
-  ): Finding | null {
-    if (/\bas\s+restrictive\b/i.test(rest)) return null;
-    const cmd = /\bfor\s+(all|select|insert|update|delete)\b/i.exec(rest)?.[1]?.toLowerCase() ?? "all";
+  private checkPolicy(p: PolicyState): Finding | null {
+    if (p.restrictive) return null;
+    const cmd = p.cmd;
     if (cmd === "select") return null;
-
-    const roles = /\bto\s+([\s\S]*?)(?=\busing\b|\bwith\s+check\b|$)/i.exec(rest)?.[1];
-    if (roles !== undefined) {
-      const list = roles.split(",").map((r) => r.trim().replace(/^"|"$/g, "").toLowerCase());
-      if (!list.some((r) => r === "public" || r === "anon" || r === "authenticated")) return null;
+    if (p.roles !== undefined) {
+      if (!p.roles.some((r) => r === "public" || r === "anon" || r === "authenticated")) return null;
     }
+    // A permissive `with check (true)` is flagged even when `using` is restrictive:
+    // it still lets any row be written through that command.
+    if (!isAlwaysTrue(p.using) && !isAlwaysTrue(p.check)) return null;
 
-    const usingTrue = isAlwaysTrue(parenAfter(rest, /\busing\b/i));
-    const checkTrue = isAlwaysTrue(parenAfter(rest, /\bwith\s+check\b/i));
-    if (!usingTrue && !checkTrue) return null;
-
-    const tableName = (schema ? `${normalizeIdent(schema)}.` : "") + normalizeIdent(table);
+    const { file, line, text } = p;
+    const tableName = displayName(p.tableName);
     const ruleId = "authorization/supabase-permissive-policy";
     const action = cmd === "all" ? "every operation" : cmd;
     return {
@@ -289,7 +443,6 @@ export class SupabaseRlsDetector implements Detector {
       tags: ["supabase", "rls"],
     };
   }
-
   private missingRlsFinding(table: string, t: TableState, severity: Severity, clientSide: boolean): Finding {
     const ruleId = "authorization/supabase-missing-rls";
     return {
@@ -327,15 +480,14 @@ export class SupabaseRlsDetector implements Detector {
       const hasEnv = SUPABASE_ENV_RE.test(content);
       if (!hasImport && !hasEnv) continue;
       used = true;
+      const serverOnly = /(?:^|\/)(?:server|api|functions|scripts)\//.test(file.replace(/\\/g, "/"));
       if (
-        hasEnv ||
         isClientFile(file, content) ||
-        /\.[jt]sx$/.test(file) ||
-        /createBrowserClient\s*\(/.test(content)
+        /createBrowserClient\s*\(/.test(content) ||
+        (hasEnv && !serverOnly)
       ) {
         return { used, client: true };
       }
-    }
-    return { used, client: false };
+    }    return { used, client: false };
   }
 }
