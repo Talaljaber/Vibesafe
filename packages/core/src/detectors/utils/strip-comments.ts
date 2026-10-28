@@ -11,6 +11,9 @@ interface ScanResult {
 const REGEX_PRECEDERS = "(,=:[!&|?{};+-*%<>~^";
 const REGEX_KEYWORD_RE = /\b(?:return|typeof|case|void|delete|in|of|yield|await)\s*$/;
 
+/** Longest keyword (`typeof`/`return`/`delete`/`yield`/`await`) plus generous whitespace; keeps the test O(1). */
+const KEYWORD_TAIL = 32;
+
 function blank(ch: string, on: boolean): string {
   return on && ch !== "\n" ? " " : ch;
 }
@@ -21,6 +24,8 @@ function scanCode(s: string, start: number, inTemplateExpr: boolean, blankString
   let i = start;
   let depth = 0;
   let lastSig = "";
+  // Bounded tail of recent plain-code output (never slice `out`: that flattens the string each time).
+  let tail = "";
 
   while (i < n) {
     const c = s[i] as string;
@@ -81,7 +86,8 @@ function scanCode(s: string, start: number, inTemplateExpr: boolean, blankString
         i++;
       }
       lastSig = "`";
-    } else if (c === "/" && (lastSig === "" || REGEX_PRECEDERS.includes(lastSig) || REGEX_KEYWORD_RE.test(out))) {
+      tail = "";
+    } else if (c === "/" && (lastSig === "" || REGEX_PRECEDERS.includes(lastSig) || REGEX_KEYWORD_RE.test(tail))) {
       // Regex literal (heuristic: a slash where an expression is expected). Never spans lines.
       out += c;
       i++;
@@ -104,6 +110,7 @@ function scanCode(s: string, start: number, inTemplateExpr: boolean, blankString
         i++;
       }
       lastSig = "/";
+      tail = "";
     } else {
       if (c === "{") depth++;
       else if (c === "}") {
@@ -112,6 +119,7 @@ function scanCode(s: string, start: number, inTemplateExpr: boolean, blankString
       }
       out += c;
       if (!/\s/.test(c)) lastSig = c;
+      tail = (tail + c).slice(-KEYWORD_TAIL);
       i++;
     }
   }
@@ -124,7 +132,8 @@ function scanCode(s: string, start: number, inTemplateExpr: boolean, blankString
  *
  * This is a lightweight scanner, not a parser: regex literals are recognised heuristically (a `/`
  * where an expression is expected) and JSX text containing quotes can pair with a later quote on the
- * same line. Quoted strings end at a newline so a stray apostrophe never swallows later lines.
+ * same line. In TSX, a `/` after `<` (e.g. `</div> // note`) is read as a regex start, so a trailing
+ * comment on such a line may not be stripped. Quoted strings end at a newline so a stray apostrophe never swallows later lines.
  */
 export function stripComments(source: string, options: StripCommentsOptions = {}): string {
   return scanCode(source, 0, false, options.blankStrings === true).out;

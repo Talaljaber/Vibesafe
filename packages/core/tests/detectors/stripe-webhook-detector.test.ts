@@ -1,4 +1,4 @@
-﻿import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vitest";
 import { StripeWebhookDetector } from "../../src/detectors/stripe-webhook-detector.js";
 import { MissingAuthDetector } from "../../src/detectors/missing-auth-detector.js";
 import { stripComments } from "../../src/detectors/utils/strip-comments.js";
@@ -512,5 +512,69 @@ describe("stripComments", () => {
     const out = stripComments("x('constructEvent(') + `a ${y.constructEvent(1)}`", { blankStrings: true });
     expect(out).not.toContain("'constructEvent('");
     expect(out).toContain("y.constructEvent(1)");
+  });
+  describe("review round 1 hardening", () => {
+    const detector = new StripeWebhookDetector();
+    const ctx = (files: Record<string, string>): ScanContext => ({
+      rootPath: "/fake/path",
+      projectContext: {} as any,
+      files: Object.keys(files),
+      config: {} as any,
+      readFile: async (file) => files[file] || "",
+    });
+
+    it("stripComments stays fast on division-heavy input", () => {
+      const src = "const x = a/b/c;\n".repeat(12_000);
+      const start = Date.now();
+      stripComments(src);
+      stripComments("a/b/c ".repeat(30_000));
+      expect(Date.now() - start).toBeLessThan(1000);
+    });
+
+    it("does not treat property access to payment_intent as a webhook signal", async () => {
+      const findings = await detector.detect(
+        ctx({
+          "app/api/admin/refund/route.ts": `
+            import Stripe from "stripe";
+            export async function POST(req: Request) {
+              const session = await getSession();
+              await refund(session.payment_intent.id);
+              console.log("payment_intent.refunded");
+              return Response.json({ ok: true });
+            }
+          `,
+        }),
+      );
+      expect(findings).toHaveLength(0);
+    });
+
+    it("does not let a db.webhooks table or a zod validateBody silence the unsigned finding", async () => {
+      const findings = await detector.detect(
+        ctx({
+          "app/api/webhooks/stripe/route.ts": `
+            import { validateBody } from "@/lib/validate";
+            export async function POST(req: Request) {
+              const event = validateBody(await req.json());
+              await db.webhooks.create(event);
+              return Response.json({ received: true });
+            }
+          `,
+        }),
+      );
+      expect(findings.map((f) => f.ruleId)).toEqual(["auth/stripe-webhook-unsigned"]);
+    });
+
+    it("does not report a header-only helper file as a webhook route", async () => {
+      const findings = await detector.detect(
+        ctx({
+          "lib/stripe-signature.ts": `
+            export function getSignature(req: Request) {
+              return req.headers.get("stripe-signature");
+            }
+          `,
+        }),
+      );
+      expect(findings).toHaveLength(0);
+    });
   });
 });

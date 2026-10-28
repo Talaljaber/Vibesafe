@@ -18,13 +18,17 @@ const DEFAULT_EXPORT_RE = /export\s+default\b/;
 
 const ROUTE_LIKE_PATH_RE = /(?:^|\/)route\.[cm]?[jt]s$|(?:^|\/)pages\/api\/|(?:^|\/)app\/api\/|(?:^|\/)api\/|webhook[^/]*$/;
 
-const HELPER_NAME_RE = /verify|validate|construct.*(?:event|webhook)|webhook.*(?:event|signature)|stripe.*event/i;
+const HELPER_NAME_RE =
+  /(?:verify|validate).*(?:stripe|webhook|signature|event)|construct.*(?:event|webhook)|webhook.*(?:event|signature)|stripe.*event/i;
 
-function isHandlerText(text: string, allowDefaultExport: boolean): boolean {
+/** Cheap raw-text pre-filter so unrelated files are never scanned or stripped. */
+const RAW_PREFILTER_RE = /stripe|webhook/i;
+
+function isHandlerText(text: string, allowDefaultExport: boolean, headerCounts = true): boolean {
   return (
     EXPORT_HANDLER_RE.test(text) ||
     ROUTER_HANDLER_RE.test(text) ||
-    SIGNATURE_HEADER_RE.test(text) ||
+    (headerCounts && SIGNATURE_HEADER_RE.test(text)) ||
     (allowDefaultExport && DEFAULT_EXPORT_RE.test(text))
   );
 }
@@ -33,13 +37,14 @@ function allowsDefaultExport(normalizedPath: string): boolean {
   return /(?:^|\/)pages\/api\//.test(normalizedPath);
 }
 
+/** Event names only count when written as a string literal (not property access like `session.payment_intent.id`). */
+const EVENT_NAME_LITERAL_RE =
+  /(["'`])(?:checkout\.session\.(?:completed|expired|async_payment_succeeded|async_payment_failed)|customer\.subscription\.(?:created|updated|deleted|paused|resumed|trial_will_end)|payment_intent\.(?:succeeded|payment_failed|created|canceled|processing|requires_action|amount_capturable_updated|partially_funded)|invoice\.(?:paid|payment_succeeded|payment_failed|finalized))\1/;
+
 function hasWebhookSignals(code: string): boolean {
   return (
     /stripe-signature/i.test(code) ||
-    /\bcheckout\.session\.[a-z_]+/i.test(code) ||
-    /\bcustomer\.subscription\.[a-z_]+/i.test(code) ||
-    /\bpayment_intent\.[a-z_]+/i.test(code) ||
-    /\binvoice\.(?:paid|payment_succeeded|payment_failed|finalized)\b/i.test(code) ||
+    EVENT_NAME_LITERAL_RE.test(code) ||
     /\bstripe\.webhooks\b/i.test(code)
   );
 }
@@ -76,7 +81,9 @@ export function isStripeWebhookRoute(filePath: string, fileContent: string): boo
   const isContentMatch = (hasStripeReference(code) && signals) || SIGNATURE_HEADER_RE.test(code);
 
   if (isStripeWebhookPath || isContentMatch) {
-    return isHandlerText(code, allowsDefaultExport(normalizedPath));
+    // Reading the stripe-signature header alone is only handler evidence in route-like files
+    // (a helper such as lib/stripe-signature.ts merely reads it).
+    return isHandlerText(code, allowsDefaultExport(normalizedPath), ROUTE_LIKE_PATH_RE.test(normalizedPath));
   }
   return false;
 }
@@ -123,7 +130,7 @@ function importedNames(code: string): Set<string> {
  * verification-like name, or a `stripe.webhooks` reference.
  */
 export function mayDelegateVerification(code: string): boolean {
-  if (/\bwebhooks\b/.test(code)) return true;
+  if (/\bwebhooks\s*\.\s*(?:signature|constructEvent)/.test(code)) return true;
   for (const name of importedNames(code)) {
     if (!HELPER_NAME_RE.test(name)) continue;
     const escaped = name.replace(/\$/g, "\\$");
@@ -182,6 +189,7 @@ export class StripeWebhookDetector implements Detector {
       if (!SCANNABLE_SUFFIXES.some((suffix) => filePath.endsWith(suffix))) continue;
 
       const raw = await context.readFile(filePath);
+      if (!RAW_PREFILTER_RE.test(filePath) && !RAW_PREFILTER_RE.test(raw)) continue;
       if (!isStripeWebhookRoute(filePath, raw)) continue;
 
       const content = stripComments(raw);
