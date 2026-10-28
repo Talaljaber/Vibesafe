@@ -26,7 +26,7 @@ describe("SecurityHeadersDetector: Express", () => {
     expect(findings[0]?.category).toBe("security_config");
     expect(findings[0]?.line).toBe(2);
     expect(findings[0]?.plainEnglishProblem).toContain("X-Powered-By");
-    expect(findings[0]?.id.startsWith("SECCFG-")).toBe(true);
+    expect(findings[0]?.id.startsWith("CFG-")).toBe(true);
   });
 
   it("flags CommonJS require('express')", async () => {
