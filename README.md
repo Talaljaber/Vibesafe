@@ -186,12 +186,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: Talaljaber/Vibesafe@main
+      # Pin to a release tag or a full commit SHA; do not use a moving branch like @main.
+      - uses: Talaljaber/Vibesafe@<release-tag-or-commit-sha>
         with:
           fail-on: danger
 ```
 
-Inputs: `path`, `fail-on`, `comment`, `github-token`, `deep`, `version`, `node-version`. See `examples/github-action.yml`.
+Pin the action to a release tag or commit SHA so a moved branch cannot change what runs in your CI. Inputs: `path`, `fail-on`, `comment`, `github-token`, `deep`, `version`, `node-version`. See `examples/github-action.yml`.
 
 ### 📄 SARIF and code scanning
 

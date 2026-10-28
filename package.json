@@ -11,6 +11,7 @@
     "test": "turbo run test",
     "test:watch": "turbo run test:watch",
     "clean": "turbo run clean && rimraf node_modules",
+    "version:check": "node scripts/sync-versions.mjs --check",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\" --ignore-path .gitignore --ignore-path .prettierignore",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\" --ignore-path .gitignore --ignore-path .prettierignore"
   },

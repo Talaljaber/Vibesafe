@@ -15,6 +15,7 @@ const sync = (await import("../../../scripts/sync-versions.mjs")) as {
     opts?: { version?: string; check?: boolean },
   ) => { target: string; mismatched: unknown[]; changed: string[] };
   collectVersions: (root: string) => Array<{ name: string; version: string }>;
+  compare: (a: string, b: string) => number;
 };
 
 describe("docs hygiene", () => {
@@ -70,7 +71,10 @@ describe("docs hygiene", () => {
 
   it("CHANGELOG has an Unreleased section with all four headings", () => {
     const cl = read("CHANGELOG.md");
-    const unreleased = cl.slice(cl.indexOf("## [Unreleased]"), cl.indexOf("## [0.1.0]"));
+    const start = cl.indexOf("## [Unreleased]");
+    expect(start).toBeGreaterThan(-1);
+    const next = cl.indexOf("\n## [", start + 1);
+    const unreleased = cl.slice(start, next === -1 ? undefined : next);
     expect(unreleased.length).toBeGreaterThan(0);
     for (const h of ["### Added", "### Changed", "### Fixed", "### Security"]) {
       expect(unreleased, h).toContain(h);
@@ -82,6 +86,7 @@ describe("docs hygiene", () => {
     expect(id).toMatch(/^SEC-[0-9a-f]{10}$/);
     const src = read("packages/mcp/src/tools/explain.ts");
     const example = /e\.g\. "([A-Z]+-[^"]+)"/.exec(src)?.[1];
+    expect(example, "example id not found in explain.ts").toBeDefined();
     expect(example).toMatch(/^[A-Z]+-[0-9a-f]{10}$/);
     expect(src).not.toContain("SEC-001");
   });
@@ -133,6 +138,30 @@ describe("sync-versions", () => {
     expect(fs.readFileSync(path.join(tmp, "packages/shared/src/constants.ts"), "utf8")).toContain(
       '"1.0.0"',
     );
+  });
+
+  it("treats a stable release as higher than its prerelease", () => {
+    expect(sync.compare("1.0.0", "1.0.0-rc.1")).toBeGreaterThan(0);
+    expect(sync.compare("1.0.0-rc.1", "1.0.0")).toBeLessThan(0);
+    expect(sync.compare("1.0.0-rc.2", "1.0.0-rc.10")).toBeLessThan(0);
+    expect(sync.compare("1.0.0-alpha", "1.0.0-alpha.1")).toBeLessThan(0);
+    expect(sync.compare("1.0.1-rc.1", "1.0.0")).toBeGreaterThan(0);
+    write("packages/c/package.json", pkg("c", "0.1.6-rc.1"));
+    expect(sync.syncVersions(tmp, { check: true }).target).toBe("0.1.6");
+  });
+
+  it("rejects a package.json without a version", () => {
+    write("packages/nov/package.json", JSON.stringify({ name: "nov" }));
+    expect(() => sync.syncVersions(tmp, { check: true })).toThrow(/Missing "version"/);
+  });
+
+  it("works without a constants file", () => {
+    fs.rmSync(path.join(tmp, "packages/shared/src"), { recursive: true });
+    expect(sync.collectVersions(tmp).map((e) => e.name)).not.toContain("VIBESAFE_VERSION");
+  });
+
+  it("README does not pin the GitHub Action to a mutable branch", () => {
+    expect(read("README.md")).not.toMatch(/Talaljaber\/Vibesafe@(main|master)/);
   });
 
   it("rejects invalid versions", () => {

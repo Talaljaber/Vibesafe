@@ -13,10 +13,28 @@ const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const CONSTANT_FILE = path.join("packages", "shared", "src", "constants.ts");
 const CONSTANT_RE = /(export const VIBESAFE_VERSION = ")([^"]*)(")/;
 
-function compare(a, b) {
-  const pa = a.split("-")[0].split(".").map(Number);
-  const pb = b.split("-")[0].split(".").map(Number);
-  for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pa[i] - pb[i];
+/** Semver precedence: a stable release is higher than its prerelease; prereleases compare per semver 2.0. */
+export function compare(a, b) {
+  const [ca, pa = ""] = a.split(/-(.*)/s);
+  const [cb, pb = ""] = b.split(/-(.*)/s);
+  const na = ca.split(".").map(Number);
+  const nb = cb.split(".").map(Number);
+  for (let i = 0; i < 3; i++) if (na[i] !== nb[i]) return na[i] - nb[i];
+  if (pa === pb) return 0;
+  if (pa === "") return 1;
+  if (pb === "") return -1;
+  const ia = pa.split(".");
+  const ib = pb.split(".");
+  for (let i = 0; i < Math.max(ia.length, ib.length); i++) {
+    if (ia[i] === undefined) return -1;
+    if (ib[i] === undefined) return 1;
+    const da = /^\d+$/.test(ia[i]);
+    const db = /^\d+$/.test(ib[i]);
+    if (da && db) {
+      if (Number(ia[i]) !== Number(ib[i])) return Number(ia[i]) - Number(ib[i]);
+    } else if (da !== db) return da ? -1 : 1;
+    else if (ia[i] !== ib[i]) return ia[i] < ib[i] ? -1 : 1;
+  }
   return 0;
 }
 
@@ -28,12 +46,14 @@ export function collectVersions(root) {
     const file = path.join(pkgDir, name, "package.json");
     if (!fs.existsSync(file)) continue;
     const json = JSON.parse(fs.readFileSync(file, "utf8"));
+    if (typeof json.version !== "string") throw new Error(`Missing "version" in ${file}`);
     entries.push({ kind: "package", file, name: json.name, version: json.version });
   }
   const constFile = path.join(root, CONSTANT_FILE);
   if (fs.existsSync(constFile)) {
     const m = CONSTANT_RE.exec(fs.readFileSync(constFile, "utf8"));
-    if (m) entries.push({ kind: "constant", file: constFile, name: "VIBESAFE_VERSION", version: m[2] });
+    if (m)
+      entries.push({ kind: "constant", file: constFile, name: "VIBESAFE_VERSION", version: m[2] });
   }
   return entries;
 }
