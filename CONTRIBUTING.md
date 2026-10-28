@@ -54,14 +54,30 @@ Make sure your changes adhere to the codebase's existing style.
 
 ## 5. Make a Pull Request
 
-At this point, you should switch back to your master branch and make sure it's up to date with VibeSafe's master branch:
+Before opening the pull request, make sure your branch is up to date with VibeSafe's `main` branch and that the full gate passes:
 
-Then push your branch to GitHub and create a Pull Request against the main `vibesafe` repository.
+```bash
+pnpm build && pnpm typecheck && pnpm lint && pnpm test && pnpm format:check && pnpm version:check
+```
+
+Then push your branch to GitHub and create a Pull Request against `main` in [Talaljaber/Vibesafe](https://github.com/Talaljaber/Vibesafe). Use Conventional Commits with a package scope, for example `feat(core): ...` or `fix(cli): ...`.
 
 ## 6. Versioning
 
-All workspace packages (and `VIBESAFE_VERSION` in `@vibesafe/shared`) share one version. Run `node scripts/sync-versions.mjs <version>` to align them (omit the version to use the highest current one) and `pnpm version:check` (same as `node scripts/sync-versions.mjs --check`) to verify. Run `pnpm format:check` before pushing; `pnpm format` fixes formatting.
+All workspace packages (and `VIBESAFE_VERSION` in `@vibesafe/shared`) share one version. Run `node scripts/sync-versions.mjs <version>` to align them (omit the version to use the highest current one) and `pnpm version:check` (same as `node scripts/sync-versions.mjs --check`) to verify.
 
-## 7. Keeping it Honest
+## 7. Formatting and line endings
 
-VibeSafe is currently in its v0.1 stage. We aim to keep our documentation and claims honest. When adding features, do not overhype them. Be transparent about known limitations!
+The repository uses Prettier and LF line endings (enforced by `.gitattributes`). Run `pnpm format:check` before pushing; `pnpm format` fixes formatting.
+
+If you cloned the repository on Windows before `.gitattributes` was added, files checked out with `core.autocrlf=true` may still have CRLF endings and fail `pnpm format:check`. Renormalize once after pulling. Commit or stash your work first, because `git reset --hard` discards uncommitted changes:
+
+```bash
+git add --renormalize .   # normalize line endings in the index
+git rm --cached -r -q .
+git reset --hard          # check the files out again with LF endings
+```
+
+## 8. Keeping it Honest
+
+VibeSafe is still pre-1.0. We aim to keep our documentation and claims honest. When adding features, do not overhype them. Be transparent about known limitations!

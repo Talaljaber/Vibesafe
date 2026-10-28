@@ -95,6 +95,63 @@ describe("docs hygiene", () => {
     expect(read(".gitattributes")).toMatch(/^\* text=auto eol=lf$/m);
     expect(read(".github/workflows/ci.yml")).toContain("pnpm format:check");
   });
+
+  it("README and the example workflow do not pin the GitHub Action to a mutable branch", () => {
+    for (const f of ["README.md", "examples/github-action.yml"]) {
+      const text = read(f);
+      expect(text, f).toContain("Talaljaber/Vibesafe@");
+      expect(text, f).not.toMatch(/Talaljaber\/Vibesafe@(main|master)\b/);
+    }
+  });
+
+  it("every CLI and MCP flag in the README exists in the source", () => {
+    const sources = ["packages/cli/src", "packages/mcp/src"]
+      .flatMap((dir) =>
+        fs
+          .readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" })
+          .filter((p) => p.endsWith(".ts"))
+          .map((p) => read(path.join(dir, p))),
+      )
+      .join("\n");
+    // Flags that belong to other tools (pnpm, commander's built-in help).
+    const external = new Set(["--filter", "--help"]);
+    const flags = [...new Set(read("README.md").match(/--[a-z][a-z-]*/g) ?? [])].filter(
+      (f) => !external.has(f),
+    );
+    expect(flags.length).toBeGreaterThan(10);
+    for (const flag of flags) expect(sources, flag).toMatch(new RegExp(`${flag}(?![a-z-])`));
+  });
+
+  it("README rule ids and detector ids exist in core", () => {
+    const dir = path.join(repoRoot, "packages/core/src/detectors");
+    const core = fs
+      .readdirSync(dir, { recursive: true, encoding: "utf8" })
+      .filter((p) => p.endsWith(".ts"))
+      .map((p) => fs.readFileSync(path.join(dir, p), "utf8"))
+      .join("\n");
+    const readme = read("README.md");
+    const ruleIds = [
+      ...new Set(
+        readme.match(
+          /\b(?:secret|auth|authorization|frontend_exposure|validation|dependency|code_quality|structure|xss|security_config)\/[a-z0-9-]*[a-z0-9](?![a-z0-9*-])/g,
+        ) ?? [],
+      ),
+    ];
+    expect(ruleIds.length).toBeGreaterThan(20);
+    for (const id of ruleIds) {
+      const [category, rule] = id.split("/") as [string, string];
+      // Pattern-based ids are built from a prefix (`secret/${pattern.id}`, `security_config/cors-${rule}`).
+      const known =
+        core.includes(`"${id}"`) ||
+        core.includes(`id: "${rule}"`) ||
+        (rule.startsWith("git-history-") && core.includes(`id: "${rule.slice(12)}"`)) ||
+        (category === "security_config" && rule.startsWith("cors-") && core.includes(`"${rule.slice(5)}"`));
+      expect(known, id).toBe(true);
+    }
+    for (const m of readme.matchAll(/`([a-z-]+-detector)`/g)) {
+      expect(core, m[1]).toContain(`id = "${m[1]}"`);
+    }
+  });
 });
 
 describe("sync-versions", () => {
@@ -158,10 +215,6 @@ describe("sync-versions", () => {
   it("works without a constants file", () => {
     fs.rmSync(path.join(tmp, "packages/shared/src"), { recursive: true });
     expect(sync.collectVersions(tmp).map((e) => e.name)).not.toContain("VIBESAFE_VERSION");
-  });
-
-  it("README does not pin the GitHub Action to a mutable branch", () => {
-    expect(read("README.md")).not.toMatch(/Talaljaber\/Vibesafe@(main|master)/);
   });
 
   it("rejects invalid versions", () => {
