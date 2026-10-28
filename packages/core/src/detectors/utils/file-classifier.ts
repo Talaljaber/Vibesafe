@@ -48,6 +48,25 @@ function isViteClientPath(normalizedPath: string): boolean {
   return true;
 }
 
+/** True when the file starts with a `"use server"` directive (after comments/blank lines). */
+export function hasUseServerDirective(fileContent: string): boolean {
+  return /^(["'])use server\1/.test(stripLeadingComments(fileContent));
+}
+
+/**
+ * True for a Pages-router file (outside pages/api) that exports getServerSideProps, getStaticProps or
+ * getInitialProps. Next.js tree-shakes server-only imports used by these out of the client bundle, so
+ * top-level imports such as firebase-admin there are not treated as client exposure (tradeoff: a
+ * client-side use in the same file is not reported).
+ */
+export function usesServerSideDataFetching(filePath: string, fileContent: string): boolean {
+  const p = filePath.replace(/\\/g, "/");
+  if (!/(^|\/)(src\/)?pages\//.test(p) || /(^|\/)(src\/)?pages\/api\//.test(p)) return false;
+  return /\bexport\s+(?:async\s+)?(?:function|const|let|var)\s+(?:getServerSideProps|getStaticProps|getInitialProps)\b|\bexport\s*\{[^}]*\b(?:getServerSideProps|getStaticProps)\b|\.getInitialProps\s*=/.test(
+    fileContent,
+  );
+}
+
 /**
  * Determines if a file is explicitly marked for the client-side
  * or typically exposed to the client (Next.js conventions, or any `src/` code in a Vite project).
@@ -57,6 +76,11 @@ export function isClientFile(
   fileContent: string,
   projectContext?: Pick<ProjectContext, "framework">,
 ): boolean {
+  // A leading "use server" directive marks Server Actions: never bundled as client code
+  if (hasUseServerDirective(fileContent)) {
+    return false;
+  }
+
   // Next.js "use client" directive must be the first statement
   if (hasUseClientDirective(fileContent)) {
     return true;
