@@ -45,6 +45,33 @@ export const RISKY_ROUTE_PATTERNS = [
   "/api/admin",
 ];
 
+/**
+ * Express: signatures of an authentication middleware/check in a route's
+ * handler chain or in an `app.use(...)` / `router.use(...)` call.
+ */
+export const EXPRESS_AUTH_PATTERNS: RegExp[] = [
+  /\bpassport\.authenticate\s*\(/,
+  /\b(?:require|ensure|check|verify|validate)(?:Auth\w*|Login\w*|LoggedIn|Jwt|Token|Session|User)\b/i,
+  /\bisAuth\w*\b/i,
+  /\bjwt\s*\(/,
+  /\bexpressjwt\s*\(/i,
+  /\bjwt\.verify\s*\(/,
+  /\bauth\s*\(/,
+  /\bauthenticate\w*\b/i,
+  /\bauth(?:Middleware|Guard|Required|Handler)\w*\b/i,
+  /\bprotect\b/,
+  /\bgetSession\s*\(/,
+  /\bgetServerSession\s*\(/,
+  /\bclerkMiddleware\s*\(/,
+  /\bClerkExpressRequireAuth\s*\(/,
+  /\bsupabase\.auth\.getUser\s*\(/,
+  /\breq\.isAuthenticated\s*\(/,
+];
+
+/** Express route paths that are public by nature (login, signup, ...). */
+export const EXPRESS_PUBLIC_ROUTE_RE =
+  /(?:^|\/)(?:log-?in|sign-?in|sign-?up|register|forgot-?password|reset-?password|auth|oauth|callback|health|healthz)(?:\/|$|:)/i;
+
 /** Patterns that indicate a role / ownership / permission check. */
 export const AUTHZ_CHECK_PATTERNS: RegExp[] = [
   /\bisAdmin\b/,
