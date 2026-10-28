@@ -11,6 +11,7 @@ const ALL_CATEGORIES: FindingCategory[] = [
   "code_quality",
   "structure",
   "xss",
+  "security_config",
 ];
 
 /**

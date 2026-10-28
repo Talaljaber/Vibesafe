@@ -33,10 +33,12 @@ export class ProjectContextBuilder {
       ['jest', 'vitest', 'mocha', 'cypress', 'playwright'].includes(dep)
     ) || Object.keys(scripts).some(script => script.includes('test'));
 
+    const hasViteConfig = await this.hasViteConfig();
+
     // Framework detection
     let framework: ProjectContext["framework"] = "unknown";
     if (dependencies["next"]) framework = "nextjs";
-    else if (devDependencies["vite"] || dependencies["vite"]) framework = "vite";
+    else if (devDependencies["vite"] || dependencies["vite"] || hasViteConfig) framework = "vite";
     else if (dependencies["express"]) framework = "express";
 
     // Language detection
@@ -68,6 +70,14 @@ export class ProjectContextBuilder {
       nextjsVersion: dependencies["next"]?.replace(/[\^~]/g, ""),
       nodeVersion: packageJson?.engines?.node,
     };
+  }
+
+  /** True when a `vite.config.{ts,mts,js,mjs,cjs}` exists at the project root. */
+  private async hasViteConfig(): Promise<boolean> {
+    for (const ext of ["ts", "mts", "js", "mjs", "cjs"]) {
+      if (await this.fileExists(path.join(this.rootPath, `vite.config.${ext}`))) return true;
+    }
+    return false;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
