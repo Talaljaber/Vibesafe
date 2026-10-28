@@ -15,6 +15,23 @@ export interface ScanOptions {
   json?: boolean;
   deep?: boolean;
   includeTests?: boolean;
+  /** commander sets this to false for --no-config. */
+  config?: boolean;
+  trustConfig?: boolean;
+}
+
+/**
+ * Builds the explicit scan options from CLI flags. Only flags the user actually
+ * passed are included, so config-file values apply otherwise.
+ */
+export function buildScanOptions(rootPath: string, options: ScanOptions) {
+  return {
+    rootPath,
+    ...(options.deep !== undefined ? { deep: options.deep } : {}),
+    ...(options.includeTests !== undefined ? { includeTests: options.includeTests } : {}),
+    ...(options.config === false ? { useConfigFile: false } : {}),
+    ...(options.trustConfig ? { trustConfigScripts: true } : {}),
+  };
 }
 
 export async function runScan(targetDir: string, options: ScanOptions = {}) {
@@ -78,12 +95,7 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
     let result;
     try {
       result = await pipeline.scan(
-        // Only pass flags the user set, so config-file values apply otherwise.
-        {
-          rootPath,
-          ...(options.deep ? { deep: true } : {}),
-          ...(options.includeTests ? { includeTests: true } : {}),
-        },
+        buildScanOptions(rootPath, options),
         onProgress,
       );
     } finally {

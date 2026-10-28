@@ -1,17 +1,10 @@
-import type { ScanConfig, FindingCategory } from "@vibesafe/shared";
-import { DEFAULT_MAX_FILES, DEFAULT_MIN_SEVERITY, DEFAULT_SCAN_TIMEOUT_MS } from "@vibesafe/shared";
-
-const ALL_CATEGORIES: FindingCategory[] = [
-  "secret",
-  "auth",
-  "authorization",
-  "frontend_exposure",
-  "validation",
-  "dependency",
-  "code_quality",
-  "structure",
-  "xss",
-];
+import type { ScanConfig } from "@vibesafe/shared";
+import {
+  ALL_CATEGORIES,
+  DEFAULT_MAX_FILES,
+  DEFAULT_MIN_SEVERITY,
+  DEFAULT_SCAN_TIMEOUT_MS,
+} from "@vibesafe/shared";
 
 /**
  * Default configuration for VibeSafe scanner.
@@ -42,6 +35,7 @@ export function mergeConfig(rootPath: string, userConfig?: Partial<ScanConfig>):
     ...(userConfig?.ruleOverrides !== undefined ? { ruleOverrides: userConfig.ruleOverrides } : {}),
     ...(userConfig?.disabledDetectors !== undefined ? { disabledDetectors: userConfig.disabledDetectors } : {}),
     ...(userConfig?.useConfigFile !== undefined ? { useConfigFile: userConfig.useConfigFile } : {}),
+    ...(userConfig?.trustConfigScripts !== undefined ? { trustConfigScripts: userConfig.trustConfigScripts } : {}),
     ...(userConfig?.targetFiles !== undefined ? { targetFiles: userConfig.targetFiles } : {}),
   };
 }

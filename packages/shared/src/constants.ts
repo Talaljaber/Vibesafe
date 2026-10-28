@@ -142,6 +142,9 @@ export const CATEGORY_PREFIX: Record<FindingCategory, string> = {
   xss: "XSS",
 };
 
+/** Every finding category (single source of truth; derived from CATEGORY_PREFIX). */
+export const ALL_CATEGORIES = Object.keys(CATEGORY_PREFIX) as FindingCategory[];
+
 // ─── Version ──────────────────────────────────────────────────────────────────
 
 export const VIBESAFE_VERSION = "0.1.5";

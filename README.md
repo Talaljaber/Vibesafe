@@ -165,7 +165,9 @@ Prefer working entirely within your editor? Install the **VibeSafe** extension!
 
 ## ⚙️ Configuration File
 
-Create `.vibesafe.config.{ts,mts,js,mjs,cjs,json}` (or `vibesafe.config.*`) in the project root. TypeScript configs are loaded with [jiti](https://github.com/unjs/jiti), so no build step is needed on Node 20+.
+Create `.vibesafe.config.json` (or `vibesafe.config.json`) in the project root. It is plain JSON and is never executed.
+
+> **Security:** `.ts/.mts/.js/.mjs/.cjs` configs run code from the scanned directory (loaded with [jiti](https://github.com/unjs/jiti)). Because VibeSafe is meant to scan untrusted repos, they are **ignored by default** (a warning is added to the scan). Opt in only for projects you trust: `vibesafe scan --trust-config` or `trustConfigScripts: true` in the API. The MCP server and VS Code extension never run script configs. A config file can also hide findings, so every scan that applies one reports it, and how many findings it suppressed, in the scan warnings.
 
 ```ts
 import { defineConfig } from "@vibesafe/core";
@@ -181,7 +183,7 @@ export default defineConfig({
 });
 ```
 
-Explicit CLI flags / API options always win over file values. An exact rule id beats a glob; among globs the longest wins. Rule overrides run after detection, so severity changes are re-sorted and re-scored. API users can skip the file with `useConfigFile: false`.
+Explicit CLI flags / API options always win over file values (`--deep` / `--no-deep`, `--include-tests` / `--no-include-tests`); `--no-config` ignores the file entirely. `exclude` and `categories` in the file replace the defaults rather than extending them. An exact rule id beats a glob; among globs the longest wins. Rule overrides run after detection, so severity changes are re-sorted and re-scored. API users can skip the file with `useConfigFile: false`.
 
 ## ⚠️ Known Limitations (v0.1)
 

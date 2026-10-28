@@ -48,11 +48,28 @@ function refreshViews(result: ScanResult): void {
   updateDashboardIfOpen(result);
 }
 
+/**
+ * Scans, but never lets a broken .vibesafe.config.json take the extension down:
+ * on a config error the scan is retried without the config file and a warning
+ * is shown. Script configs are never executed here (trustConfigScripts is unset).
+ */
+async function scanWithConfigFallback(opts: Parameters<ScannerPipeline["scan"]>[0]): Promise<ScanResult> {
+  try {
+    return await pipeline.scan(opts);
+  } catch (error) {
+    if (error instanceof Error && error.name === "ConfigLoadError") {
+      vscode.window.showWarningMessage(`VibeSafe: ${error.message} Scanning without the config file.`);
+      return pipeline.scan({ ...opts, useConfigFile: false });
+    }
+    throw error;
+  }
+}
+
 /** Run a full scan of one workspace folder and update every view. */
 async function runFullScan(folder: vscode.WorkspaceFolder, notify: boolean): Promise<void> {
   const rootPath = folder.uri.fsPath;
   try {
-    const result = await pipeline.scan({ rootPath, ...scanOptions() });
+    const result = await scanWithConfigFallback({ rootPath, ...scanOptions() });
     resultsByFolder.set(rootPath, result);
     updateAllDiagnostics(rootPath, diagnosticCollection, result.findings);
     refreshViews(result);
@@ -302,7 +319,7 @@ async function runScannerOnDocument(document: vscode.TextDocument) {
     const docRelativePath = path.relative(rootPath, document.uri.fsPath).replace(/\\/g, "/");
 
     // Perform targeted scan on just the saved file
-    const targetedResult = await pipeline.scan({
+    const targetedResult = await scanWithConfigFallback({
       rootPath,
       targetFiles: [docRelativePath],
       ...scanOptions(),

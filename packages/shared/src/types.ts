@@ -240,6 +240,14 @@ export interface ScanConfig {
    * true; set false to ignore config files. Explicit options always win.
    */
   useConfigFile?: boolean | undefined;
+
+  /**
+   * Allow executable config files (.ts/.js/.mjs/.cjs) to be loaded. They run
+   * arbitrary code from the scanned directory, so this is off by default; only
+   * the declarative `.json` config is read otherwise. Enable only for projects
+   * you trust.
+   */
+  trustConfigScripts?: boolean | undefined;
 }
 
 // ─── Repair Plan ─────────────────────────────────────────────────────────────

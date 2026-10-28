@@ -31,7 +31,14 @@ program
   .option("--open-report", "Automatically open the HTML report after scan", false)
   .option("-j, --json", "Output pure JSON without console formatting", false)
   .option("--deep", "Also scan git history for leaked secrets (slower)")
+  .option("--no-deep", "Do not scan git history, even if the config file enables it")
   .option("--include-tests", "Also scan test files and fixtures (excluded by default)")
+  .option("--no-include-tests", "Exclude test files, even if the config file includes them")
+  .option("--no-config", "Ignore any .vibesafe.config file")
+  .option(
+    "--trust-config",
+    "Execute .ts/.js config files from the scanned directory (runs that code; trusted projects only)",
+  )
   .action(async (dir, options) => {
     await runScan(dir, options);
   });

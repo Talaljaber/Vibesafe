@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { Detector, Finding, ScanContext, Severity } from "@vibesafe/shared";
-import { loadUserConfig, CONFIG_FILE_NAMES } from "../../src/config/load-config.js";
+import { loadUserConfig, findScriptConfig, CONFIG_FILE_NAMES } from "../../src/config/load-config.js";
 import { validateUserConfig } from "../../src/config/schema.js";
 import { defineConfig } from "../../src/config/user-config.js";
 import { applyRuleOverrides, resolveOverride } from "../../src/scanner/rule-overrides.js";
@@ -90,7 +90,7 @@ describe("user config file (#7)", () => {
       ["vibesafe.config.cjs", `module.exports = { deep: true };`],
     ])("loads %s", async (name, body) => {
       await write(name, body);
-      const loaded = await loadUserConfig(tmp);
+      const loaded = await loadUserConfig(tmp, { allowScripts: true });
       expect(loaded?.config.deep).toBe(true);
       expect(loaded?.scanConfig.deep).toBe(true);
       expect(path.basename(loaded!.filePath)).toBe(name);
@@ -116,7 +116,7 @@ describe("user config file (#7)", () => {
           deep: true,
         };`,
       );
-      const loaded = await loadUserConfig(tmp);
+      const loaded = await loadUserConfig(tmp, { allowScripts: true });
       expect(loaded?.scanConfig).toEqual({
         ruleOverrides: { "code_quality/*": "off", "secret/key": "high" },
         disabledDetectors: ["git-history"],
@@ -140,7 +140,40 @@ describe("user config file (#7)", () => {
 
     it("throws a clear error when the script throws", async () => {
       await write(".vibesafe.config.js", `throw new Error("boom");`);
-      await expect(loadUserConfig(tmp)).rejects.toThrow(/Failed to load .*boom/);
+      await expect(loadUserConfig(tmp, { allowScripts: true })).rejects.toThrow(/Failed to load .*boom/);
+    });
+
+    it("never executes script configs by default", async () => {
+      const marker = path.join(tmp, "pwned.txt");
+      await write(
+        ".vibesafe.config.js",
+        `require("fs").writeFileSync(${JSON.stringify(marker)}, "x"); module.exports = {};`,
+      );
+      expect(await loadUserConfig(tmp)).toBeUndefined();
+      await expect(fs.access(marker)).rejects.toThrow();
+      expect(await findScriptConfig(tmp)).toBe(".vibesafe.config.js");
+    });
+
+    it("default mode still loads a JSON config next to a script config", async () => {
+      await write(".vibesafe.config.js", `module.exports = { deep: false };`);
+      await write(".vibesafe.config.json", `{"deep": true}`);
+      expect((await loadUserConfig(tmp))?.config.deep).toBe(true);
+    });
+
+    it("refuses a script config that is a symlink out of the root", async () => {
+      const outside = await fs.mkdtemp(path.join(os.tmpdir(), "vibesafe-out-"));
+      try {
+        await fs.writeFile(path.join(outside, "c.js"), `module.exports = { deep: true };`);
+        try {
+          await fs.symlink(path.join(outside, "c.js"), path.join(tmp, ".vibesafe.config.js"));
+        } catch {
+          return; // symlinks unavailable (Windows without privileges)
+        }
+        // lstat rejects symlinks outright, so nothing is found or executed.
+        expect(await loadUserConfig(tmp, { allowScripts: true })).toBeUndefined();
+      } finally {
+        await fs.rm(outside, { recursive: true, force: true });
+      }
     });
 
     it("throws listing every validation problem", async () => {
@@ -207,7 +240,54 @@ describe("user config file (#7)", () => {
     });
   });
 
+  describe("rule glob matching", () => {
+    it("handles many stars in linear time", () => {
+      const key = "a*a*a*a*a*a*a*a*a*a*a*a*a*b";
+      const start = Date.now();
+      expect(resolveOverride("a".repeat(5000), { [key]: "off" })).toBeUndefined();
+      expect(Date.now() - start).toBeLessThan(1000);
+    });
+    it("matches wildcards correctly", () => {
+      expect(resolveOverride("code_quality/x", { "code_quality/*": "off" })).toBe("off");
+      expect(resolveOverride("a.b", { "a.*": "low" })).toBe("low");
+      expect(resolveOverride("axb", { "a.b*": "low" })).toBeUndefined();
+      expect(resolveOverride("abc", { "*b*": "high" })).toBe("high");
+    });
+  });
+
   describe("pipeline integration", () => {
+    it("warns about the applied config and suppressed findings", async () => {
+      await write(
+        ".vibesafe.config.json",
+        JSON.stringify({ rules: { "code_quality/console-log": "off", "secret/key": "low" } }),
+      );
+      const { pipeline } = makePipeline();
+      const res = await pipeline.scan({ rootPath: tmp });
+      const w = (res.warnings ?? []).join("\n");
+      expect(w).toMatch(/Applied config file \.vibesafe\.config\.json/);
+      expect(w).toMatch(/suppressed 1 finding\(s\) and changed the severity of 1/);
+    });
+
+    it("skips script configs by default with a warning, runs them when trusted", async () => {
+      await write(".vibesafe.config.js", `module.exports = { rules: { "secret/key": "off" } };`);
+      const { pipeline } = makePipeline();
+      const res = await pipeline.scan({ rootPath: tmp });
+      expect(res.findings.map((f) => f.ruleId)).toContain("secret/key");
+      expect((res.warnings ?? []).join("\n")).toMatch(/Ignored \.vibesafe\.config\.js/);
+      const trusted = await pipeline.scan({ rootPath: tmp, trustConfigScripts: true });
+      expect(trusted.findings.map((f) => f.ruleId)).not.toContain("secret/key");
+    });
+
+    it("warns about unknown disabledDetectors ids", async () => {
+      await write(".vibesafe.config.json", JSON.stringify({ disabledDetectors: ["quality", "git-histroy"] }));
+      const { pipeline, ran } = makePipeline();
+      const res = await pipeline.scan({ rootPath: tmp });
+      expect(ran).toEqual(["sec"]);
+      const w = (res.warnings ?? []).join("\n");
+      expect(w).toMatch(/Unknown detector id\(s\) in disabledDetectors: git-histroy/);
+      expect(w).not.toMatch(/disabledDetectors: quality/);
+    });
+
     it("applies config file: rules off + severity re-score", async () => {
       await write(
         ".vibesafe.config.json",

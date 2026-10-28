@@ -1,4 +1,5 @@
 import type { ScanConfig } from "@vibesafe/shared";
+import { ALL_CATEGORIES, SEVERITY_LEVELS } from "@vibesafe/shared";
 
 /**
  * Validates the provided configuration to ensure bounds.
@@ -21,18 +22,8 @@ export function validateConfig(config: ScanConfig): Error[] {
   return errors;
 }
 
-const SEVERITIES = ["critical", "high", "medium", "low"];
-const CATEGORIES = [
-  "secret",
-  "auth",
-  "authorization",
-  "frontend_exposure",
-  "validation",
-  "dependency",
-  "code_quality",
-  "structure",
-  "xss",
-];
+const SEVERITIES: string[] = SEVERITY_LEVELS;
+const CATEGORIES: string[] = ALL_CATEGORIES;
 const KNOWN_KEYS = [
   "rules",
   "disabledDetectors",

@@ -1,18 +1,37 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { createJiti } from "jiti";
 import type { ScanConfig } from "@vibesafe/shared";
 import { validateUserConfig } from "./schema.js";
 import type { VibeSafeConfig } from "./user-config.js";
 
-const EXTENSIONS = ["ts", "mts", "js", "mjs", "cjs", "json"];
+const SCRIPT_EXTENSIONS = ["ts", "mts", "js", "mjs", "cjs"];
+const EXTENSIONS = [...SCRIPT_EXTENSIONS, "json"];
 
 /** Candidate config file names, in priority order. */
 export const CONFIG_FILE_NAMES = [
   ...EXTENSIONS.map((e) => `.vibesafe.config.${e}`),
   ...EXTENSIONS.map((e) => `vibesafe.config.${e}`),
 ];
+
+const isJsonName = (name: string): boolean => name.endsWith(".json");
+
+/** Raised when a config file exists but cannot be loaded or is invalid. */
+export class ConfigLoadError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConfigLoadError";
+  }
+}
+
+export interface LoadUserConfigOptions {
+  /**
+   * Execute `.ts/.js/.mjs/.cjs` configs. Off by default: those files run
+   * arbitrary code from the scanned directory. Only the `.json` config is read
+   * otherwise.
+   */
+  allowScripts?: boolean;
+}
 
 export interface LoadedUserConfig {
   /** Absolute path of the config file that was loaded. */
@@ -23,9 +42,9 @@ export interface LoadedUserConfig {
   scanConfig: Partial<ScanConfig>;
 }
 
-/** Finds the first config file at rootPath (regular files only). */
-async function findConfigFile(rootPath: string): Promise<string | undefined> {
-  for (const name of CONFIG_FILE_NAMES) {
+/** Finds the first config file at rootPath among `names` (regular files only). */
+async function findConfigFile(rootPath: string, names: string[]): Promise<string | undefined> {
+  for (const name of names) {
     const full = path.join(rootPath, name);
     try {
       const stat = await fs.lstat(full);
@@ -37,17 +56,46 @@ async function findConfigFile(rootPath: string): Promise<string | undefined> {
   return undefined;
 }
 
-async function readConfigValue(filePath: string): Promise<unknown> {
-  if (filePath.endsWith(".json")) {
-    return JSON.parse(await fs.readFile(filePath, "utf-8"));
+/**
+ * Returns the name of an executable config present at rootPath, if any. Used to
+ * warn that it was not executed.
+ */
+export async function findScriptConfig(rootPath: string): Promise<string | undefined> {
+  const found = await findConfigFile(
+    rootPath,
+    CONFIG_FILE_NAMES.filter((n) => !isJsonName(n)),
+  );
+  return found ? path.basename(found) : undefined;
+}
+
+/** Reads and parses a JSON config through one file handle (no check/use gap). */
+async function readJsonConfig(filePath: string): Promise<unknown> {
+  const handle = await fs.open(filePath, "r");
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile()) throw new Error("not a regular file");
+    return JSON.parse(await handle.readFile("utf-8"));
+  } finally {
+    await handle.close();
   }
-  // jiti transpiles TS/ESM/CJS on the fly and works on Node 20 without flags.
-  const jiti = createJiti(pathToFileURL(filePath).href, {
+}
+
+async function readScriptConfig(filePath: string, rootPath: string): Promise<unknown> {
+  // Resolve symlinks (including in parent dirs) and make sure the real file is
+  // still inside the scan root before executing anything.
+  const [realFile, realRoot] = await Promise.all([fs.realpath(filePath), fs.realpath(rootPath)]);
+  const rel = path.relative(realRoot, realFile);
+  if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) {
+    throw new Error("config file resolves outside the project root");
+  }
+  // Loaded lazily so jiti is only touched for trusted script configs.
+  const { createJiti } = await import("jiti");
+  const jiti = createJiti(pathToFileURL(realFile).href, {
     fsCache: false,
     moduleCache: false,
     interopDefault: true,
   });
-  const mod = (await jiti.import(filePath)) as Record<string, unknown> | undefined;
+  const mod = (await jiti.import(realFile)) as Record<string, unknown> | undefined;
   if (mod && typeof mod === "object" && "default" in mod) return mod.default;
   return mod;
 }
@@ -67,25 +115,35 @@ export function configToScanConfig(config: VibeSafeConfig): Partial<ScanConfig> 
 
 /**
  * Discovers and loads `.vibesafe.config.*` / `vibesafe.config.*` at rootPath.
- * Returns undefined when no config file exists. Throws an Error with a clear
- * message when the file cannot be loaded or has an invalid shape.
+ * By default only `.json` configs are considered; script configs need
+ * `allowScripts`. Returns undefined when no eligible config file exists. Throws
+ * a ConfigLoadError with a clear message when the file cannot be loaded or has
+ * an invalid shape.
  */
-export async function loadUserConfig(rootPath: string): Promise<LoadedUserConfig | undefined> {
-  const filePath = await findConfigFile(rootPath);
+export async function loadUserConfig(
+  rootPath: string,
+  options: LoadUserConfigOptions = {},
+): Promise<LoadedUserConfig | undefined> {
+  const names = options.allowScripts
+    ? CONFIG_FILE_NAMES
+    : CONFIG_FILE_NAMES.filter(isJsonName);
+  const filePath = await findConfigFile(rootPath, names);
   if (!filePath) return undefined;
   const name = path.basename(filePath);
 
   let value: unknown;
   try {
-    value = await readConfigValue(filePath);
+    value = isJsonName(name)
+      ? await readJsonConfig(filePath)
+      : await readScriptConfig(filePath, rootPath);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    throw new Error(`Failed to load ${name}: ${msg}`);
+    throw new ConfigLoadError(`Failed to load ${name}: ${msg}`);
   }
 
   const errors = validateUserConfig(value);
   if (errors.length > 0) {
-    throw new Error(`Invalid ${name}:\n${errors.map((e) => `  - ${e}`).join("\n")}`);
+    throw new ConfigLoadError(`Invalid ${name}:\n${errors.map((e) => `  - ${e}`).join("\n")}`);
   }
   const config = value as VibeSafeConfig;
   return { filePath, config, scanConfig: configToScanConfig(config) };
