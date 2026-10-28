@@ -68,8 +68,23 @@ export class DetectorRegistry {
     const total = activeDetectors.length;
     let completed = 0;
 
+    // Enforce config.timeoutMs: the deadline is checked between detectors. On
+    // timeout we stop, keep the findings gathered so far and record an error.
+    const timeoutMs = context.config.timeoutMs;
+    const deadline = timeoutMs !== undefined ? Date.now() + timeoutMs : undefined;
+
     // Run detectors sequentially to allow meaningful progress updates
     for (const detector of activeDetectors) {
+      if (deadline !== undefined && Date.now() >= deadline) {
+        const skipped = activeDetectors.slice(completed).map((d) => d.id);
+        errors.push({
+          detectorId: "scan-timeout",
+          detectorName: "Scan timeout",
+          message: `Scan exceeded timeoutMs (${timeoutMs}ms); skipped ${skipped.length} detector(s): ${skipped.join(", ")}. Results are partial.`,
+        });
+        break;
+      }
+
       if (onProgress) {
         onProgress(`Running ${detector.constructor.name}...`, completed, total);
       }

@@ -152,6 +152,12 @@ export interface ScanResult {
 
   /** Any errors encountered by individual detectors during the scan. */
   errors?: { detectorId: string; detectorName: string; message: string }[];
+
+  /**
+   * Non-fatal notices about the scan itself (e.g. file list truncated by
+   * maxFiles, files skipped for size, scan timed out).
+   */
+  warnings?: string[];
 }
 
 // ─── Project Context ──────────────────────────────────────────────────────────

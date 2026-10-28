@@ -1,10 +1,17 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { ScanConfig, ScanResult, ScanContext, Finding, ScanSummary, RepairPlan } from "@vibesafe/shared";
-import { getDeployStatus, isMoreSevere, SEVERITY_WEIGHTS, CATEGORY_MULTIPLIERS } from "@vibesafe/shared";
+import {
+  getDeployStatus,
+  isDeployBlocker,
+  isMoreSevere,
+  MAX_FILE_SIZE_BYTES,
+  SEVERITY_WEIGHTS,
+  CATEGORY_MULTIPLIERS,
+} from "@vibesafe/shared";
 import { FileDiscovery } from "./file-discovery.js";
 import { ProjectContextBuilder } from "./project-context.js";
-import { type DetectorRegistry } from "./detector-registry.js";
+import type { DetectorRegistry } from "./detector-registry.js";
 import { mergeConfig } from "../config/defaults.js";
 import { validateConfig } from "../config/schema.js";
 
@@ -20,6 +27,7 @@ export class ScannerPipeline {
    */
   async scan(userConfig: Partial<ScanConfig> & { rootPath: string }, onProgress?: (message: string, current: number, total: number) => void): Promise<ScanResult> {
     const startTime = Date.now();
+    const warnings: string[] = [];
     const config = mergeConfig(userConfig.rootPath, userConfig);
     
     // Validate config
@@ -36,6 +44,9 @@ export class ScannerPipeline {
     
     if (config.maxFiles && files.length > config.maxFiles) {
       // Trim to maxFiles if we exceed the limit to prevent out-of-memory or hanging
+      warnings.push(
+        `Found ${files.length} files but maxFiles is ${config.maxFiles}; only the first ${config.maxFiles} were scanned. Raise maxFiles to scan everything.`,
+      );
       files = files.slice(0, config.maxFiles);
     }
 
@@ -45,6 +56,7 @@ export class ScannerPipeline {
 
     // 3. Create ScanContext with file caching
     const fileCache = new Map<string, string>();
+    const skippedLarge = new Set<string>();
     const scanContext: ScanContext = {
       rootPath: config.rootPath,
       projectContext,
@@ -56,6 +68,13 @@ export class ScannerPipeline {
         }
         const absolutePath = path.join(config.rootPath, relativePath);
         try {
+          // Never read through symlinks, and skip oversized files.
+          const stat = await fs.lstat(absolutePath);
+          if (stat.isSymbolicLink()) return "";
+          if (stat.size > MAX_FILE_SIZE_BYTES) {
+            skippedLarge.add(relativePath);
+            return "";
+          }
           const content = await fs.readFile(absolutePath, "utf-8");
           fileCache.set(relativePath, content);
           return content;
@@ -68,13 +87,18 @@ export class ScannerPipeline {
 
     // 4. Run detectors
     const runResult = await this.registry.runAll(scanContext, onProgress);
-    let findings = runResult.findings;
     const detectorErrors = runResult.errors;
+    let findings = runResult.findings;
 
     // 4.5. Apply inline ignores
     findings = await this.applyInlineIgnores(findings, scanContext);
 
-    // 5. Filter findings based on config
+    // 5. Score BEFORE the minSeverity filter. minSeverity only controls which
+    // findings are displayed; filtering must not inflate the score or hide a
+    // deploy blocker.
+    const { score, deployStatus } = this.calculateScore(findings);
+
+    // 5.5. Filter findings based on config
     if (config.minSeverity) {
       findings = findings.filter(f => 
         // Keep if finding severity is >= minSeverity. lower index means more severe
@@ -89,11 +113,21 @@ export class ScannerPipeline {
     });
 
     // 6. Calculate scoring and build repair plan
-    const { score, deployStatus } = this.calculateScore(findings);
-    const summary = this.buildSummary(findings, files.length);
+    let linesScanned = 0;
+    for (const content of fileCache.values()) linesScanned += countLines(content);
+    const summary = this.buildSummary(findings, files.length, linesScanned);
     const repairPlan = this.buildRepairPlan(findings);
 
     const durationMs = Date.now() - startTime;
+
+    if (skippedLarge.size > 0) {
+      warnings.push(
+        `Skipped ${skippedLarge.size} file(s) larger than ${MAX_FILE_SIZE_BYTES} bytes: ${[...skippedLarge].slice(0, 5).join(", ")}${skippedLarge.size > 5 ? ", ..." : ""}`,
+      );
+    }
+    if (detectorErrors.some((e) => e.detectorId === "scan-timeout")) {
+      warnings.push("Scan timed out; results are partial.");
+    }
 
     return {
       timestamp: new Date().toISOString(),
@@ -106,6 +140,7 @@ export class ScannerPipeline {
       repairPlan,
       durationMs,
       errors: detectorErrors,
+      ...(warnings.length > 0 ? { warnings } : {}),
     };
   }
 
@@ -157,13 +192,14 @@ export class ScannerPipeline {
 
   public calculateScore(findings: Finding[]): { score: number; deployStatus: ReturnType<typeof getDeployStatus> } {
     let score = 100;
-    let hasCritical = false;
+    let hasBlocker = false;
 
     for (const finding of findings) {
-      if (finding.severity === "critical") {
-        hasCritical = true;
+      // Critical severity or an explicit deployBlocking flag forces "blocker".
+      if (isDeployBlocker(finding)) {
+        hasBlocker = true;
       }
-      
+
       const rawWeight = SEVERITY_WEIGHTS[finding.severity];
       const multiplier = CATEGORY_MULTIPLIERS[finding.category];
       score += (rawWeight * multiplier);
@@ -173,11 +209,11 @@ export class ScannerPipeline {
 
     return {
       score,
-      deployStatus: getDeployStatus(score, hasCritical),
+      deployStatus: getDeployStatus(score, hasBlocker),
     };
   }
 
-  public buildSummary(findings: Finding[], filesScanned: number): ScanSummary {
+  public buildSummary(findings: Finding[], filesScanned: number, linesScanned = 0): ScanSummary {
     const summary: ScanSummary = {
       totalFindings: findings.length,
       criticalCount: 0,
@@ -196,7 +232,7 @@ export class ScannerPipeline {
         xss: 0,
       },
       filesScanned,
-      linesScanned: 0, // We don't count lines in Phase 1-2 for simplicity
+      linesScanned,
     };
 
     for (const finding of findings) {
@@ -231,4 +267,12 @@ export class ScannerPipeline {
       summary: `Found ${findings.length} issues needing your attention. Expected fix time: ~${totalMinutes} mins.`,
     };
   }
+}
+
+/** Counts lines in a file's content (0 for empty content). */
+function countLines(content: string): number {
+  if (content.length === 0) return 0;
+  let n = 1;
+  for (let i = 0; i < content.length; i++) if (content.charCodeAt(i) === 10) n++;
+  return content.endsWith("\n") ? n - 1 : n;
 }
