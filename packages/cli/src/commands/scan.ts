@@ -7,18 +7,45 @@ import cliProgress from "cli-progress";
 import { generateHtmlReport } from "../ui/html-reporter.js";
 import open from "open";
 import { pathToFileURL } from "node:url";
+import fs from "node:fs/promises";
+import { createRequire } from "node:module";
+import { OUTPUT_FORMAT_NAMES, isOutputFormat, renderOutput, type OutputFormat } from "../formatters/index.js";
+
+// Both dist/commands/scan.js and src/commands/scan.ts sit two levels below package.json.
+const require = createRequire(import.meta.url);
+const { version: CLI_VERSION } = require("../../package.json") as { version: string };
 
 export interface ScanOptions {
   interactive?: boolean;
   html?: boolean;
   openReport?: boolean;
   json?: boolean;
+  /** Machine-readable output format (see OUTPUT_FORMATS). Wins over --json. */
+  format?: string;
+  /** Write the --format/--json output to this file instead of stdout. */
+  output?: string;
   deep?: boolean;
   includeTests?: boolean;
 }
 
 export async function runScan(targetDir: string, options: ScanOptions = {}) {
   const rootPath = path.resolve(process.cwd(), targetDir);
+
+  let format: OutputFormat | undefined;
+  if (options.format !== undefined) {
+    if (!isOutputFormat(options.format)) {
+      console.error(
+        `Error: unknown --format "${options.format}". Supported formats: ${OUTPUT_FORMAT_NAMES.join(", ")}.`,
+      );
+      process.exitCode = 2;
+      return;
+    }
+    format = options.format;
+  } else if (options.json || options.output) {
+    format = "json";
+  }
+  // Machine-readable mode: stdout carries only the report (or nothing, with --output).
+  options = { ...options, json: format !== undefined };
 
   if (!options.json) {
     console.log(chalk.cyan(`Ready to scan directory: ${rootPath}`));
@@ -88,8 +115,16 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
       }
     }
 
-    if (options.json) {
-      console.log(JSON.stringify(result, null, 2));
+    if (format) {
+      const rendered = renderOutput(format, result, { version: CLI_VERSION });
+      if (options.output) {
+        const outPath = path.resolve(process.cwd(), options.output);
+        await fs.mkdir(path.dirname(outPath), { recursive: true });
+        await fs.writeFile(outPath, rendered + "\n", "utf-8");
+        console.error(`Wrote ${format} report to ${outPath}`);
+      } else {
+        console.log(rendered);
+      }
     } else {
       if (result.errors && result.errors.length > 0) {
         console.log(
