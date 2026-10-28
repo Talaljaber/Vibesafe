@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import type { ScanResult } from "@vibesafe/shared";
+import { cspMeta } from "../util/csp.js";
 
 export class VibeSafeDeployStatusProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "vibesafe.deployStatus";
@@ -16,7 +17,7 @@ export class VibeSafeDeployStatusProvider implements vscode.WebviewViewProvider 
     this._view = webviewView;
 
     webviewView.webview.options = {
-      enableScripts: true,
+      enableScripts: false,
       localResourceRoots: [vscode.Uri.joinPath(this._extensionUri, "media")],
     };
 
@@ -30,9 +31,9 @@ export class VibeSafeDeployStatusProvider implements vscode.WebviewViewProvider 
     }
   }
 
-  private _getHtmlForWebview(_webview: vscode.Webview) {
+  private _getHtmlForWebview(webview: vscode.Webview) {
     if (!this._latestResult) {
-      return this._getEmptyHtml();
+      return this._getEmptyHtml(webview);
     }
 
     const { score, deployStatus, summary } = this._latestResult;
@@ -45,6 +46,7 @@ export class VibeSafeDeployStatusProvider implements vscode.WebviewViewProvider 
       <html lang="en">
       <head>
         <meta charset="UTF-8">
+        ${cspMeta(webview.cspSource)}
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Deploy Status</title>
         <style>
@@ -112,11 +114,12 @@ export class VibeSafeDeployStatusProvider implements vscode.WebviewViewProvider 
       </html>`;
   }
 
-  private _getEmptyHtml() {
+  private _getEmptyHtml(webview: vscode.Webview) {
     return `<!DOCTYPE html>
       <html lang="en">
       <head>
         <meta charset="UTF-8">
+        ${cspMeta(webview.cspSource)}
         <style>
           body { font-family: var(--vscode-font-family); padding: 20px; text-align: center; opacity: 0.6; }
         </style>

@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import type { ScanResult } from "@vibesafe/shared";
+import { cspMeta, getNonce } from "../util/csp.js";
 
 let currentPanel: vscode.WebviewPanel | undefined;
 
@@ -33,7 +34,7 @@ export function openDashboard(extensionUri: vscode.Uri, result: ScanResult | nul
   if (result) {
     updateDashboard(currentPanel, result);
   } else {
-    currentPanel.webview.html = getEmptyHtml();
+    currentPanel.webview.html = getEmptyHtml(currentPanel.webview);
   }
 }
 
@@ -44,15 +45,16 @@ export function updateDashboardIfOpen(result: ScanResult) {
 }
 
 function updateDashboard(panel: vscode.WebviewPanel, result: ScanResult) {
-  panel.webview.html = getHtmlForResult(result);
+  panel.webview.html = getHtmlForResult(result, panel.webview);
 }
 
-function getEmptyHtml() {
+function getEmptyHtml(webview: vscode.Webview) {
   return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  ${cspMeta(webview.cspSource)}
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VibeSafe Dashboard</title>
   <style>
@@ -102,7 +104,8 @@ function escapeHtml(unsafe: string) {
     .replace(/'/g, "&#039;");
 }
 
-function getHtmlForResult(result: ScanResult) {
+function getHtmlForResult(result: ScanResult, webview: vscode.Webview) {
+  const nonce = getNonce();
   const totalFindings = result.summary.totalFindings;
   const critical = result.summary.criticalCount;
   const high = result.summary.highCount;
@@ -181,6 +184,7 @@ function getHtmlForResult(result: ScanResult) {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  ${cspMeta(webview.cspSource, nonce)}
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VibeSafe Security Report</title>
   <style>
@@ -541,11 +545,11 @@ function getHtmlForResult(result: ScanResult) {
       </div>
       
       <div class="filter-bar">
-        <button class="filter-btn active" onclick="filterSteps('all')">All</button>
-        <button class="filter-btn" onclick="filterSteps('critical')">Critical</button>
-        <button class="filter-btn" onclick="filterSteps('high')">High</button>
-        <button class="filter-btn" onclick="filterSteps('medium')">Medium</button>
-        <button class="filter-btn" onclick="filterSteps('low')">Low</button>
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="critical">Critical</button>
+        <button class="filter-btn" data-filter="high">High</button>
+        <button class="filter-btn" data-filter="medium">Medium</button>
+        <button class="filter-btn" data-filter="low">Low</button>
       </div>
       
       <div id="repair-steps">
@@ -554,11 +558,11 @@ function getHtmlForResult(result: ScanResult) {
     </div>
   </div>
 
-  <script>
+  <script nonce="${nonce}">
     function filterSteps(severity) {
       document.querySelectorAll('.filter-btn').forEach(btn => {
         btn.classList.remove('active');
-        if (btn.innerText.toLowerCase() === severity) {
+        if (btn.dataset.filter === severity) {
           btn.classList.add('active');
         }
       });
@@ -572,6 +576,9 @@ function getHtmlForResult(result: ScanResult) {
         }
       });
     }
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => filterSteps(btn.dataset.filter));
+    });
   </script>
 </body>
 </html>
