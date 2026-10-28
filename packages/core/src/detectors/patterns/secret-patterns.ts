@@ -75,6 +75,13 @@ export const SECRET_PATTERNS: SecretPattern[] = [
     confidence: "high",
   },
   {
+    id: "sec-stripe-webhook-secret",
+    name: "Stripe Webhook Signing Secret",
+    regex: /whsec_[a-zA-Z0-9]{24,}/,
+    severity: "high",
+    confidence: "high",
+  },
+  {
     id: "sec-aws-access-key",
     name: "AWS Access Key ID",
     regex: /(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}/,

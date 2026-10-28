@@ -1,122 +1,167 @@
 import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
 import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
 import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
+import { stripComments } from "./utils/strip-comments.js";
+
+export { stripComments };
 
 const SCANNABLE_SUFFIXES = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"] as const;
 const TEST_FILE_RE = /(?:\.(?:test|spec)\.[cm]?[jt]sx?$)|(?:(?:^|\/)__tests__\/)/;
 
-/** Handler shapes: Next.js App/Pages router exports, Express/Fastify-style routes, raw signature header reads. */
-const HANDLER_RE =
-  /export\s+(?:async\s+)?function\s+(?:POST|handler)\b|export\s+const\s+POST\b|export\s+default\b|\b(?:router|app|server|fastify)\s*\.\s*(?:post|all|use)\s*\(|stripe-signature/i;
+/** Handler shapes that clearly mean "request handler" (case-sensitive export names). */
+const EXPORT_HANDLER_RE =
+  /export\s+(?:async\s+)?function\s+(?:POST|handler)\b|export\s+const\s+POST\b|export\s+default\s+(?:async\s+)?function\s+handler\b/;
+const ROUTER_HANDLER_RE = /\b(?:router|app|server|fastify)\s*\.\s*(?:post|all|use)\s*\(/;
+const SIGNATURE_HEADER_RE = /stripe-signature/i;
+/** A bare default export only counts as a handler in a Pages Router API file. */
+const DEFAULT_EXPORT_RE = /export\s+default\b/;
 
-const CONSTRUCT_EVENT_RE = /\bconstructEvent(?:Async)?\s*\(/;
+const ROUTE_LIKE_PATH_RE = /(?:^|\/)route\.[cm]?[jt]s$|(?:^|\/)pages\/api\/|(?:^|\/)app\/api\/|(?:^|\/)api\/|webhook[^/]*$/;
 
-/**
- * Replace comments with whitespace (newlines kept so line numbers stay valid) while
- * leaving string and template literal contents untouched.
- */
-export function stripComments(source: string): string {
-  let out = "";
-  let i = 0;
-  const n = source.length;
-  while (i < n) {
-    const c = source[i] as string;
-    const next = source[i + 1];
-    if (c === "/" && next === "/") {
-      while (i < n && source[i] !== "\n") {
-        out += " ";
-        i++;
-      }
-    } else if (c === "/" && next === "*") {
-      out += "  ";
-      i += 2;
-      while (i < n && !(source[i] === "*" && source[i + 1] === "/")) {
-        out += source[i] === "\n" ? "\n" : " ";
-        i++;
-      }
-      if (i < n) {
-        out += "  ";
-        i += 2;
-      }
-    } else if (c === '"' || c === "'" || c === "`") {
-      out += c;
-      i++;
-      while (i < n && source[i] !== c) {
-        if (source[i] === "\\" && i + 1 < n) {
-          out += source[i] as string;
-          i++;
-        }
-        out += source[i] as string;
-        i++;
-      }
-      if (i < n) {
-        out += c;
-        i++;
-      }
-    } else {
-      out += c;
-      i++;
-    }
-  }
-  return out;
+const HELPER_NAME_RE = /verify|validate|construct.*(?:event|webhook)|webhook.*(?:event|signature)|stripe.*event/i;
+
+function isHandlerText(text: string, allowDefaultExport: boolean): boolean {
+  return (
+    EXPORT_HANDLER_RE.test(text) ||
+    ROUTER_HANDLER_RE.test(text) ||
+    SIGNATURE_HEADER_RE.test(text) ||
+    (allowDefaultExport && DEFAULT_EXPORT_RE.test(text))
+  );
+}
+
+function allowsDefaultExport(normalizedPath: string): boolean {
+  return /(?:^|\/)pages\/api\//.test(normalizedPath);
+}
+
+function hasWebhookSignals(code: string): boolean {
+  return (
+    /stripe-signature/i.test(code) ||
+    /\bcheckout\.session\.[a-z_]+/i.test(code) ||
+    /\bcustomer\.subscription\.[a-z_]+/i.test(code) ||
+    /\bpayment_intent\.[a-z_]+/i.test(code) ||
+    /\binvoice\.(?:paid|payment_succeeded|payment_failed|finalized)\b/i.test(code) ||
+    /\bstripe\.webhooks\b/i.test(code)
+  );
+}
+
+function hasStripeReference(code: string): boolean {
+  return (
+    /['"]stripe['"]/i.test(code) ||
+    /\bnew\s+Stripe\b/.test(code) ||
+    /\bStripe\./.test(code) ||
+    /from\s+['"][^'"]*stripe[^'"]*['"]/i.test(code) ||
+    /\bstripe\s*\./.test(code)
+  );
 }
 
 /**
- * Determines if a file is a handler dedicated to Stripe webhooks, by path naming
- * (`stripe` + `webhook`) or by content (Stripe usage plus webhook signals).
- * Expects comment-free content.
+ * Determines if a file is a handler dedicated to Stripe webhooks, by path naming (`stripe` +
+ * `webhook`, route-like files only) or by content (Stripe usage plus webhook signals, or a
+ * `stripe-signature` header read). Either way the file must show real handler evidence.
+ * Comments are stripped internally so callers can pass raw file content.
  */
 export function isStripeWebhookRoute(filePath: string, fileContent: string): boolean {
   const normalizedPath = filePath.replace(/\\/g, "/").toLowerCase();
   if (TEST_FILE_RE.test(normalizedPath)) return false;
 
-  const isStripeWebhookPath = normalizedPath.includes("stripe") && normalizedPath.includes("webhook");
+  const code = stripComments(fileContent);
+  const signals = hasWebhookSignals(code);
 
-  const hasStripeReference =
-    /['"]stripe['"]/i.test(fileContent) || /\bnew\s+Stripe\b/.test(fileContent) || /\bStripe\./.test(fileContent);
+  const isStripeWebhookPath =
+    normalizedPath.includes("stripe") && normalizedPath.includes("webhook") && ROUTE_LIKE_PATH_RE.test(normalizedPath);
 
-  const hasStripeWebhookSignals =
-    /stripe-signature/i.test(fileContent) ||
-    /\bcheckout\.session\.[a-z_]+/i.test(fileContent) ||
-    /\bcustomer\.subscription\.[a-z_]+/i.test(fileContent) ||
-    /\bpayment_intent\.[a-z_]+/i.test(fileContent) ||
-    /\binvoice\.(?:paid|payment_succeeded|payment_failed|finalized)\b/i.test(fileContent) ||
-    /\bstripe\.webhooks\b/i.test(fileContent);
+  // A route that manages webhook endpoints through the Stripe API is not itself a webhook receiver.
+  if (isStripeWebhookPath && !signals && /\bwebhookEndpoints\b/.test(code)) return false;
 
-  if (isStripeWebhookPath || (hasStripeReference && hasStripeWebhookSignals)) {
-    // Must actually look like a request handler (not e.g. a shared helper or type file).
-    return HANDLER_RE.test(fileContent);
+  const isContentMatch = (hasStripeReference(code) && signals) || SIGNATURE_HEADER_RE.test(code);
+
+  if (isStripeWebhookPath || isContentMatch) {
+    return isHandlerText(code, allowsDefaultExport(normalizedPath));
   }
   return false;
 }
 
-/** True when the (comment-free) source contains a call to constructEvent / constructEventAsync. */
-export function hasStripeSignatureVerification(fileContent: string): boolean {
-  return CONSTRUCT_EVENT_RE.test(fileContent);
+/**
+ * True when the source calls `webhooks.constructEvent(...)`/`constructEventAsync(...)` or a bare
+ * (imported) `constructEvent(...)`. Expects code with string contents blanked, so text inside
+ * strings or comments never counts.
+ */
+export function hasStripeSignatureVerification(code: string): boolean {
+  if (/\bwebhooks\s*\.\s*constructEvent(?:Async)?\s*\(/.test(code)) return true;
+  if (/(?<![.\w$])constructEvent(?:Async)?\s*\(/.test(code)) return true;
+  return /\.\s*constructEvent(?:Async)?\s*\(/.test(code) && /\bwebhooks\b/.test(code);
+}
+
+/** Names imported or required into the file (local binding names). */
+function importedNames(code: string): Set<string> {
+  const names = new Set<string>();
+  const add = (list: string): void => {
+    for (const part of list.split(",")) {
+      const m = /(?:\b[\w$]+\s+as\s+|\*\s+as\s+)?([\w$]+)\s*$/.exec(part.trim());
+      if (m?.[1]) names.add(m[1]);
+    }
+  };
+  for (const m of code.matchAll(/import\s+([^'";]+?)\s+from\s*['"]/g)) {
+    const clause = m[1] ?? "";
+    const braces = /\{([^}]*)\}/.exec(clause);
+    if (braces?.[1]) add(braces[1]);
+    const def = /^([\w$]+)/.exec(clause.trim());
+    if (def?.[1]) names.add(def[1]);
+    const ns = /\*\s+as\s+([\w$]+)/.exec(clause);
+    if (ns?.[1]) names.add(ns[1]);
+  }
+  for (const m of code.matchAll(/(?:const|let|var)\s+(\{[^}]*\}|[\w$]+)\s*=\s*(?:await\s+)?(?:import|require)\s*\(/g)) {
+    const target = m[1] ?? "";
+    if (target.startsWith("{")) add(target.slice(1, -1));
+    else names.add(target);
+  }
+  return names;
+}
+
+/**
+ * True when verification is plausibly delegated: a call to an imported function with a
+ * verification-like name, or a `stripe.webhooks` reference.
+ */
+export function mayDelegateVerification(code: string): boolean {
+  if (/\bwebhooks\b/.test(code)) return true;
+  for (const name of importedNames(code)) {
+    if (!HELPER_NAME_RE.test(name)) continue;
+    const escaped = name.replace(/\$/g, "\\$");
+    if (new RegExp(`(?<![\\w$])${escaped}\\s*[(.]`).test(code)) return true;
+  }
+  return false;
 }
 
 /**
  * Returns the 1-indexed line of a constructEvent call whose payload argument is an already
  * parsed body (`req.body`, `await req.json()`, `JSON.stringify(...)`) instead of the raw text.
  */
-function findParsedBodyVerification(content: string): number | undefined {
+function findParsedBodyVerification(code: string): number | undefined {
   const re = /\bconstructEvent(?:Async)?\s*\(\s*(JSON\.stringify\s*\(|await\s+[\w.]+\.json\s*\(|[\w.]+\.body\b)/g;
-  const hasRawHint = /\braw\b|bodyParser\s*:\s*false|getRawBody|req\.text\s*\(|\.arrayBuffer\s*\(/i.test(content);
-  for (const m of content.matchAll(re)) {
+  const hasRawHint =
+    /\bexpress\s*\.\s*raw\s*\(|bodyParser\s*:\s*false|\bgetRawBody\s*\(|(?<![.\w$])buffer\s*\(|\brawBody\b|\breq\.text\s*\(|\.arrayBuffer\s*\(/.test(
+      code,
+    );
+  for (const m of code.matchAll(re)) {
     const arg = m[1] ?? "";
     // `.body` alone is ambiguous (express.raw / bodyParser: false make it a Buffer), so trust raw hints.
     if (/\.body$/.test(arg) && hasRawHint) continue;
-    return content.slice(0, m.index).split("\n").length;
+    return code.slice(0, m.index).split("\n").length;
   }
   return undefined;
 }
 
-function findHandlerLine(lines: string[]): { line: number; text: string } {
+function findHandlerLine(lines: string[], allowDefaultExport: boolean): { line: number; text: string } {
   for (let i = 0; i < lines.length; i++) {
     const text = lines[i] ?? "";
-    if (HANDLER_RE.test(text)) return { line: i + 1, text };
+    if (isHandlerText(text, allowDefaultExport)) return { line: i + 1, text };
   }
   return { line: 1, text: lines[0] ?? "" };
+}
+
+/** Webhook signing secrets can be shorter than the generic secret pattern; always redact them. */
+function redactWebhookSecrets(line: string): string {
+  return line.replace(/whsec_[A-Za-z0-9]+/g, "whsec_***");
 }
 
 /**
@@ -136,13 +181,19 @@ export class StripeWebhookDetector implements Detector {
     for (const filePath of context.files) {
       if (!SCANNABLE_SUFFIXES.some((suffix) => filePath.endsWith(suffix))) continue;
 
-      const content = stripComments(await context.readFile(filePath));
-      if (!isStripeWebhookRoute(filePath, content)) continue;
+      const raw = await context.readFile(filePath);
+      if (!isStripeWebhookRoute(filePath, raw)) continue;
 
+      const content = stripComments(raw);
+      const code = stripComments(raw, { blankStrings: true });
       const lines = content.split("\n");
+      const allowDefault = allowsDefaultExport(filePath.replace(/\\/g, "/").toLowerCase());
 
-      if (!hasStripeSignatureVerification(content)) {
-        const { line, text } = findHandlerLine(lines);
+      if (!hasStripeSignatureVerification(code)) {
+        // Verification may live in a shared helper; only claim "unsigned" when none is plausible.
+        if (mayDelegateVerification(code)) continue;
+
+        const { line, text } = findHandlerLine(lines, allowDefault);
         findings.push({
           id: createFindingId(CATEGORY_PREFIX.auth, "auth/stripe-webhook-unsigned", filePath, line),
           ruleId: "auth/stripe-webhook-unsigned",
@@ -153,7 +204,7 @@ export class StripeWebhookDetector implements Detector {
           confidence: "high",
           file: filePath,
           line,
-          evidence: sanitizeEvidence(text),
+          evidence: sanitizeEvidence(redactWebhookSecrets(text)),
           plainEnglishProblem:
             "This route handles Stripe webhooks but never calls stripe.webhooks.constructEvent() to verify the stripe-signature header.",
           whyItMatters:
@@ -171,7 +222,7 @@ export class StripeWebhookDetector implements Detector {
         continue;
       }
 
-      const parsedLine = findParsedBodyVerification(content);
+      const parsedLine = findParsedBodyVerification(code);
       if (parsedLine !== undefined) {
         findings.push({
           id: createFindingId(CATEGORY_PREFIX.auth, "auth/stripe-webhook-parsed-body", filePath, parsedLine),
@@ -183,7 +234,7 @@ export class StripeWebhookDetector implements Detector {
           confidence: "medium",
           file: filePath,
           line: parsedLine,
-          evidence: sanitizeEvidence(lines[parsedLine - 1] ?? ""),
+          evidence: sanitizeEvidence(redactWebhookSecrets(lines[parsedLine - 1] ?? "")),
           plainEnglishProblem:
             "constructEvent() is given an already parsed or re-serialised body instead of the raw request body.",
           whyItMatters:
