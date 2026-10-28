@@ -126,6 +126,25 @@ describe("GitHistoryDetector", () => {
     expect(findings).toEqual([]);
   });
 
+  it("works from a repo subdirectory and reports paths relative to it", async () => {
+    const dir = await makeTempRepo();
+    tempDirs.push(dir);
+
+    await fs.mkdir(path.join(dir, "packages", "app"), { recursive: true });
+    await fs.writeFile(
+      path.join(dir, "packages", "app", "config.ts"),
+      `const key = "${FAKE_OPENAI_KEY}";\n`,
+    );
+    await fs.writeFile(path.join(dir, "root.ts"), `const other = "sk-${"z".repeat(48)}";\n`);
+    commitAll(dir, "add keys");
+
+    const sub = path.join(dir, "packages", "app");
+    const findings = await detector.detect(createContext(sub, ["config.ts"], true));
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.file).toBe("config.ts");
+  });
+
   it("returns [] and never spawns git when deep is not true", async () => {
     const dir = await makeTempRepo();
     tempDirs.push(dir);

@@ -4,7 +4,7 @@ import { SECRET_PATTERNS, matchSecretPattern } from "./patterns/secret-patterns.
 import {
   getHistoricalAddedLines,
   isGitAvailable,
-  looksLikeGitRepo,
+  resolveGitRoot,
   type HistoricalHunk,
 } from "./utils/git-log-parser.js";
 
@@ -38,21 +38,19 @@ export class GitHistoryDetector implements Detector {
       return [];
     }
 
-    // Graceful no-op if this isn't a git repo, or git isn't installed.
-    if (!looksLikeGitRepo(context.rootPath)) {
-      return [];
-    }
+    // Graceful no-op if git isn't installed or this isn't inside a git work tree.
     if (!(await isGitAvailable())) {
       return [];
     }
-
-    let hunks: HistoricalHunk[];
-    try {
-      hunks = await getHistoricalAddedLines(context.rootPath, MAX_COMMITS_TO_SCAN);
-    } catch {
-      // Never let a git failure crash the scan.
+    if ((await resolveGitRoot(context.rootPath)) === null) {
       return [];
     }
+
+    // Real git failures propagate so the registry records them in `errors`.
+    const hunks: HistoricalHunk[] = await getHistoricalAddedLines(
+      context.rootPath,
+      MAX_COMMITS_TO_SCAN,
+    );
 
     if (hunks.length === 0) {
       return [];
