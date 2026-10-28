@@ -1,8 +1,9 @@
 import { type Detector, type Finding, type ScanContext } from "@vibesafe/shared";
 import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
 import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
-import { SECRET_PATTERNS } from "./patterns/secret-patterns.js";
+import { SECRET_PATTERNS, matchSecretPattern } from "./patterns/secret-patterns.js";
 import path from "path";
+import ignore from "ignore";
 
 export class SecretDetector implements Detector {
   id = "secret-detector";
@@ -13,17 +14,26 @@ export class SecretDetector implements Detector {
   async detect(context: ScanContext): Promise<Finding[]> {
     const findings: Finding[] = [];
     
-    // Check if .env is missing from .gitignore
-    const hasEnvFile = context.files.some(f => path.basename(f) === ".env" || path.basename(f) === ".env.local");
-    const gitignoreContent = await this.getGitignoreContent(context);
-    
-    if (hasEnvFile && (!gitignoreContent || !gitignoreContent.includes(".env"))) {
-      findings.push(this.createGitignoreFinding(context));
+    // Check that every discovered .env* file is actually ignored by the root .gitignore
+    const envFiles = context.files.filter((f) => isEnvFile(f));
+    if (envFiles.length > 0) {
+      const gitignoreContent = await this.getGitignoreContent(context);
+      const ig = ignore().add(gitignoreContent ?? "");
+      for (const envFile of envFiles) {
+        const rel = envFile.replace(/\\/g, "/").replace(/^\.?\//, "");
+        let ignored = false;
+        try {
+          ignored = ig.ignores(rel);
+        } catch {
+          ignored = false;
+        }
+        if (!ignored) findings.push(this.createGitignoreFinding(rel));
+      }
     }
 
     // Scan all files for hardcoded secrets
     for (const filePath of context.files) {
-      if (filePath.endsWith("package-lock.json") || filePath.endsWith("pnpm-lock.yaml")) continue;
+      if (filePath.endsWith("package-lock.json") || filePath.endsWith("pnpm-lock.yaml") || filePath.endsWith("yarn.lock")) continue;
 
       const content = await context.readFile(filePath);
       const lines = content.split('\n');
@@ -33,15 +43,15 @@ export class SecretDetector implements Detector {
         if (line === undefined) continue;
         
         for (const pattern of SECRET_PATTERNS) {
-          const match = pattern.regex.exec(line);
-          if (match && match[0]) {
+          const match = matchSecretPattern(pattern, line);
+          if (match) {
             findings.push({
               id: createFindingId(CATEGORY_PREFIX.secret, `secret/${pattern.id}`, filePath, i + 1, match[0]),
               ruleId: `secret/${pattern.id}`,
               title: `Exposed ${pattern.name}`,
-              severity: "critical",
+              severity: pattern.severity,
               category: "secret",
-              deployBlocking: true,
+              deployBlocking: pattern.severity === "critical",
               confidence: pattern.confidence,
               file: filePath,
               line: i + 1,
@@ -76,24 +86,32 @@ export class SecretDetector implements Detector {
     }
   }
 
-  private createGitignoreFinding(_context: ScanContext): Finding {
+  private createGitignoreFinding(envFile: string): Finding {
     return {
-      id: createFindingId(CATEGORY_PREFIX.secret, "secret/env-not-ignored", ".gitignore"),
+      id: createFindingId(CATEGORY_PREFIX.secret, "secret/env-not-ignored", envFile),
       ruleId: "secret/env-not-ignored",
-      title: ".env file not in .gitignore",
+      title: `${envFile} is not ignored by .gitignore`,
       severity: "critical",
       category: "secret",
       deployBlocking: true,
       confidence: "high",
-      file: ".gitignore",
-      plainEnglishProblem: "You have a .env file containing secrets, but it's not listed in your .gitignore file.",
-      whyItMatters: "When you commit your code, git will include your .env file and push it to GitHub. This exposes all your database passwords and API keys to the public.",
+      file: envFile,
+      plainEnglishProblem: `You have a ${envFile} file that probably contains secrets, but your .gitignore does not ignore it.`,
+      whyItMatters: "When you commit your code, git will include your env file and push it to GitHub. This exposes all your database passwords and API keys to the public.",
       fixSteps: [
         "Open your .gitignore file.",
         "Add a new line with exactly `.env`",
-        "Add another line with `.env.*` to cover other local env files."
+        "Add another line with `.env.*` to cover other local env files (and `!.env.example` to keep the template).",
       ],
       autoFixAvailable: true,
     };
   }
+}
+
+const ENV_TEMPLATE_SUFFIXES = [".example", ".sample", ".template"];
+
+function isEnvFile(file: string): boolean {
+  const base = path.basename(file.replace(/\\/g, "/"));
+  if (base !== ".env" && !base.startsWith(".env.")) return false;
+  return !ENV_TEMPLATE_SUFFIXES.some((suffix) => base.endsWith(suffix));
 }

@@ -1,6 +1,6 @@
-import { type Detector, type Finding, type ScanContext, redactSecret } from "@vibesafe/shared";
+import { type Detector, type Finding, type ScanContext, type Severity, redactSecret } from "@vibesafe/shared";
 import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
-import { SECRET_PATTERNS } from "./patterns/secret-patterns.js";
+import { SECRET_PATTERNS, matchSecretPattern } from "./patterns/secret-patterns.js";
 import {
   getHistoricalAddedLines,
   isGitAvailable,
@@ -15,6 +15,7 @@ interface SecretOccurrence {
   patternId: string;
   patternName: string;
   confidence: "high" | "medium" | "low";
+  patternSeverity: Severity;
   secretValue: string;
   file: string;
   sha: string;
@@ -66,8 +67,8 @@ export class GitHistoryDetector implements Detector {
         const normalizedLine = added.line.replace(/\r$/, "");
 
         for (const pattern of SECRET_PATTERNS) {
-          const match = pattern.regex.exec(normalizedLine);
-          if (!match || !match[0]) continue;
+          const match = matchSecretPattern(pattern, normalizedLine);
+          if (!match) continue;
 
           const secretValue = match[0];
           const key = `${pattern.id}::${secretValue}`;
@@ -86,6 +87,7 @@ export class GitHistoryDetector implements Detector {
               patternId: pattern.id,
               patternName: pattern.name,
               confidence: pattern.confidence,
+              patternSeverity: pattern.severity,
               secretValue,
               file: hunk.file,
               sha: hunk.sha,
@@ -114,13 +116,17 @@ export class GitHistoryDetector implements Detector {
       const shortSha = occurrence.sha.slice(0, SHORT_SHA_LENGTH);
       const redacted = redactSecret(occurrence.secretValue);
 
+      // Low-signal patterns (generic assignments, test keys) keep their own
+      // severity rather than being escalated just because they're in history.
+      const capped = occurrence.patternSeverity !== "critical";
+
       if (stillPresent) {
         findings.push(
           this.buildFinding({
             occurrence,
             shortSha,
             redacted,
-            severity: "high",
+            severity: capped ? occurrence.patternSeverity : "high",
             recoverable: false,
           }),
         );
@@ -130,7 +136,7 @@ export class GitHistoryDetector implements Detector {
             occurrence,
             shortSha,
             redacted,
-            severity: "critical",
+            severity: capped ? occurrence.patternSeverity : "critical",
             recoverable: true,
           }),
         );
@@ -157,7 +163,7 @@ export class GitHistoryDetector implements Detector {
     occurrence: SecretOccurrence;
     shortSha: string;
     redacted: string;
-    severity: "critical" | "high";
+    severity: Severity;
     recoverable: boolean;
   }): Finding {
     const { occurrence, shortSha, redacted, severity, recoverable } = params;
