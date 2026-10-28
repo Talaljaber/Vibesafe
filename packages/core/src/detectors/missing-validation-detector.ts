@@ -1,7 +1,12 @@
 import { type Detector, type Finding, type ScanContext } from "@vibesafe/shared";
 import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
-import { isApiRoute } from "./utils/route-analyzer.js";
-import { VALIDATION_LIB_IMPORTS, VALIDATION_METHOD_CALLS } from "./patterns/validation-patterns.js";
+import { isApiRoute, lineOfIndex } from "./utils/route-analyzer.js";
+import {
+  VALIDATION_LIB_IMPORT_REGEX,
+  VALIDATION_CALL_REGEXES,
+  VALIDATION_LIB_CALL_REGEX,
+  INPUT_READ_REGEXES,
+} from "./patterns/validation-patterns.js";
 
 export class MissingValidationDetector implements Detector {
   id = "missing-validation-detector";
@@ -19,16 +24,23 @@ export class MissingValidationDetector implements Detector {
 
       const content = await context.readFile(filePath);
       
-      const readsJson = content.includes("req.json()") || content.includes("request.json()");
-      const readsBody = content.includes("req.body");
 
-      if (readsJson || readsBody) {
-        const hasValidationImport = VALIDATION_LIB_IMPORTS.some((lib: string) => content.includes(lib));
-        const hasValidationCall = VALIDATION_METHOD_CALLS.some((call: string) => content.includes(call));
+      let inputIndex = -1;
+      for (const re of INPUT_READ_REGEXES) {
+        const m = re.exec(content);
+        if (m && (inputIndex === -1 || m.index < inputIndex)) inputIndex = m.index;
+      }
 
-        if (!hasValidationImport && !hasValidationCall) {
+      if (inputIndex !== -1) {
+        const line = lineOfIndex(content, inputIndex);
+        const hasImport = VALIDATION_LIB_IMPORT_REGEX.test(content);
+        const validated =
+          VALIDATION_CALL_REGEXES.some((re) => re.test(content)) ||
+          (hasImport && VALIDATION_LIB_CALL_REGEX.test(content));
+
+        if (!validated) {
           findings.push({
-            id: createFindingId(CATEGORY_PREFIX.validation, "validation/missing-body-validation", filePath),
+            id: createFindingId(CATEGORY_PREFIX.validation, "validation/missing-body-validation", filePath, line),
             ruleId: "validation/missing-body-validation",
             title: "Unvalidated Request Body",
             severity: "high",
@@ -36,6 +48,7 @@ export class MissingValidationDetector implements Detector {
             deployBlocking: false,
             confidence: "medium", 
             file: filePath,
+            line,
             plainEnglishProblem: "This API route reads data sent by the user, but doesn't validate if the data is correct before using it.",
             whyItMatters: "Malicious users can send unexpected data types (like an object instead of a string) to crash your server or bypass security checks. This is a common cause of downtime.",
             fixSteps: [
