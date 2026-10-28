@@ -250,6 +250,84 @@ describe("FrontendExposureDetector", () => {
     expect(findings).toHaveLength(0);
   });
 
+  it("does not flag a client file importing a 'use server' module that uses firebase-admin", async () => {
+    const findings = await detector.detect(
+      createContext({
+        "app/page.tsx": `"use client";\nimport { del } from "./actions";\n`,
+        "app/actions.ts": `"use server";\nimport admin from "firebase-admin";\nexport async function del() {}\n`,
+      }),
+    );
+    expect(findings).toHaveLength(0);
+  });
+
+  it("does not flag a client file importing a server-only module that uses firebase-admin", async () => {
+    const findings = await detector.detect(
+      createContext({
+        "app/page.tsx": `"use client";\nimport { db } from "../lib/db";\n`,
+        "lib/db.ts": `import "server-only";\nimport admin from "firebase-admin";\nexport const db = 1;\n`,
+      }),
+    );
+    expect(findings).toHaveLength(0);
+  });
+
+  it("does not flag multi-line or inline type-only firebase-admin imports", async () => {
+    const findings = await detector.detect(
+      createContext({
+        "app/page.tsx": `"use client";\nimport type {\n  App,\n} from 'firebase-admin/app';\nimport { type UserRecord } from "firebase-admin/auth";\nimport { x } from "../lib/t";\n`,
+        "lib/t.ts": `import type {\n  App\n} from "firebase-admin/app";\nexport const x = 1;\n`,
+      }),
+    );
+    expect(findings).toHaveLength(0);
+  });
+
+  it("flags a multi-line value import of firebase-admin", async () => {
+    const findings = await detector.detect(
+      createContext({ "app/page.tsx": `"use client";\nimport {\n  getAuth,\n} from "firebase-admin/auth";\n` }),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.confidence).toBe("high");
+  });
+
+  it("reports medium confidence for a transitive firebase-admin import", async () => {
+    const findings = await detector.detect(
+      createContext({
+        "app/page.tsx": `"use client";\nimport { a } from "../lib/a";\n`,
+        "lib/a.ts": `import admin from "firebase-admin";\n`,
+      }),
+    );
+    expect(findings[0]?.confidence).toBe("medium");
+  });
+
+  it("flags service account JSON loaded via require or dynamic import", async () => {
+    const findings = await detector.detect(
+      createContext({
+        "app/a.tsx": `"use client";\nconst k = require("./serviceAccountKey.json");\n`,
+        "app/b.tsx": `"use client";\nconst k = await import("./firebase-adminsdk-abc12.json");\n`,
+      }),
+    );
+    expect(findings).toHaveLength(2);
+  });
+
+  it("does not flag unrelated service-account-like JSON files", async () => {
+    const findings = await detector.detect(
+      createContext({
+        "app/a.tsx": `"use client";\nimport s from "./serviceAccountSchema.json";\nimport l from "./service-accounts-list.json";\nimport c from "./config.json";\nconst x = require("./serviceAccountSchema.json");\n`,
+      }),
+    );
+    expect(findings).toHaveLength(0);
+  });
+
+  it("does not flag firebase-admin in a pages file exporting getServerSideProps", async () => {
+    const findings = await detector.detect(
+      createContext({
+        "pages/index.tsx": `import admin from "firebase-admin";\nexport async function getServerSideProps() { return { props: {} }; }\nexport default function P() { return null; }\n`,
+        "pages/b.tsx": `import { a } from "../lib/a";\nexport const getStaticProps = async () => ({ props: {} });\n`,
+        "lib/a.ts": `import admin from "firebase-admin";\n`,
+      }),
+    );
+    expect(findings).toHaveLength(0);
+  });
+
   it("flags firebase-admin in a src/pages file", async () => {
     const findings = await detector.detect(
       createContext({ "src/pages/index.tsx": `import admin from "firebase-admin";\n` }),
