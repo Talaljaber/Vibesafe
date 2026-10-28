@@ -7,6 +7,7 @@
 
 import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
 import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
+import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
 
 const MAX_FILE_LINES = 500;
 
@@ -76,7 +77,7 @@ export class CodebaseMessDetector implements Detector {
             confidence: "medium",
             file: filePath,
             line: i + 1,
-            evidence: line.trim(),
+            evidence: sanitizeEvidence(line),
             plainEnglishProblem: "You are catching an error but doing nothing with it (swallowing the error).",
             whyItMatters: "If this code fails, you will never know. The app might break silently, making it impossible to debug.",
             fixSteps: [
@@ -100,7 +101,7 @@ export class CodebaseMessDetector implements Detector {
             confidence: "high",
             file: filePath,
             line: i + 1,
-            evidence: line.trim(),
+            evidence: sanitizeEvidence(line),
             plainEnglishProblem: "You left a `console.log` statement in your code.",
             whyItMatters: "While harmless, excessive logging in production clutters the console and can occasionally leak sensitive information if you log full objects.",
             fixSteps: ["Remove the `console.log` statement."],

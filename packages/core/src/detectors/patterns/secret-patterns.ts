@@ -3,6 +3,8 @@ export interface SecretPattern {
   name: string;
   regex: RegExp;
   confidence: "high" | "medium" | "low";
+  /** Capture group holding the secret value; when set, only that group is redacted in evidence. */
+  valueGroup?: number | undefined;
 }
 
 export const SECRET_PATTERNS: SecretPattern[] = [
@@ -101,11 +103,13 @@ export const SECRET_PATTERNS: SecretPattern[] = [
     name: "Generic Password Assignment",
     regex: /(password|passwd|pwd)\s*[:=]\s*['"]([^'"]+)['"]/i,
     confidence: "low",
+    valueGroup: 2,
   },
   {
     id: "sec-generic-secret",
     name: "Generic Secret Assignment",
     regex: /(secret|token|api_key|apikey|access_token)\s*[:=]\s*['"]([^'"]{10,})['"]/i,
     confidence: "low",
+    valueGroup: 2,
   }
 ];

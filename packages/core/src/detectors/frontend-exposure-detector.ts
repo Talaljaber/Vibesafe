@@ -1,5 +1,6 @@
 import { type Detector, type Finding, type ScanContext } from "@vibesafe/shared";
 import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
+import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
 import { isClientFile } from "./utils/file-classifier.js";
 
 export class FrontendExposureDetector implements Detector {
@@ -40,7 +41,7 @@ export class FrontendExposureDetector implements Detector {
             confidence: "high",
             file: filePath,
             line: i + 1,
-            evidence: line.trim(),
+            evidence: sanitizeEvidence(line),
             plainEnglishProblem: "You are using an admin 'service role' key in frontend code.",
             whyItMatters: "Client code is visible to everyone in the browser. Anyone can extract this key and gain full admin access to your database, bypassing all row-level security.",
             fixSteps: [
@@ -66,7 +67,7 @@ export class FrontendExposureDetector implements Detector {
             confidence: "high",
             file: filePath,
             line: i + 1,
-            evidence: match[0],
+            evidence: sanitizeEvidence(match[0]),
             plainEnglishProblem: `You have prefixed a sensitive variable (${match[0]}) with NEXT_PUBLIC_.`,
             whyItMatters: "The NEXT_PUBLIC_ prefix bundles this variable into the code sent to the user's browser, exposing your secret.",
             fixSteps: [

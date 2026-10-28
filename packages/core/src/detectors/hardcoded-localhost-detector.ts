@@ -1,5 +1,6 @@
 import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
 import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
+import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
 
 const CODE_FILE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
 const OCTET = "(?:25[0-5]|2[0-4]\\d|1?\\d?\\d)";
@@ -63,7 +64,7 @@ export class HardcodedLocalhostDetector implements Detector {
           confidence: "high",
           file: filePath,
           line: i + 1,
-          evidence: line.trim(),
+          evidence: sanitizeEvidence(line),
           plainEnglishProblem: `This code hardcodes "${match[0]}", which usually only works on a developer machine or private network.`,
           whyItMatters:
             "Hardcoded local hosts often break after deployment because production users and servers cannot reach your local machine or internal network.",
