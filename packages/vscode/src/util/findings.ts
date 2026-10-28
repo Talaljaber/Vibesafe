@@ -39,3 +39,16 @@ export function isFindingInsideRoot(root: string, finding: Finding): boolean {
   if (!finding.file) return true;
   return isInsideRoot(root, path.resolve(root, finding.file));
 }
+
+/** Find a finding by id across several scan results (one per workspace folder). */
+export function findFindingInResults(
+  results: Iterable<ScanResult>,
+  id: string | undefined
+): { finding: Finding; result: ScanResult } | undefined {
+  if (!id) return undefined;
+  for (const result of results) {
+    const finding = findFindingById(result, id);
+    if (finding) return { finding, result };
+  }
+  return undefined;
+}

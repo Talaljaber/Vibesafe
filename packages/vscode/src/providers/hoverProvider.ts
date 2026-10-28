@@ -1,13 +1,22 @@
 import * as vscode from "vscode";
 import path from "path";
 import type { ScanResult } from "@vibesafe/shared";
+import { isInsideRoot } from "../util/findings.js";
 import { escapeMarkdown, findingCommandUri, TRUSTED_COMMANDS } from "../util/markdown.js";
 
 export class VibeSafeHoverProvider implements vscode.HoverProvider {
-  private latestResult?: ScanResult;
+  private results = new Map<string, ScanResult>();
 
+  /** Store the latest result for a workspace folder (keyed by its project path). */
   public update(result: ScanResult) {
-    this.latestResult = result;
+    this.results.set(result.projectPath, result);
+  }
+
+  private resultFor(fsPath: string): ScanResult | undefined {
+    for (const r of this.results.values()) {
+      if (isInsideRoot(r.projectPath, fsPath)) return r;
+    }
+    return undefined;
   }
 
   public provideHover(
@@ -15,13 +24,14 @@ export class VibeSafeHoverProvider implements vscode.HoverProvider {
     position: vscode.Position,
     _token: vscode.CancellationToken
   ): vscode.ProviderResult<vscode.Hover> {
-    if (!this.latestResult) return null;
+    const latestResult = this.resultFor(document.uri.fsPath);
+    if (!latestResult) return null;
 
-    const rootPath = this.latestResult.projectPath;
+    const rootPath = latestResult.projectPath;
     const relativePath = path.relative(rootPath, document.uri.fsPath).replace(/\\/g, "/");
 
     // Find a finding that overlaps with this line
-    const finding = this.latestResult.findings.find((f) => {
+    const finding = latestResult.findings.find((f) => {
       if (f.file !== relativePath) return false;
       const startLine = Math.max(0, (f.line || 1) - 1);
       const endLine = Math.max(0, (f.endLine || f.line || 1) - 1);

@@ -80,6 +80,28 @@
         "icon": "$(wrench)"
       }
     ],
+    "menus": {
+      "commandPalette": [
+        { "command": "vibesafe.copyFixPrompt", "when": "false" },
+        { "command": "vibesafe.applyFix", "when": "false" }
+      ],
+      "view/title": [
+        { "command": "vibesafe.scan", "when": "view == vibesafe.issues", "group": "navigation@1" },
+        { "command": "vibesafe.openDashboard", "when": "view == vibesafe.issues", "group": "navigation@2" }
+      ],
+      "view/item/context": [
+        {
+          "command": "vibesafe.copyFixPrompt",
+          "when": "view == vibesafe.issues && viewItem =~ /^finding/",
+          "group": "inline@1"
+        },
+        {
+          "command": "vibesafe.applyFix",
+          "when": "view == vibesafe.issues && viewItem == findingWithFix",
+          "group": "inline@2"
+        }
+      ]
+    },
     "configuration": {
       "title": "VibeSafe",
       "properties": {
@@ -99,6 +121,11 @@
           "default": "low",
           "description": "Minimum severity level to show in the sidebar."
         },
+        "vibesafe.focusProblemsOnScan": {
+          "type": "boolean",
+          "default": false,
+          "description": "Focus the Problems panel after a scan that finds issues."
+        },
         "vibesafe.scanOnOpen": {
           "type": "boolean",
           "default": false,
@@ -113,12 +140,7 @@
     }
   },
   "activationEvents": [
-    "onLanguage:javascript",
-    "onLanguage:javascriptreact",
-    "onLanguage:typescript",
-    "onLanguage:typescriptreact",
-    "onCommand:vibesafe.scan",
-    "onView:vibesafe.issues"
+    "onStartupFinished"
   ],
   "dependencies": {
     "@vibesafe/core": "workspace:*",
