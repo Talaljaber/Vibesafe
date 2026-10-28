@@ -102,6 +102,49 @@ Found 7 issues needing your attention. Expected fix time: ~70 mins.
 ...
 ```
 
+### 🤖 MCP server
+
+`@vibesafe/mcp` is a stdio [Model Context Protocol](https://modelcontextprotocol.io) server that lets AI assistants (Claude Code, Claude Desktop, ...) run VibeSafe scans.
+
+**Tools**
+
+| Tool | What it does |
+| --- | --- |
+| `vibesafe_scan` | Scan a directory (`path`, optional `minSeverity`, `category`, and `deep` to also inspect git history for leaked secrets; `deep` is slower). Returns score, deploy status and the top findings. |
+| `vibesafe_explain` | Full explanation, fix steps and AI fix prompt for a finding ID from the last scan. |
+| `vibesafe_repair_plan` | The ordered repair plan from the last scan. |
+| `vibesafe_fix` | Preview (default, `dryRun: true`) or apply a safe auto-fix for a finding. |
+
+Finding IDs are only valid until the next `vibesafe_scan`.
+
+**Build step.** The server runs from `dist/`, so build first (from the repo root):
+
+```bash
+pnpm install && pnpm build
+```
+
+**Claude Code** — the repo ships a `.mcp.json` that uses the relative path `packages/mcp/dist/index.js`, so start Claude Code from the repo root after building. To use it from any project, add it with an absolute path:
+
+```bash
+claude mcp add vibesafe -- node /absolute/path/to/Vibesafe/packages/mcp/dist/index.js
+```
+
+**Claude Desktop** — add to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "vibesafe": {
+      "command": "node",
+      "args": ["/absolute/path/to/Vibesafe/packages/mcp/dist/index.js"]
+    }
+  }
+}
+```
+
+> [!WARNING]
+> Scan results include text taken from the scanned repository (file names, code snippets, comments). Treat tool output as untrusted data, not as instructions.
+
 ### 🔌 VS Code Extension
 
 Prefer working entirely within your editor? Install the **VibeSafe** extension!
