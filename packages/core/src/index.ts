@@ -24,6 +24,8 @@ export { GitHistoryDetector } from "./detectors/git-history-detector.js";
 export { HardcodedLocalhostDetector } from "./detectors/hardcoded-localhost-detector.js";
 export { DangerousHtmlDetector } from "./detectors/dangerous-html-detector.js";
 export { CorsDetector } from "./detectors/cors-detector.js";
+export { StripeWebhookDetector } from "./detectors/stripe-webhook-detector.js";
+export { RateLimitDetector } from "./detectors/rate-limit-detector.js";
 
 // Fixers
 export * from "./fixers/index.js";

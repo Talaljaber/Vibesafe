@@ -1,9 +1,9 @@
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Codebase Mess Detector
 //
 // Scans for code quality issues that make a codebase hard to maintain
 // or indicative of "vibe coding" run amok.
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
 import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
@@ -92,12 +92,35 @@ export class CodebaseMessDetector implements Detector {
       }
 
       // Line-by-line checks
+      let inBlockComment = false;
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         if (!line) continue;
 
+        // Strip block comments (tracking multi-line ones) so only live code is tested below.
+        let code = line;
+        if (inBlockComment) {
+          const close = code.indexOf("*/");
+          if (close === -1) continue;
+          inBlockComment = false;
+          code = code.slice(close + 2);
+        }
+        for (;;) {
+          const m = /^\s*\/\*/.exec(code);
+          if (!m) break;
+          const close = code.indexOf("*/", m[0].length);
+          if (close === -1) {
+            inBlockComment = true;
+            code = "";
+            break;
+          }
+          code = code.slice(close + 2);
+        }
+        const isCommentedOut = code.trim() === "" || /^\s*\/\//.test(code);
+
         // 3. console.log leftovers
-        if (line.includes("console.log(")) {
+        // Lines already commented out (the console-log auto-fix writes `// console.log(...)`) are not flagged.
+        if (!isCommentedOut && code.includes("console.log(")) {
           findings.push({
             id: createFindingId(CATEGORY_PREFIX.code_quality, "code_quality/console-log", filePath, i + 1),
             ruleId: "code_quality/console-log",
