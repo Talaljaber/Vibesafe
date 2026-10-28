@@ -3,6 +3,7 @@ import chalk from "chalk";
 import { ScannerPipeline, createDefaultRegistry, createDefaultFixRegistry } from "@vibesafe/core";
 import { confirm, select } from "@inquirer/prompts";
 import type { Finding } from "@vibesafe/shared";
+import { sanitizeTerminal } from "./fix-all.js";
 
 export interface FixOptions {
   /** Skip confirmation prompts. Requires an exact finding id or a single ruleId match. */
@@ -101,7 +102,7 @@ export async function runFix(findingId: string, targetDir: string, options: FixO
   }
   if (preview.diff) {
     console.log(chalk.gray(`\nChanges:`));
-    console.log(preview.diff.split('\n').map(line => {
+    console.log(sanitizeTerminal(preview.diff).split('\n').map(line => {
       if (line.startsWith('+')) return chalk.green(line);
       if (line.startsWith('-')) return chalk.red(line);
       return chalk.gray(line);

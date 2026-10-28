@@ -198,6 +198,16 @@ describe("shouldPrintBanner", () => {
     expect(shouldPrintBanner(["scan", ".", "--format=markdown"])).toBe(false);
     expect(shouldPrintBanner(["scan", ".", "--format=xml"])).toBe(false);
   });
+
+  it("suppresses the banner for --output in both forms", () => {
+    expect(shouldPrintBanner(["scan", ".", "--output", "r.json"])).toBe(false);
+    expect(shouldPrintBanner(["scan", ".", "--output=r.json"])).toBe(false);
+  });
+
+  it("ignores arguments after a bare --", () => {
+    expect(shouldPrintBanner(["scan", "--format", "markdown", "--", "dir"])).toBe(false);
+    expect(shouldPrintBanner(["scan", "--", "--json"])).toBe(true);
+  });
 });
 
 describe("runScan --format", () => {
@@ -233,6 +243,13 @@ describe("runScan --format", () => {
     scanMock.mockResolvedValue(result([]));
     await runScan(".", { format: "markdown" });
     expect(process.exitCode).toBe(0);
+  });
+
+  it("--format markdown wins over --json", async () => {
+    scanMock.mockResolvedValue(result([finding()], { deployStatus: "blocker" }));
+    await runScan(".", { json: true, format: "markdown" });
+    expect(out.startsWith(PR_COMMENT_MARKER)).toBe(true);
+    expect(out).not.toContain('"findings"');
   });
 
   it("rejects an unknown format with exit code 2 and does not scan", async () => {

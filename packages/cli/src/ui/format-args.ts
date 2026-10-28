@@ -1,11 +1,21 @@
 /**
  * Whether the startup banner should be printed for these CLI args.
- * The banner is skipped for --json/-j and for any --format value (valid or not),
- * so stdout stays machine-readable. If --json and --format markdown are both
- * given, --json takes precedence in runScan.
+ * The banner is skipped whenever machine-readable output is requested: --json/-j,
+ * any --format value (valid or not, so an unknown format still fails cleanly),
+ * and --output (which implies --format json). Checked before commander parses argv.
+ * Arguments after a bare `--` are positional (e.g. a directory) and are ignored.
  */
 export function shouldPrintBanner(argv: readonly string[]): boolean {
-  const hasFormat = argv.some((a) => a === "--format" || a.startsWith("--format="));
-  const isJson = argv.includes("--json") || argv.includes("-j");
-  return !(isJson || hasFormat);
+  const end = argv.indexOf("--");
+  const opts = end === -1 ? argv : argv.slice(0, end);
+  const isMachineOutput = opts.some(
+    (a) =>
+      a === "--json" ||
+      a === "-j" ||
+      a === "--format" ||
+      a.startsWith("--format=") ||
+      a === "--output" ||
+      a.startsWith("--output="),
+  );
+  return !isMachineOutput;
 }
