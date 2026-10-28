@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createServer, readServerVersion } from "../src/server.js";
+import type { ServerPolicy } from "../src/policy.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.resolve(__dirname, "../../../fixtures/nextjs-vibecoded-bad-app");
@@ -15,8 +16,12 @@ interface ToolResult {
   content: { type: string; text: string }[];
 }
 
-async function connect(): Promise<{ client: Client; close: () => Promise<void> }> {
-  const server = await createServer();
+const REPO_ROOT = path.resolve(__dirname, "../../..");
+
+async function connect(
+  policy: ServerPolicy = { roots: [REPO_ROOT, os.tmpdir()], allowFix: false },
+): Promise<{ client: Client; close: () => Promise<void> }> {
+  const server = await createServer(policy);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "test-client", version: "0.0.0" });
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
