@@ -42,12 +42,17 @@ program
   .description("Automatically apply a safe fix for a finding or rule ID, or for all auto-fixable findings with --all")
   .argument("[finding-id]", "The ID of the finding or rule to fix (omit with --all)")
   .argument("[dir]", "Directory to run the fix in", ".")
-  .option("-a, --all", "Preview and apply every auto-fixable finding with a single confirmation", false)
+  .option("-a, --all", "Preview and apply every auto-fixable finding with a single confirmation (the one positional is then the directory)", false)
   .option("-y, --yes", "Skip confirmation (single fix: needs an exact finding id or a single match)", false)
   .action(async (findingId: string | undefined, dir: string, options) => {
     if (options.all) {
       // With --all there is no finding id, so `vibesafe fix --all ./app` puts the dir in the first positional.
-      await runFixAllCommand(dir !== "." ? dir : (findingId ?? "."), { yes: Boolean(options.yes) });
+      if (findingId && dir !== ".") {
+        console.error("error: --all takes no finding id; pass only the directory (vibesafe fix --all [dir])");
+        process.exitCode = 1;
+        return;
+      }
+      await runFixAllCommand(findingId ?? dir, { yes: Boolean(options.yes) });
       return;
     }
     if (!findingId) {

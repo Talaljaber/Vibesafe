@@ -6,6 +6,7 @@ import type { AutoFixer, Finding, FixPreview, FixResult } from "@vibesafe/shared
 export interface FixAllCandidate {
   finding: Finding;
   fixer: AutoFixer;
+  preview: FixPreview;
 }
 
 export interface FixAllOutcome {
@@ -20,7 +21,10 @@ export type FixAllStatus = "nothing-to-fix" | "cancelled" | "no-tty" | "applied"
 
 export interface FixAllResult {
   status: FixAllStatus;
+  /** Fixes that will be (or were) attempted: findings whose fixer has a concrete change to make. */
   candidates: number;
+  /** Findings with a registered fixer that cannot safely fix them; never counted as failures. */
+  skipped: number;
   outcomes: FixAllOutcome[];
   succeeded: number;
   failed: number;
@@ -44,8 +48,20 @@ function isPromptAbort(err: unknown): boolean {
   return err instanceof Error && err.name === "ExitPromptError";
 }
 
+/**
+ * Strips ANSI/OSC escape sequences and C0/C1 control characters (keeping \n and \t) from text that
+ * originates in the scanned repo, so it cannot rewrite or hide parts of the terminal preview.
+ */
+export function sanitizeTerminal(text: string): string {
+  return text
+    .replace(/\u001b\[[0-?]*[ -\/]*[@-~]/g, "")
+    .replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)?/g, "")
+    .replace(/\u001b[@-_]?/g, "")
+    .replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009fÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¨ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©]/g, "");
+}
+
 function location(f: Finding): string {
-  return f.file ? ` ${f.file}${f.line ? ":" + f.line : ""}` : "";
+  return f.file ? ` ${sanitizeTerminal(f.file)}${f.line ? ":" + f.line : ""}` : "";
 }
 
 function colorDiff(diff: string): string {
@@ -60,11 +76,11 @@ function colorDiff(diff: string): string {
 }
 
 function printPreview(log: (line: string) => void, finding: Finding, preview: FixPreview): void {
-  log(chalk.cyan(`\n- ${finding.title}${location(finding)}`));
-  log(chalk.white(`  ${preview.description}`));
-  preview.filesToCreate.forEach((f) => log(chalk.green(`  + ${f}`)));
-  preview.filesToModify.forEach((f) => log(chalk.yellow(`  ~ ${f}`)));
-  if (preview.diff) log(colorDiff(preview.diff));
+  log(chalk.cyan(`\n- ${sanitizeTerminal(finding.title)}${location(finding)}`));
+  log(chalk.white(`  ${sanitizeTerminal(preview.description)}`));
+  preview.filesToCreate.forEach((f) => log(chalk.green(`  + ${sanitizeTerminal(f)}`)));
+  preview.filesToModify.forEach((f) => log(chalk.yellow(`  ~ ${sanitizeTerminal(f)}`)));
+  if (preview.diff) log(colorDiff(sanitizeTerminal(preview.diff)));
 }
 
 /** CLI wrapper: runs the batch fix and maps the outcome to the process exit code. */
@@ -92,16 +108,30 @@ export async function runFixAll(rootPath: string, options: FixAllOptions = {}): 
   const before = await pipeline.scan({ rootPath: root });
   const fixers = createDefaultFixRegistry();
 
+  // Preview every registered fixer up front; a fixer that would change nothing (it explains why in
+  // the description) is skipped rather than offered, so the prompt count is honest and skips never fail the run.
   const candidates: FixAllCandidate[] = [];
+  const skipped: string[] = [];
   for (const finding of before.findings) {
     if (!finding.autoFixAvailable) continue;
     const fixer = fixers.getFixer(finding.ruleId);
-    if (fixer && fixer.canFix(finding)) candidates.push({ finding, fixer });
+    if (!fixer || !fixer.canFix(finding)) continue;
+    try {
+      const preview = await fixer.preview(finding, root);
+      if (preview.filesToModify.length === 0 && preview.filesToCreate.length === 0) {
+        skipped.push(`${sanitizeTerminal(finding.ruleId)}${location(finding)}: ${sanitizeTerminal(preview.description)}`);
+      } else {
+        candidates.push({ finding, fixer, preview });
+      }
+    } catch (err) {
+      skipped.push(`${sanitizeTerminal(finding.ruleId)}${location(finding)}: preview unavailable (${sanitizeTerminal((err as Error).message)})`);
+    }
   }
 
   const result: FixAllResult = {
     status: "nothing-to-fix",
     candidates: candidates.length,
+    skipped: skipped.length,
     outcomes: [],
     succeeded: 0,
     failed: 0,
@@ -109,19 +139,21 @@ export async function runFixAll(rootPath: string, options: FixAllOptions = {}): 
     scoreAfter: before.score,
   };
 
+  const logSkipped = (): void => {
+    if (skipped.length === 0) return;
+    log(chalk.yellow(`\nSkipped (not auto-fixable): ${skipped.length}`));
+    skipped.forEach((s) => log(chalk.yellow(`  - ${s}`)));
+  };
+
   if (candidates.length === 0) {
-    log(chalk.green("\nNothing to auto-fix. No findings have a registered automatic fix."));
+    log(chalk.green("\nNothing to auto-fix. No findings have an automatic fix that can be applied."));
+    logSkipped();
     return result;
   }
 
   log(chalk.cyan.bold(`\nFix preview: ${candidates.length} fix${candidates.length === 1 ? "" : "es"} available`));
-  for (const { finding, fixer } of candidates) {
-    try {
-      printPreview(log, finding, await fixer.preview(finding, root));
-    } catch (err) {
-      log(chalk.yellow(`\n- ${finding.title}${location(finding)} (preview unavailable: ${(err as Error).message})`));
-    }
-  }
+  for (const { finding, preview } of candidates) printPreview(log, finding, preview);
+  logSkipped();
 
   if (!options.yes) {
     if (!interactive) {
@@ -173,10 +205,10 @@ export async function runFixAll(rootPath: string, options: FixAllOptions = {}): 
     });
     if (fixResult.success) {
       result.succeeded++;
-      log(chalk.green(`  OK   ${finding.ruleId}${location(finding)}: ${fixResult.message}`));
+      log(chalk.green(`  OK   ${finding.ruleId}${location(finding)}: ${sanitizeTerminal(fixResult.message)}`));
     } else {
       result.failed++;
-      log(chalk.red(`  FAIL ${finding.ruleId}${location(finding)}: ${message}`));
+      log(chalk.red(`  FAIL ${finding.ruleId}${location(finding)}: ${sanitizeTerminal(message)}`));
     }
   }
 
