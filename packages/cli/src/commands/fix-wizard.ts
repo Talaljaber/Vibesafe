@@ -129,7 +129,9 @@ export async function runFixWizard(
   }
 
   const fixRegistry = createDefaultFixRegistry();
-  console.log(chalk.cyan.bold(`\n🧙 Fix wizard: ${steps.length} finding(s) to review, most important first.`));
+  console.log(
+    chalk.cyan.bold(`\n🧙 Fix wizard: ${steps.length} finding(s) to review, most important first.`),
+  );
 
   for (const [i, step] of steps.entries()) {
     const finding = byId.get(step.findingId) as Finding;
@@ -147,7 +149,9 @@ export async function runFixWizard(
         canApply = preview.filesToModify.length + preview.filesToCreate.length > 0;
       } catch (err) {
         console.log(
-          chalk.yellow(`  Could not preview the auto-fix: ${sanitizeTerminal(err instanceof Error ? err.message : String(err))}`),
+          chalk.yellow(
+            `  Could not preview the auto-fix: ${sanitizeTerminal(err instanceof Error ? err.message : String(err))}`,
+          ),
         );
       }
     }
@@ -206,6 +210,8 @@ export async function runFixWizard(
     `  Applied: ${summary.applied}   Skipped: ${summary.skipped}   Failed: ${summary.failed}` +
       (summary.quit ? `   Not reviewed: ${remaining}` : ""),
   );
-  console.log(`  Score: ${summary.scoreBefore} -> ${summary.scoreAfter} (${delta >= 0 ? "+" : ""}${delta})`);
+  console.log(
+    `  Score: ${summary.scoreBefore} -> ${summary.scoreAfter} (${delta >= 0 ? "+" : ""}${delta})`,
+  );
   return summary;
 }

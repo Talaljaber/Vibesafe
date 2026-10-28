@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { FrontendExposureDetector } from "../../src/detectors/frontend-exposure-detector";
-import { hasUseClientDirective, isClientFile, isViteConfigFile } from "../../src/detectors/utils/file-classifier";
+import {
+  hasUseClientDirective,
+  isClientFile,
+  isViteConfigFile,
+} from "../../src/detectors/utils/file-classifier";
 import type { ScanContext } from "@vibesafe/shared";
 
 const detector = new FrontendExposureDetector();
@@ -63,19 +67,35 @@ describe("BOM handling", () => {
 
 describe("FrontendExposureDetector in Vite projects", () => {
   it("does not flag secrets in test files of a Vite project", async () => {
-    expect(await detector.detect(ctx({ "src/a.test.ts": "const k = process.env.SUPABASE_SERVICE_ROLE_KEY;\n" }))).toHaveLength(0);
+    expect(
+      await detector.detect(
+        ctx({ "src/a.test.ts": "const k = process.env.SUPABASE_SERVICE_ROLE_KEY;\n" }),
+      ),
+    ).toHaveLength(0);
   });
   it("does not trigger a define finding for src files", async () => {
-    const f = await detector.detect(ctx({ "src/a.ts": 'const c = { define: { "process.env": process.env } };' }));
+    const f = await detector.detect(
+      ctx({ "src/a.ts": 'const c = { define: { "process.env": process.env } };' }),
+    );
     expect(f.map((r) => r.ruleId)).not.toContain("frontend_exposure/vite-define-process-env");
   });
   it("flags a service role key in plain src code of a Vite project", async () => {
-    const f = await detector.detect(ctx({ "src/lib/supa.ts": `const k = import.meta.env.SUPABASE_SERVICE_ROLE_KEY;\n` }));
+    const f = await detector.detect(
+      ctx({ "src/lib/supa.ts": `const k = import.meta.env.SUPABASE_SERVICE_ROLE_KEY;\n` }),
+    );
     expect(f.map((x) => x.ruleId)).toContain("frontend_exposure/service-role-key");
   });
   it("does not flag the same code in src/server of a Vite project or in a non-Vite project", async () => {
-    expect(await detector.detect(ctx({ "src/server/supa.ts": `const k = process.env.SUPABASE_SERVICE_ROLE_KEY;\n` }))).toHaveLength(0);
-    expect(await detector.detect(ctx({ "src/lib/supa.ts": `const k = process.env.SUPABASE_SERVICE_ROLE_KEY;\n` }, "express"))).toHaveLength(0);
+    expect(
+      await detector.detect(
+        ctx({ "src/server/supa.ts": `const k = process.env.SUPABASE_SERVICE_ROLE_KEY;\n` }),
+      ),
+    ).toHaveLength(0);
+    expect(
+      await detector.detect(
+        ctx({ "src/lib/supa.ts": `const k = process.env.SUPABASE_SERVICE_ROLE_KEY;\n` }, "express"),
+      ),
+    ).toHaveLength(0);
   });
   it("follows imports from Vite src files to server-only secrets", async () => {
     const f = await detector.detect(
@@ -98,49 +118,91 @@ describe("vite.config define leaks", () => {
       `import { defineConfig } from "vite";\nexport default defineConfig({\n  define: {\n    "process.env": process.env,\n  },\n});\n`,
     );
     expect(f).toHaveLength(1);
-    expect(f[0]).toMatchObject({ ruleId: rule, severity: "critical", deployBlocking: true, category: "frontend_exposure", line: 4 });
+    expect(f[0]).toMatchObject({
+      ruleId: rule,
+      severity: "critical",
+      deployBlocking: true,
+      category: "frontend_exposure",
+      line: 4,
+    });
   });
 
   it("flags every supported config extension", async () => {
-    for (const n of ["vite.config.ts", "vite.config.mts", "vite.config.js", "vite.config.mjs", "vite.config.cjs"]) {
-      expect(await run(n, `export default { define: { 'process.env': process.env } };\n`)).toHaveLength(1);
+    for (const n of [
+      "vite.config.ts",
+      "vite.config.mts",
+      "vite.config.js",
+      "vite.config.mjs",
+      "vite.config.cjs",
+    ]) {
+      expect(
+        await run(n, `export default { define: { 'process.env': process.env } };\n`),
+      ).toHaveLength(1);
     }
   });
 
   it("flags JSON.stringify(process.env) and spreads", async () => {
-    expect(await run("vite.config.ts", `export default { define: { "process.env": JSON.stringify(process.env) } };`)).toHaveLength(1);
-    expect(await run("vite.config.ts", `export default { define: { ...process.env, A: "1" } };`)).toHaveLength(1);
+    expect(
+      await run(
+        "vite.config.ts",
+        `export default { define: { "process.env": JSON.stringify(process.env) } };`,
+      ),
+    ).toHaveLength(1);
+    expect(
+      await run("vite.config.ts", `export default { define: { ...process.env, A: "1" } };`),
+    ).toHaveLength(1);
   });
 
   it("flags nested define and in a non-Vite-framework context (config file is the signal)", async () => {
     const f = await detector.detect(
-      ctx({ "apps/web/vite.config.ts": `export default { define: { "process.env": process.env } };` }, "unknown"),
+      ctx(
+        { "apps/web/vite.config.ts": `export default { define: { "process.env": process.env } };` },
+        "unknown",
+      ),
     );
     expect(f).toHaveLength(1);
   });
 
   it("flags quoted define key, TS casts, aliases and loadEnv with empty prefix", async () => {
-    expect(await run("vite.config.ts", 'export default { "define": { "process.env": process.env as any } };')).toHaveLength(1);
-    expect(await run("vite.config.ts", "export default { define: { 'process.env': process.env satisfies X } };")).toHaveLength(1);
     expect(
-      await run("vite.config.ts", 'const env = process.env;\nexport default { define: { "process.env": env } };'),
+      await run(
+        "vite.config.ts",
+        'export default { "define": { "process.env": process.env as any } };',
+      ),
     ).toHaveLength(1);
     expect(
-      await run("vite.config.ts", 'export default ({ mode }) => {\n  const env = loadEnv(mode, process.cwd(), "");\n  return { define: { ...env } };\n};'),
+      await run(
+        "vite.config.ts",
+        "export default { define: { 'process.env': process.env satisfies X } };",
+      ),
+    ).toHaveLength(1);
+    expect(
+      await run(
+        "vite.config.ts",
+        'const env = process.env;\nexport default { define: { "process.env": env } };',
+      ),
+    ).toHaveLength(1);
+    expect(
+      await run(
+        "vite.config.ts",
+        'export default ({ mode }) => {\n  const env = loadEnv(mode, process.cwd(), "");\n  return { define: { ...env } };\n};',
+      ),
     ).toHaveLength(1);
   });
 
   it("handles multiple and nested define blocks and braces in strings", async () => {
-    const nested = 'export default {\n  define: {\n    A: { b: 1 },\n    s: "}",\n    "process.env": process.env,\n  },\n};';
+    const nested =
+      'export default {\n  define: {\n    A: { b: 1 },\n    s: "}",\n    "process.env": process.env,\n  },\n};';
     const f = await run("vite.config.ts", nested);
     expect(f).toHaveLength(1);
     expect(f[0].line).toBe(5);
-    const two = 'const a = { define: { x: 1 } };\nexport default { define: { ...process.env } };';
+    const two = "const a = { define: { x: 1 } };\nexport default { define: { ...process.env } };";
     expect(await run("vite.config.ts", two)).toHaveLength(1);
   });
 
   it("does not flag loadEnv with a prefix or a non-leaking spread", async () => {
-    const ok = 'export default ({ mode }) => {\n  const env = loadEnv(mode, process.cwd());\n  return { define: { ...env } };\n};';
+    const ok =
+      "export default ({ mode }) => {\n  const env = loadEnv(mode, process.cwd());\n  return { define: { ...env } };\n};";
     expect(await run("vite.config.ts", ok)).toHaveLength(0);
     const ok2 = 'const env = loadEnv(mode, cwd, "VITE_");\nexport default { define: { ...env } };';
     expect(await run("vite.config.ts", ok2)).toHaveLength(0);
@@ -160,6 +222,8 @@ describe("vite.config define leaks", () => {
   });
 
   it("does not run the define check on non-config files", async () => {
-    expect(await run("src/other.ts", `const c = { define: { "process.env": process.env } };`)).toHaveLength(0);
+    expect(
+      await run("src/other.ts", `const c = { define: { "process.env": process.env } };`),
+    ).toHaveLength(0);
   });
 });

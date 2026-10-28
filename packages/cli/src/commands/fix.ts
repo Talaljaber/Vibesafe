@@ -25,7 +25,9 @@ function isPromptAbort(err: unknown): boolean {
 
 function exitNoTty(): never {
   console.log(
-    chalk.red("\n❌ Cannot prompt without an interactive terminal. Re-run with --yes to skip confirmation."),
+    chalk.red(
+      "\n❌ Cannot prompt without an interactive terminal. Re-run with --yes to skip confirmation.",
+    ),
   );
   process.exit(1);
 }
@@ -51,11 +53,19 @@ export async function runFix(findingId: string, targetDir: string, options: FixO
       console.log(chalk.yellow(`\n'${findingId}' matches ${matches.length} findings:`));
       matches.forEach((f) => console.log(`  - ${describeFinding(f)}`));
       if (yes) {
-        console.log(chalk.red("\n❌ Ambiguous rule with --yes. Re-run with one of the exact finding IDs above."));
+        console.log(
+          chalk.red(
+            "\n❌ Ambiguous rule with --yes. Re-run with one of the exact finding IDs above.",
+          ),
+        );
         process.exit(1);
       }
       if (!process.stdin.isTTY) {
-        console.log(chalk.red("\n❌ Ambiguous rule and no interactive terminal. Re-run with an exact finding ID."));
+        console.log(
+          chalk.red(
+            "\n❌ Ambiguous rule and no interactive terminal. Re-run with an exact finding ID.",
+          ),
+        );
         process.exit(1);
       }
       try {
@@ -80,7 +90,9 @@ export async function runFix(findingId: string, targetDir: string, options: FixO
   }
 
   if (!finding.autoFixAvailable) {
-    console.log(chalk.yellow(`\n⚠️  The finding '${finding.title}' does not have an auto-fix available.`));
+    console.log(
+      chalk.yellow(`\n⚠️  The finding '${finding.title}' does not have an auto-fix available.`),
+    );
     process.exit(1);
   }
 
@@ -93,25 +105,30 @@ export async function runFix(findingId: string, targetDir: string, options: FixO
   }
 
   console.log(chalk.cyan(`\n🔧 Fix Preview for: ${finding.title}`));
-  
+
   const preview = await fixer.preview(finding, rootPath);
-  
+
   console.log(chalk.white(`\n${preview.description}`));
   if (preview.filesToCreate.length > 0) {
     console.log(chalk.green(`\nFiles to be created:`));
-    preview.filesToCreate.forEach(f => console.log(`  + ${f}`));
+    preview.filesToCreate.forEach((f) => console.log(`  + ${f}`));
   }
   if (preview.filesToModify.length > 0) {
     console.log(chalk.yellow(`\nFiles to be modified:`));
-    preview.filesToModify.forEach(f => console.log(`  ~ ${f}`));
+    preview.filesToModify.forEach((f) => console.log(`  ~ ${f}`));
   }
   if (preview.diff) {
     console.log(chalk.gray(`\nChanges:`));
-    console.log(sanitizeTerminal(preview.diff).split('\n').map(line => {
-      if (line.startsWith('+')) return chalk.green(line);
-      if (line.startsWith('-')) return chalk.red(line);
-      return chalk.gray(line);
-    }).join('\n'));
+    console.log(
+      sanitizeTerminal(preview.diff)
+        .split("\n")
+        .map((line) => {
+          if (line.startsWith("+")) return chalk.green(line);
+          if (line.startsWith("-")) return chalk.red(line);
+          return chalk.gray(line);
+        })
+        .join("\n"),
+    );
   }
 
   let proceed = yes;
@@ -134,21 +151,23 @@ export async function runFix(findingId: string, targetDir: string, options: FixO
   }
 
   console.log(chalk.gray("\nApplying fix..."));
-  
+
   const fixResult = await fixer.apply(finding, rootPath);
 
   if (fixResult.success) {
     console.log(chalk.green(`\n✅ Success: ${fixResult.message}`));
-    
+
     // Fix verification (rescan)
     console.log(chalk.gray("\nVerifying fix..."));
     const verifyResult = await pipeline.scan(buildScanOptions(rootPath, options));
-    const stillExists = verifyResult.findings.some(f => 
-      f.ruleId === finding.ruleId && f.file === finding.file && f.line === finding.line
+    const stillExists = verifyResult.findings.some(
+      (f) => f.ruleId === finding.ruleId && f.file === finding.file && f.line === finding.line,
     );
 
     if (stillExists) {
-      console.log(chalk.yellow("⚠️  The fix was applied, but the issue still appears in the scan."));
+      console.log(
+        chalk.yellow("⚠️  The fix was applied, but the issue still appears in the scan."),
+      );
     } else {
       console.log(chalk.green("✅ Fix verified! The issue is resolved."));
     }

@@ -145,7 +145,9 @@ describe("docs hygiene", () => {
         core.includes(`"${id}"`) ||
         core.includes(`id: "${rule}"`) ||
         (rule.startsWith("git-history-") && core.includes(`id: "${rule.slice(12)}"`)) ||
-        (category === "security_config" && rule.startsWith("cors-") && core.includes(`"${rule.slice(5)}"`));
+        (category === "security_config" &&
+          rule.startsWith("cors-") &&
+          core.includes(`"${rule.slice(5)}"`));
       expect(known, id).toBe(true);
     }
     for (const m of readme.matchAll(/`([a-z-]+-detector)`/g)) {

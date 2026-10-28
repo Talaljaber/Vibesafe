@@ -182,7 +182,10 @@ function statementAfter(sql: string, from: number): string {
 
 /** Display-safe identifier: control chars stripped, capped at the Postgres identifier limit. */
 function displayName(name: string): string {
-  const clean = name.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
+  const clean = name
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   return clean.length > MAX_NAME ? clean.slice(0, MAX_NAME) + "..." : clean;
 }
 
@@ -201,7 +204,8 @@ function parsePolicyClauses(rest: string): Partial<PolicyData> {
   const cmd = /\bfor\s+(all|select|insert|update|delete)\b/i.exec(rest)?.[1];
   if (cmd) out.cmd = cmd.toLowerCase();
   const roles = /\bto\s+([\s\S]*?)(?=\busing\b|\bwith\s+check\b|$)/i.exec(rest)?.[1];
-  if (roles !== undefined) out.roles = roles.split(",").map((r) => r.trim().replace(/^"|"$/g, "").toLowerCase());
+  if (roles !== undefined)
+    out.roles = roles.split(",").map((r) => r.trim().replace(/^"|"$/g, "").toLowerCase());
   const using = parenAfter(rest, /\busing\b/i);
   if (using !== null) out.using = using;
   const check = parenAfter(rest, /\bwith\s+check\b/i);
@@ -210,7 +214,14 @@ function parsePolicyClauses(rest: string): Partial<PolicyData> {
 }
 
 type SqlEvent =
-  | { kind: "create"; offset: number; key: string; line: number; text: string; ifNotExists: boolean }
+  | {
+      kind: "create";
+      offset: number;
+      key: string;
+      line: number;
+      text: string;
+      ifNotExists: boolean;
+    }
   | { kind: "rls"; offset: number; key: string; enabled: boolean }
   | { kind: "drop"; offset: number; key: string }
   | { kind: "rename"; offset: number; from: string; to: string }
@@ -292,7 +303,12 @@ export class SupabaseRlsDetector implements Detector {
       for (const m of sql.matchAll(ENABLE_RLS_RE)) {
         const key = tableKey(m[1], m[2]!);
         if (key) {
-          events.push({ kind: "rls", offset: m.index, key, enabled: m[3]!.toLowerCase() === "enable" });
+          events.push({
+            kind: "rls",
+            offset: m.index,
+            key,
+            enabled: m[3]!.toLowerCase() === "enable",
+          });
         }
       }
       for (const m of sql.matchAll(RENAME_TABLE_RE)) {
@@ -301,7 +317,10 @@ export class SupabaseRlsDetector implements Detector {
         if (from && to) events.push({ kind: "rename", offset: m.index, from, to });
       }
       for (const m of sql.matchAll(DROP_TABLE_RE)) {
-        const list = statementAfter(sql, m.index + m[0].length).replace(/(?<=[\w"$,])\s+(?:cascade|restrict)\s*$/i, "");
+        const list = statementAfter(sql, m.index + m[0].length).replace(
+          /(?<=[\w"$,])\s+(?:cascade|restrict)\s*$/i,
+          "",
+        );
         for (const q of list.matchAll(QUAL_G)) {
           const key = tableKey(q[1], q[2]!);
           if (key) events.push({ kind: "drop", offset: m.index, key });
@@ -363,7 +382,8 @@ export class SupabaseRlsDetector implements Detector {
           if (t) t.rls = ev.enabled;
         } else if (ev.kind === "drop") {
           tables.delete(ev.key);
-          for (const k of [...policies.keys()]) if (k.startsWith(ev.key + "\u0000")) policies.delete(k);
+          for (const k of [...policies.keys()])
+            if (k.startsWith(ev.key + "\u0000")) policies.delete(k);
         } else if (ev.kind === "rename") {
           const t = tables.get(ev.from);
           if (!t) continue;
@@ -411,7 +431,9 @@ export class SupabaseRlsDetector implements Detector {
       const clientSide = (await getUsage()).client;
       const severity: Severity = clientSide ? "critical" : "high";
       for (const [key, t] of missing) {
-        findings.push(this.missingRlsFinding(displayName(key.slice("public.".length)), t, severity, clientSide));
+        findings.push(
+          this.missingRlsFinding(displayName(key.slice("public.".length)), t, severity, clientSide),
+        );
       }
     }
     for (const p of policies.values()) {
@@ -426,7 +448,8 @@ export class SupabaseRlsDetector implements Detector {
     const cmd = p.cmd;
     if (cmd === "select") return null;
     if (p.roles !== undefined) {
-      if (!p.roles.some((r) => r === "public" || r === "anon" || r === "authenticated")) return null;
+      if (!p.roles.some((r) => r === "public" || r === "anon" || r === "authenticated"))
+        return null;
     }
     // A permissive `with check (true)` is flagged even when `using` is restrictive:
     // it still lets any row be written through that command.
@@ -462,7 +485,12 @@ export class SupabaseRlsDetector implements Detector {
       tags: ["supabase", "rls"],
     };
   }
-  private missingRlsFinding(table: string, t: TableState, severity: Severity, clientSide: boolean): Finding {
+  private missingRlsFinding(
+    table: string,
+    t: TableState,
+    severity: Severity,
+    clientSide: boolean,
+  ): Finding {
     const ruleId = "authorization/supabase-missing-rls";
     return {
       id: createFindingId(CATEGORY_PREFIX.authorization, ruleId, t.file, t.line, t.key),
@@ -490,7 +518,9 @@ export class SupabaseRlsDetector implements Detector {
   }
 
   /** Whether the project uses Supabase in code, and whether that code runs in the browser. */
-  private async detectSupabaseUsage(context: ScanContext): Promise<{ used: boolean; client: boolean }> {
+  private async detectSupabaseUsage(
+    context: ScanContext,
+  ): Promise<{ used: boolean; client: boolean }> {
     let used = false;
     for (const file of context.files) {
       if (!JS_FILE_RE.test(file)) continue;
@@ -499,7 +529,9 @@ export class SupabaseRlsDetector implements Detector {
       const hasEnv = SUPABASE_ENV_RE.test(content);
       if (!hasImport && !hasEnv) continue;
       used = true;
-      const serverOnly = /(?:^|\/)(?:server|api|functions|scripts)\//.test(file.replace(/\\/g, "/"));
+      const serverOnly = /(?:^|\/)(?:server|api|functions|scripts)\//.test(
+        file.replace(/\\/g, "/"),
+      );
       if (
         isClientFile(file, content) ||
         /createBrowserClient\s*\(/.test(content) ||
@@ -507,6 +539,7 @@ export class SupabaseRlsDetector implements Detector {
       ) {
         return { used, client: true };
       }
-    }    return { used, client: false };
+    }
+    return { used, client: false };
   }
 }

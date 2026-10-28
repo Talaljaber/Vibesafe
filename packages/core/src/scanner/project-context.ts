@@ -19,20 +19,25 @@ export class ProjectContextBuilder {
     const readmePath = path.join(this.rootPath, "README.md");
 
     const packageJson = await this.readJson(packageJsonPath);
-    
+
     const dependencies = packageJson?.dependencies ?? {};
     const devDependencies = packageJson?.devDependencies ?? {};
     const scripts = packageJson?.scripts ?? {};
 
     const hasTypeScript = await this.fileExists(tsconfigPath);
-    const hasGitignore = await this.fileExists(gitignorePath) || await this.fileExists(path.join(this.rootPath, ".gitignore"));
-    const hasEnvFile = await this.fileExists(envPath) || await this.fileExists(path.join(this.rootPath, ".env.local"));
+    const hasGitignore =
+      (await this.fileExists(gitignorePath)) ||
+      (await this.fileExists(path.join(this.rootPath, ".gitignore")));
+    const hasEnvFile =
+      (await this.fileExists(envPath)) ||
+      (await this.fileExists(path.join(this.rootPath, ".env.local")));
     const hasEnvExample = await this.fileExists(envExamplePath);
     const hasReadme = await this.fileExists(readmePath);
-    
-    let hasTests = Object.keys(devDependencies).some(dep => 
-      ['jest', 'vitest', 'mocha', 'cypress', 'playwright'].includes(dep)
-    ) || Object.keys(scripts).some(script => script.includes('test'));
+
+    let hasTests =
+      Object.keys(devDependencies).some((dep) =>
+        ["jest", "vitest", "mocha", "cypress", "playwright"].includes(dep),
+      ) || Object.keys(scripts).some((script) => script.includes("test"));
 
     const hasViteConfig = await this.hasViteConfig();
 
@@ -130,7 +135,9 @@ export class ProjectContextBuilder {
     for (const entry of entries) {
       if (!entry.isDirectory() || entry.name.startsWith(".") || excluded.has(entry.name)) continue;
       try {
-        const children = await fs.readdir(path.join(this.rootPath, entry.name), { withFileTypes: true });
+        const children = await fs.readdir(path.join(this.rootPath, entry.name), {
+          withFileTypes: true,
+        });
         if (children.some((e) => isTestEntry(e.name, e.isDirectory()))) return true;
       } catch {
         // unreadable directory: ignore

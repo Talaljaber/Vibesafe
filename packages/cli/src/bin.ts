@@ -30,10 +30,18 @@ program
   .command("scan")
   .description("Scan a directory for vibe-coding security and quality issues")
   .argument("[dir]", "Directory to scan", ".")
-  .option("-i, --interactive", "After the scan, offer to walk through the fixes interactively", false)
+  .option(
+    "-i, --interactive",
+    "After the scan, offer to walk through the fixes interactively",
+    false,
+  )
   .option("--html", "Generate HTML report", false)
   .option("--open-report", "Automatically open the HTML report after scan", false)
-  .option("-j, --json", "Output pure JSON without console formatting (alias of --format json)", false)
+  .option(
+    "-j, --json",
+    "Output pure JSON without console formatting (alias of --format json)",
+    false,
+  )
   .option(
     "--format <format>",
     "Machine-readable output format: json | sarif | markdown (PR-comment summary); pure output on stdout",
@@ -57,13 +65,27 @@ program
   .description(
     "Automatically apply a safe fix for a finding or rule ID, all auto-fixable findings with --all, or walk through fixes with -i",
   )
-  .argument("[finding-id]", "The ID of the finding or rule to fix (with --all or -i: optional directory instead)")
+  .argument(
+    "[finding-id]",
+    "The ID of the finding or rule to fix (with --all or -i: optional directory instead)",
+  )
   .argument("[dir]", "Directory to run the fix in (default: .)")
-  .option("-a, --all", "Preview and apply every auto-fixable finding with a single confirmation (the one positional is then the directory)", false)
+  .option(
+    "-a, --all",
+    "Preview and apply every auto-fixable finding with a single confirmation (the one positional is then the directory)",
+    false,
+  )
   .option("-i, --interactive", "Scan, then walk through the fixes one by one", false)
-  .option("-y, --yes", "Skip confirmation (single fix: needs an exact finding id or a single match)", false)
+  .option(
+    "-y, --yes",
+    "Skip confirmation (single fix: needs an exact finding id or a single match)",
+    false,
+  )
   .option("--no-config", "Ignore any .vibesafe.config file")
-  .option("--trust-config", "Execute .ts/.js config files from the directory (runs that code; trusted projects only)")
+  .option(
+    "--trust-config",
+    "Execute .ts/.js config files from the directory (runs that code; trusted projects only)",
+  )
   .action(async (first: string | undefined, second: string | undefined, options) => {
     // Same config handling for every fix mode (single, --all, -i).
     const configFlags = {
@@ -78,7 +100,9 @@ program
     if (options.all) {
       // With --all there is no finding id, so `vibesafe fix --all ./app` puts the dir in the first positional.
       if (first !== undefined && second !== undefined) {
-        console.error("error: --all takes no finding id; pass only the directory (vibesafe fix --all [dir])");
+        console.error(
+          "error: --all takes no finding id; pass only the directory (vibesafe fix --all [dir])",
+        );
         process.exitCode = 1;
         return;
       }
@@ -96,7 +120,9 @@ program
       try {
         await runFixWizard(first ?? ".", configFlags);
       } catch (err) {
-        console.error(`Error during fix wizard: ${err instanceof Error ? err.message : String(err)}`);
+        console.error(
+          `Error during fix wizard: ${err instanceof Error ? err.message : String(err)}`,
+        );
         process.exitCode = 1;
       }
       return;
@@ -113,7 +139,11 @@ program
   .command("watch")
   .description("Scan, then keep watching for changes and print what got better or worse")
   .argument("[dir]", "Directory to watch", ".")
-  .option("-j, --json", "Emit NDJSON events (ready, change, error), one JSON object per line", false)
+  .option(
+    "-j, --json",
+    "Emit NDJSON events (ready, change, error), one JSON object per line",
+    false,
+  )
   .option("--include-tests", "Also scan test files and fixtures (excluded by default)")
   .option("--no-include-tests", "Exclude test files, even if the config file includes them")
   .option("--no-config", "Ignore any .vibesafe.config file")
@@ -128,7 +158,9 @@ program
     // Watch never scans git history (a config `deep: true` is ignored here).
     await runWatch(dir, {
       json: Boolean(options.json),
-      ...(options.includeTests !== undefined ? { includeTests: Boolean(options.includeTests) } : {}),
+      ...(options.includeTests !== undefined
+        ? { includeTests: Boolean(options.includeTests) }
+        : {}),
       ...(options.config === false ? { config: false } : {}),
       trustConfig: Boolean(options.trustConfig),
       signal: controller.signal,

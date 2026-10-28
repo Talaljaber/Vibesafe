@@ -22,7 +22,11 @@ function finding(over: Partial<Finding> = {}): Finding {
   };
 }
 
-const snap = (findings: Finding[], score = 100) => ({ findings, score, deployStatus: "safe" as const });
+const snap = (findings: Finding[], score = 100) => ({
+  findings,
+  score,
+  deployStatus: "safe" as const,
+});
 
 describe("computeDelta", () => {
   it("reports added findings and a negative score change", () => {
@@ -41,7 +45,10 @@ describe("computeDelta", () => {
   });
 
   it("treats a finding whose line moved as unchanged", () => {
-    const d = computeDelta(snap([finding({ line: 3, id: "A" })]), snap([finding({ line: 9, id: "B" })]));
+    const d = computeDelta(
+      snap([finding({ line: 3, id: "A" })]),
+      snap([finding({ line: 9, id: "B" })]),
+    );
     expect(d.added).toHaveLength(0);
     expect(d.resolved).toHaveLength(0);
   });
@@ -52,7 +59,10 @@ describe("computeDelta", () => {
   });
 
   it("distinguishes findings by file and rule", () => {
-    const d = computeDelta(snap([finding()]), snap([finding({ file: "b.ts" }), finding({ ruleId: "other" })]));
+    const d = computeDelta(
+      snap([finding()]),
+      snap([finding({ file: "b.ts" }), finding({ ruleId: "other" })]),
+    );
     expect(d.added).toHaveLength(2);
     expect(d.resolved).toHaveLength(1);
   });

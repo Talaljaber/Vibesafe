@@ -286,7 +286,9 @@ describe("FrontendExposureDetector", () => {
 
   it("flags a multi-line value import of firebase-admin", async () => {
     const findings = await detector.detect(
-      createContext({ "app/page.tsx": `"use client";\nimport {\n  getAuth,\n} from "firebase-admin/auth";\n` }),
+      createContext({
+        "app/page.tsx": `"use client";\nimport {\n  getAuth,\n} from "firebase-admin/auth";\n`,
+      }),
     );
     expect(findings).toHaveLength(1);
     expect(findings[0]?.confidence).toBe("high");

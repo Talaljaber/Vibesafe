@@ -124,7 +124,8 @@ export const SECRET_PATTERNS: SecretPattern[] = [
   {
     id: "sec-aws-access-key",
     name: "AWS Access Key ID",
-    regex: /(?<![A-Z0-9])(?:A3T[A-Z0-9]|AKIA|ASIA|ABIA|ACCA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA)[A-Z0-9]{16}(?![A-Z0-9])/,
+    regex:
+      /(?<![A-Z0-9])(?:A3T[A-Z0-9]|AKIA|ASIA|ABIA|ACCA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA)[A-Z0-9]{16}(?![A-Z0-9])/,
     validate: (match) => !isPlaceholderValue(match),
     severity: "critical",
     confidence: "high",

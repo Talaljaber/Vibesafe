@@ -177,7 +177,8 @@ function usesCookies(content: string): boolean {
   return COOKIE_USAGE_RE.test(content);
 }
 
-type Rule = "wildcard-credentials" | "default-with-cookies" | "wildcard-header" | "reflected-origin";
+type Rule =
+  "wildcard-credentials" | "default-with-cookies" | "wildcard-header" | "reflected-origin";
 
 /**
  * Heuristics and known limits: options that are spread, imported or built in another file are
@@ -191,7 +192,8 @@ export class CorsDetector implements Detector {
   id = "cors-detector";
   name = "CORS Configuration Detection";
   category = "security_config" as const;
-  description = "Detects insecure CORS configuration: wildcard or reflected origins, especially with credentials.";
+  description =
+    "Detects insecure CORS configuration: wildcard or reflected origins, especially with credentials.";
 
   async detect(context: ScanContext): Promise<Finding[]> {
     const findings: Finding[] = [];
@@ -218,7 +220,9 @@ export class CorsDetector implements Detector {
       const push = (rule: Rule, line: number, severity: Severity): void => {
         if (seen.has(line)) return;
         seen.add(line);
-        findings.push(this.createFinding(rule, path, line, sanitizeEvidence(lineText(line)), severity));
+        findings.push(
+          this.createFinding(rule, path, line, sanitizeEvidence(lineText(line)), severity),
+        );
       };
 
       if (CORS_IMPORT_RE.test(code)) {
@@ -254,11 +258,14 @@ export class CorsDetector implements Detector {
 
       for (const m of code.matchAll(REFLECT_ORIGIN_RE)) {
         const line = lineOf(code, m.index);
-        const window = codeLines.slice(Math.max(0, line - 1 - ALLOWLIST_WINDOW_LINES), line).join("\n");
+        const window = codeLines
+          .slice(Math.max(0, line - 1 - ALLOWLIST_WINDOW_LINES), line)
+          .join("\n");
         if (!hasAllowlistHint(window, "origin")) push("reflected-origin", line, "high");
       }
       if (isNextCorsSurface(path) || hasCredentials || projectUsesCookies) {
-        for (const m of code.matchAll(WILDCARD_HEADER_RE)) push("wildcard-header", lineOf(code, m.index), "medium");
+        for (const m of code.matchAll(WILDCARD_HEADER_RE))
+          push("wildcard-header", lineOf(code, m.index), "medium");
       }
     }
 
@@ -275,18 +282,24 @@ export class CorsDetector implements Detector {
     if (!new RegExp(`\\(\\s*null\\s*,\\s*${target}\\s*\\)`).test(body)) return false;
     return !hasAllowlistHint(body, param ?? "origin") && !/[!=]==?\s/.test(body);
   }
-  private createFinding(rule: Rule, file: string, line: number, evidence: string, severity: Severity): Finding {
+  private createFinding(
+    rule: Rule,
+    file: string,
+    line: number,
+    evidence: string,
+    severity: Severity,
+  ): Finding {
     const ruleId = `security_config/cors-${rule}`;
     const copy: Record<Rule, { title: string; problem: string }> = {
       "wildcard-credentials": {
         title: "CORS combines a wildcard origin with credentials",
         problem:
-          "Your CORS setup pairs `origin: \"*\"` with `credentials: true`. Browsers block credentialed requests to a wildcard, so this is a misconfiguration that likely breaks your app and tempts people to reflect any origin instead.",
+          'Your CORS setup pairs `origin: "*"` with `credentials: true`. Browsers block credentialed requests to a wildcard, so this is a misconfiguration that likely breaks your app and tempts people to reflect any origin instead.',
       },
       "default-with-cookies": {
         title: "CORS enabled with default options in a cookie-based app",
         problem:
-          "`cors()` is called with no options or an any-origin setting (`origin: \"*\"` / `origin: true`), which allows requests from any origin, in an app that uses cookies or sessions.",
+          '`cors()` is called with no options or an any-origin setting (`origin: "*"` / `origin: true`), which allows requests from any origin, in an app that uses cookies or sessions.',
       },
       "wildcard-header": {
         title: 'Access-Control-Allow-Origin set to "*"',
@@ -295,7 +308,8 @@ export class CorsDetector implements Detector {
       },
       "reflected-origin": {
         title: "CORS reflects the request Origin without an allowlist",
-        problem: "The server echoes back whatever Origin the browser sends, which is the same as allowing every website.",
+        problem:
+          "The server echoes back whatever Origin the browser sends, which is the same as allowing every website.",
       },
     };
     const { title, problem } = copy[rule];

@@ -121,7 +121,8 @@ export class MissingValidationDetector implements Detector {
         VALIDATION_CALL_REGEXES.some((re) => re.test(chain)) ||
         middleware.some(
           (arg) =>
-            EXPRESS_VALIDATE_MIDDLEWARE_CALL_REGEX.test(arg) || EXPRESS_VALIDATE_MIDDLEWARE_IDENT_REGEX.test(arg),
+            EXPRESS_VALIDATE_MIDDLEWARE_CALL_REGEX.test(arg) ||
+            EXPRESS_VALIDATE_MIDDLEWARE_IDENT_REGEX.test(arg),
         ) ||
         (hasImport && VALIDATION_LIB_CALL_REGEX.test(chain)) ||
         (hasExpressValidator && EXPRESS_VALIDATOR_CALL_REGEX.test(chain));
@@ -132,7 +133,12 @@ export class MissingValidationDetector implements Detector {
       // The rule id is reused deliberately for query/params reads (existing suppressions and
       // baselines keep working); they are "medium" and only reported on mutating routes.
       findings.push({
-        id: createFindingId(CATEGORY_PREFIX.validation, "validation/missing-body-validation", filePath, line),
+        id: createFindingId(
+          CATEGORY_PREFIX.validation,
+          "validation/missing-body-validation",
+          filePath,
+          line,
+        ),
         ruleId: "validation/missing-body-validation",
         title: "Unvalidated Request Input",
         severity,

@@ -29,14 +29,17 @@ describe("ProjectContextBuilder vite.config detection", () => {
     return dir;
   };
 
-  it.each(["ts", "mts", "js", "mjs", "cjs"])("detects vite.config.%s as a Vite signal", async (ext) => {
-    const dir = make({ "package.json": "{}", [`vite.config.${ext}`]: "export default {};" });
-    try {
-      expect((await new ProjectContextBuilder(dir).build()).framework).toBe("vite");
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
+  it.each(["ts", "mts", "js", "mjs", "cjs"])(
+    "detects vite.config.%s as a Vite signal",
+    async (ext) => {
+      const dir = make({ "package.json": "{}", [`vite.config.${ext}`]: "export default {};" });
+      try {
+        expect((await new ProjectContextBuilder(dir).build()).framework).toBe("vite");
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("stays unknown without a config or vite dependency", async () => {
     const dir = make({ "package.json": "{}" });
@@ -48,7 +51,10 @@ describe("ProjectContextBuilder vite.config detection", () => {
   });
 
   it("keeps Next.js when both next and a vite config are present", async () => {
-    const dir = make({ "package.json": JSON.stringify({ dependencies: { next: "14.0.0" } }), "vite.config.ts": "" });
+    const dir = make({
+      "package.json": JSON.stringify({ dependencies: { next: "14.0.0" } }),
+      "vite.config.ts": "",
+    });
     try {
       expect((await new ProjectContextBuilder(dir).build()).framework).toBe("nextjs");
     } finally {

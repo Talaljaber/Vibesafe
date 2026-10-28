@@ -222,7 +222,8 @@ describe("StripeWebhookDetector", () => {
     expect(a[0]?.id).toMatch(/^AUTH-/);
   });
 
-  const ruleIds = async (files: Record<string, string>) => (await detector.detect(createContext(files))).map((f) => f.ruleId);
+  const ruleIds = async (files: Record<string, string>) =>
+    (await detector.detect(createContext(files))).map((f) => f.ruleId);
 
   it("does not claim unsigned when verification is delegated to an imported helper", async () => {
     expect(
@@ -462,7 +463,9 @@ describe("StripeWebhookDetector", () => {
         export async function POST(req: Request) { return Response.json(await req.json()); }
       `,
     };
-    expect((await missingAuth.detect(createContext(files))).map((f) => f.ruleId)).toEqual(["auth/missing-route-auth"]);
+    expect((await missingAuth.detect(createContext(files))).map((f) => f.ruleId)).toEqual([
+      "auth/missing-route-auth",
+    ]);
     expect(await detector.detect(createContext(files))).toHaveLength(0);
   });
 });
@@ -503,13 +506,17 @@ describe("stripComments", () => {
   });
 
   it("understands regex literals containing quotes or slashes", () => {
-    const out = stripComments("const r = /['\"]/;\n// comment one\nconst q = /a\\/\\/b/; // comment two");
+    const out = stripComments(
+      "const r = /['\"]/;\n// comment one\nconst q = /a\\/\\/b/; // comment two",
+    );
     expect(out).not.toContain("comment one");
     expect(out).not.toContain("comment two");
   });
 
   it("blanks string contents on request but keeps template expression code", () => {
-    const out = stripComments("x('constructEvent(') + `a ${y.constructEvent(1)}`", { blankStrings: true });
+    const out = stripComments("x('constructEvent(') + `a ${y.constructEvent(1)}`", {
+      blankStrings: true,
+    });
     expect(out).not.toContain("'constructEvent('");
     expect(out).toContain("y.constructEvent(1)");
   });

@@ -2,7 +2,12 @@
 import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
 import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
 import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
-import { findAnyHandlerLine, isApiRoute, lineOfIndex, matcherCoversApi } from "./utils/route-analyzer.js";
+import {
+  findAnyHandlerLine,
+  isApiRoute,
+  lineOfIndex,
+  matcherCoversApi,
+} from "./utils/route-analyzer.js";
 
 const RULE_ID = "security_config/missing-rate-limit";
 const SOURCE_RE = /\.(?:ts|js|mjs|cjs|tsx|jsx)$/;
@@ -54,7 +59,8 @@ const AUTH_PATH_RE =
 
 const AI_IMPORT_RE =
   /(?:from\s*|require\s*\(\s*|import\s*\(\s*)["'](?:openai|@anthropic-ai\/sdk|ai|@ai-sdk\/[\w-]+)["']/;
-const MESSAGING_IMPORT_RE = /(?:from\s*|require\s*\(\s*|import\s*\(\s*)["'](?:resend|nodemailer|twilio)["']/;
+const MESSAGING_IMPORT_RE =
+  /(?:from\s*|require\s*\(\s*|import\s*\(\s*)["'](?:resend|nodemailer|twilio)["']/;
 
 const AI_CALL_RE =
   /\b(?:openai|anthropic|OpenAI|Anthropic)\b|\b(?:generateText|streamText|generateObject|streamObject)\s*\(|chat\.completions|messages\.create/;
@@ -85,7 +91,9 @@ interface Candidate {
 }
 
 function stripComments(code: string): string {
-  return code.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " ")).replace(/(^|[^:\\"'`])\/\/.*$/gm, "$1");
+  return code
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
+    .replace(/(^|[^:\\"'`])\/\/.*$/gm, "$1");
 }
 
 function hasSignal(code: string): boolean {
@@ -119,7 +127,9 @@ function splitUseArgs(args: string): { pathArgs: string[] | undefined; rest: str
   const m = /^\s*(?:(["'`])([^"'`]*)\1|\[([^\]]*)\])\s*(?:,|$)/.exec(args);
   if (!m) return { pathArgs: undefined, rest: args };
   const pathArgs =
-    m[2] !== undefined ? [m[2]] : [...(m[3] ?? "").matchAll(/["'`]([^"'`]*)["'`]/g)].map((x) => x[1]!);
+    m[2] !== undefined
+      ? [m[2]]
+      : [...(m[3] ?? "").matchAll(/["'`]([^"'`]*)["'`]/g)].map((x) => x[1]!);
   return { pathArgs, rest: args.slice(m[0].length) };
 }
 
@@ -132,7 +142,8 @@ function pathPrefixes(prefix: string, routePath: string): boolean {
 /** `import x from "m"` / `const x = require("m")` bindings: the bound names text and the specifier. */
 function importBindings(code: string): { names: string; spec: string }[] {
   const out: { names: string; spec: string }[] = [];
-  const re = /(?:\bimport\s+([^"';]*?)\s*from\s*|\b(?:const|let|var)\s+([^=;]*?)=\s*require\s*\(\s*)["']([^"']+)["']/g;
+  const re =
+    /(?:\bimport\s+([^"';]*?)\s*from\s*|\b(?:const|let|var)\s+([^=;]*?)=\s*require\s*\(\s*)["']([^"']+)["']/g;
   for (const m of code.matchAll(re)) out.push({ names: m[1] ?? m[2] ?? "", spec: m[3]! });
   return out;
 }
@@ -166,7 +177,9 @@ function resolveSpecs(code: string, path: string, sources: Source[]): Source[] {
 }
 
 function stripImports(code: string): string {
-  return code.replace(/\bimport\s+[^"';]*?from\s*["'][^"']*["']/g, "").replace(/^.*\brequire\s*\(.*$/gm, "");
+  return code
+    .replace(/\bimport\s+[^"';]*?from\s*["'][^"']*["']/g, "")
+    .replace(/^.*\brequire\s*\(.*$/gm, "");
 }
 
 /**
@@ -218,7 +231,11 @@ export class RateLimitDetector implements Detector {
       if (isApiRoute(path)) continue;
       const calls = await this.useCalls(code, path, sources, read);
       uses.set(file, calls);
-      if (calls.some((u) => u.limiter && (!u.pathArgs || u.pathArgs.some((p) => p === "/" || p === "")))) {
+      if (
+        calls.some(
+          (u) => u.limiter && (!u.pathArgs || u.pathArgs.some((p) => p === "/" || p === "")),
+        )
+      ) {
         globallyLimited.add(file);
         for (const m of resolveSpecs(code, path, sources)) globallyLimited.add(m.file);
       }
@@ -241,7 +258,15 @@ export class RateLimitDetector implements Detector {
         if (kinds.size === 0) continue;
         candidates.push({ file, line, evidence: evidenceAt(code, line), kinds });
       } else {
-        candidates.push(...this.expressCandidates(file, path, code, globallyLimited.has(file), uses.get(file) ?? []));
+        candidates.push(
+          ...this.expressCandidates(
+            file,
+            path,
+            code,
+            globallyLimited.has(file),
+            uses.get(file) ?? [],
+          ),
+        );
       }
     }
 
@@ -249,14 +274,25 @@ export class RateLimitDetector implements Detector {
   }
 
   /** True when the file, or a local module it imports (one level), carries a rate limit signal. */
-  private async importsSignal(code: string, path: string, sources: Source[], read: ReadFn): Promise<boolean> {
+  private async importsSignal(
+    code: string,
+    path: string,
+    sources: Source[],
+    read: ReadFn,
+  ): Promise<boolean> {
     if (hasSignal(code)) return true;
-    for (const s of resolveSpecs(code, path, sources)) if (hasSignal(await read(s.file))) return true;
+    for (const s of resolveSpecs(code, path, sources))
+      if (hasSignal(await read(s.file))) return true;
     return false;
   }
 
   /** The `app|router|server.use(...)` calls in a file, with whether each applies a limiter. */
-  private async useCalls(code: string, path: string, sources: Source[], read: ReadFn): Promise<UseCall[]> {
+  private async useCalls(
+    code: string,
+    path: string,
+    sources: Source[],
+    read: ReadFn,
+  ): Promise<UseCall[]> {
     const out: UseCall[] = [];
     const bindings = importBindings(code);
     for (const m of code.matchAll(/\b(?:app|router|server)\.use\s*\(/g)) {
@@ -267,7 +303,8 @@ export class RateLimitDetector implements Detector {
         const idRe = new RegExp(`\\b${id.replace(/\$/g, "\\$")}\\b`);
         for (const b of bindings) {
           if (!idRe.test(b.names)) continue;
-          for (const s of resolveSpec(b.spec, path, sources)) if (hasSignal(await read(s.file))) limiter = true;
+          for (const s of resolveSpec(b.spec, path, sources))
+            if (hasSignal(await read(s.file))) limiter = true;
         }
       }
       out.push({ pathArgs, limiter });
@@ -284,10 +321,14 @@ export class RateLimitDetector implements Detector {
   ): Candidate[] {
     if (!/\.(?:ts|js|mjs|cjs)$/.test(path)) return [];
     // `express` must be present so `api.get("/login")` on an HTTP client is not mistaken for a route.
-    if (!/\bexpress\b/.test(code) && !/\b(?:app|router)\s*=\s*(?:Router|express)\s*\(/.test(code)) return [];
+    if (!/\bexpress\b/.test(code) && !/\b(?:app|router)\s*=\s*(?:Router|express)\s*\(/.test(code))
+      return [];
     const routes: { index: number; len: number; path: string; method: string }[] = [];
     const methods = "get|post|put|patch|delete|all";
-    const direct = new RegExp(`\\b(?:app|router|server)\\.(${methods})\\s*\\(\\s*(["'\`])([^"'\`]*)\\2`, "g");
+    const direct = new RegExp(
+      `\\b(?:app|router|server)\\.(${methods})\\s*\\(\\s*(["'\`])([^"'\`]*)\\2`,
+      "g",
+    );
     for (const m of code.matchAll(direct))
       routes.push({ index: m.index ?? 0, len: m[0].length, path: m[3]!, method: m[1]! });
     const chained = new RegExp(
@@ -352,4 +393,3 @@ export class RateLimitDetector implements Detector {
     };
   }
 }
-

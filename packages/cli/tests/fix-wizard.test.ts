@@ -9,7 +9,8 @@ vi.mock("@inquirer/prompts", () => ({ select: selectMock, confirm: vi.fn() }));
 vi.mock("@vibesafe/core", () => ({
   createDefaultRegistry: () => ({}),
   createDefaultFixRegistry: () => ({
-    getFixer: (ruleId: string) => (ruleId === "fixable" ? { preview: previewMock, apply: applyMock } : undefined),
+    getFixer: (ruleId: string) =>
+      ruleId === "fixable" ? { preview: previewMock, apply: applyMock } : undefined,
   }),
   ScannerPipeline: class {
     scan = scanMock;
@@ -97,14 +98,23 @@ describe("runFixWizard", () => {
     selectMock.mockResolvedValueOnce("apply");
     const res = await runFixWizard(".");
     expect(applyMock).toHaveBeenCalledTimes(1);
-    expect(res).toMatchObject({ applied: 1, skipped: 0, failed: 0, scoreBefore: 60, scoreAfter: 80 });
+    expect(res).toMatchObject({
+      applied: 1,
+      skipped: 0,
+      failed: 0,
+      scoreBefore: 60,
+      scoreAfter: 80,
+    });
     expect(out).toContain("- old");
     expect(out).toContain("+20");
   });
 
   it("leaves deep/includeTests unset so the config file applies, for the scan and the rescan", async () => {
     scanMock
-      .mockResolvedValueOnce({ ...scanResult([finding("f1", "fixable", true)], 60), warnings: ["Applied config file x"] })
+      .mockResolvedValueOnce({
+        ...scanResult([finding("f1", "fixable", true)], 60),
+        warnings: ["Applied config file x"],
+      })
       .mockResolvedValueOnce(scanResult([], 80));
     selectMock.mockResolvedValueOnce("apply");
     await runFixWizard(".");
@@ -169,7 +179,14 @@ describe("runFixWizard", () => {
 
   it("quit stops the walk and counts the rest as not reviewed", async () => {
     scanMock.mockResolvedValueOnce(
-      scanResult([finding("f1", "fixable", true), finding("m1", "manual", false), finding("m2", "manual", false)], 40),
+      scanResult(
+        [
+          finding("f1", "fixable", true),
+          finding("m1", "manual", false),
+          finding("m2", "manual", false),
+        ],
+        40,
+      ),
     );
     selectMock.mockResolvedValueOnce("quit");
     const res = await runFixWizard(".");
@@ -225,7 +242,9 @@ describe("runFixWizard", () => {
 
   it("reuses an initial scan result instead of scanning again", async () => {
     selectMock.mockResolvedValueOnce("skip");
-    await runFixWizard(".", { initialResult: scanResult([finding("m1", "manual", false)], 70) as never });
+    await runFixWizard(".", {
+      initialResult: scanResult([finding("m1", "manual", false)], 70) as never,
+    });
     expect(scanMock).not.toHaveBeenCalled();
   });
 

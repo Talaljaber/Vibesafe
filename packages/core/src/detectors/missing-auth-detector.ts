@@ -27,7 +27,10 @@ import { isStripeWebhookRoute } from "./stripe-webhook-detector.js";
 function isNonMutatingCatchAll(route: ExpressRoute): boolean {
   if (route.method !== "ALL") return false;
   if (/^\/?\*$/.test(route.path)) return true;
-  return /\bnext\s*\(/.test(route.chainCode) || /\b(?:status|sendStatus)\s*\(\s*404\s*\)/.test(route.chainCode);
+  return (
+    /\bnext\s*\(/.test(route.chainCode) ||
+    /\b(?:status|sendStatus)\s*\(\s*404\s*\)/.test(route.chainCode)
+  );
 }
 
 export class MissingAuthDetector implements Detector {

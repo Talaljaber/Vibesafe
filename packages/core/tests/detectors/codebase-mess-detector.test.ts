@@ -54,7 +54,7 @@ describe("CodebaseMessDetector", () => {
       "app/page.tsx": `// console.log("a");\n  /* console.log("b"); */\n/**\n * console.log("c")\n */\nconst z = 1;`,
     });
     const findings = await detector.detect(context);
-    expect(findings.some(f => f.ruleId === "code_quality/console-log")).toBe(false);
+    expect(findings.some((f) => f.ruleId === "code_quality/console-log")).toBe(false);
   });
 
   it("still flags live code that follows a leading block comment", async () => {
@@ -62,7 +62,9 @@ describe("CodebaseMessDetector", () => {
       "app/page.tsx": `/* tmp */ console.log(user.token);\n/* a */ /* b */ console.log(2);`,
     });
     const findings = await detector.detect(context);
-    expect(findings.filter(f => f.ruleId === "code_quality/console-log").map(f => f.line)).toEqual([1, 2]);
+    expect(
+      findings.filter((f) => f.ruleId === "code_quality/console-log").map((f) => f.line),
+    ).toEqual([1, 2]);
   });
 
   it("does not re-flag lines rewritten by ConsoleLogFixer", async () => {
@@ -75,7 +77,7 @@ describe("CodebaseMessDetector", () => {
       const src = await fs.readFile(path.join(dir, "index.js"), "utf-8");
       expect(src).toContain("// console.log(a)");
       const findings = await detector.detect(createContext({ "index.js": src }));
-      expect(findings.some(f => f.ruleId === "code_quality/console-log")).toBe(false);
+      expect(findings.some((f) => f.ruleId === "code_quality/console-log")).toBe(false);
     } finally {
       await fs.rm(dir, { recursive: true, force: true });
     }
