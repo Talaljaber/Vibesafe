@@ -64,6 +64,7 @@ export async function printScanResult(result: ScanResult) {
       const finding = result.findings.find(f => f.id === step.findingId)!;
 
       console.log(`\n  ${sevColor("●")} ${chalk.bold(`Step ${step.order}: ${step.title}`)} [${chalk.gray(finding.ruleId)}]`);
+      console.log(`    ID: ${chalk.cyan(finding.id)}`);
       if (step.file) {
         console.log(`    File: ${chalk.cyan(step.file)}${step.line ? chalk.cyan(":" + step.line) : ""}`);
       }

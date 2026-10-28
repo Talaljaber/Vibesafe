@@ -1,5 +1,5 @@
 import { type Detector, type Finding, type ScanContext, redactSecret } from "@vibesafe/shared";
-import { CATEGORY_PREFIX } from "@vibesafe/shared";
+import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
 import { SECRET_PATTERNS } from "./patterns/secret-patterns.js";
 import {
   getHistoricalAddedLines,
@@ -7,7 +7,6 @@ import {
   looksLikeGitRepo,
   type HistoricalHunk,
 } from "./utils/git-log-parser.js";
-import crypto from "crypto";
 
 const MAX_COMMITS_TO_SCAN = 500;
 const SHORT_SHA_LENGTH = 7;
@@ -181,7 +180,7 @@ export class GitHistoryDetector implements Detector {
       : "This key is exposed twice: once in the current working tree (where the standard secret scanner already flags it) and permanently in git history. Removing it from the file alone will not remove it from history.";
 
     return {
-      id: `${CATEGORY_PREFIX.secret}-${crypto.randomBytes(3).toString("hex")}`,
+      id: createFindingId(CATEGORY_PREFIX.secret, `secret/git-history-${occurrence.patternId}`, occurrence.file, undefined, `${redacted}|${shortSha}`),
       ruleId: `secret/git-history-${occurrence.patternId}`,
       title,
       severity,

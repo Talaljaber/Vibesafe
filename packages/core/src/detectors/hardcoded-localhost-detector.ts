@@ -1,6 +1,5 @@
 import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
-import { CATEGORY_PREFIX } from "@vibesafe/shared";
-import crypto from "crypto";
+import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
 
 const CODE_FILE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
 const OCTET = "(?:25[0-5]|2[0-4]\\d|1?\\d?\\d)";
@@ -55,7 +54,7 @@ export class HardcodedLocalhostDetector implements Detector {
         }
 
         findings.push({
-          id: `${CATEGORY_PREFIX.code_quality}-${crypto.randomBytes(3).toString("hex")}`,
+          id: createFindingId(CATEGORY_PREFIX.code_quality, "code_quality/hardcoded-localhost", filePath, i + 1, match[0]),
           ruleId: "code_quality/hardcoded-localhost",
           title: "Hardcoded localhost or private IP address",
           severity: "medium",

@@ -1,7 +1,6 @@
 import { type Detector, type Finding, type ScanContext } from "@vibesafe/shared";
-import { CATEGORY_PREFIX } from "@vibesafe/shared";
+import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
 import { isClientFile } from "./utils/file-classifier.js";
-import crypto from "crypto";
 
 export class FrontendExposureDetector implements Detector {
   id = "frontend-exposure-detector";
@@ -32,7 +31,7 @@ export class FrontendExposureDetector implements Detector {
         // 1. Detect service_role keys being used in client code
         if (line.includes("SERVICE_ROLE_KEY") || line.includes("service_role")) {
           findings.push({
-            id: `${CATEGORY_PREFIX.frontend_exposure}-${crypto.randomBytes(3).toString("hex")}`,
+            id: createFindingId(CATEGORY_PREFIX.frontend_exposure, "frontend_exposure/service-role-key", filePath, i + 1),
             ruleId: "frontend_exposure/service-role-key",
             title: "Service Role Key used in client code",
             severity: "critical",
@@ -58,7 +57,7 @@ export class FrontendExposureDetector implements Detector {
         const match = nextPublicSecretRegex.exec(line);
         if (match && match[0]) {
           findings.push({
-            id: `${CATEGORY_PREFIX.frontend_exposure}-${crypto.randomBytes(3).toString("hex")}`,
+            id: createFindingId(CATEGORY_PREFIX.frontend_exposure, "frontend_exposure/public-secret-var", filePath, i + 1, match[0]),
             ruleId: "frontend_exposure/public-secret-var",
             title: "Sensitive variable exposed to frontend",
             severity: "high",

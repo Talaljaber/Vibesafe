@@ -1,8 +1,7 @@
 import { type Detector, type Finding, type ScanContext, redactSecret } from "@vibesafe/shared";
-import { CATEGORY_PREFIX } from "@vibesafe/shared";
+import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
 import { SECRET_PATTERNS } from "./patterns/secret-patterns.js";
 import path from "path";
-import crypto from "crypto";
 
 export class SecretDetector implements Detector {
   id = "secret-detector";
@@ -36,7 +35,7 @@ export class SecretDetector implements Detector {
           const match = pattern.regex.exec(line);
           if (match && match[0]) {
             findings.push({
-              id: `${CATEGORY_PREFIX.secret}-${crypto.randomBytes(3).toString("hex")}`,
+              id: createFindingId(CATEGORY_PREFIX.secret, `secret/${pattern.id}`, filePath, i + 1, match[0]),
               ruleId: `secret/${pattern.id}`,
               title: `Exposed ${pattern.name}`,
               severity: "critical",
@@ -78,7 +77,7 @@ export class SecretDetector implements Detector {
 
   private createGitignoreFinding(_context: ScanContext): Finding {
     return {
-      id: `${CATEGORY_PREFIX.secret}-${crypto.randomBytes(3).toString("hex")}`,
+      id: createFindingId(CATEGORY_PREFIX.secret, "secret/env-not-ignored", ".gitignore"),
       ruleId: "secret/env-not-ignored",
       title: ".env file not in .gitignore",
       severity: "critical",

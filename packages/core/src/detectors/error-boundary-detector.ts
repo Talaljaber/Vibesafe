@@ -1,6 +1,5 @@
 import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
-import { CATEGORY_PREFIX } from "@vibesafe/shared";
-import crypto from "crypto";
+import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
 
 export class ErrorBoundaryDetector implements Detector {
   id = "error-boundary-detector";
@@ -68,7 +67,7 @@ export class ErrorBoundaryDetector implements Detector {
 
     if (!hasErrorBoundary) {
       findings.push({
-        id: `${CATEGORY_PREFIX.structure}-${crypto.randomBytes(3).toString("hex")}`,
+        id: createFindingId(CATEGORY_PREFIX.structure, "structure/missing-error-boundary"),
         ruleId: "structure/missing-error-boundary",
         title: "Missing React Error Boundary",
         severity: "medium",
