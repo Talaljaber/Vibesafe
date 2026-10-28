@@ -382,6 +382,65 @@ create policy c on t for all using ('true' = 'true');`,
     });
   });
 
+  describe("review round 1 regressions", () => {
+    it("scans a large synthetic dump in bounded time with correct lines", async () => {
+      const parts: string[] = [];
+      for (let i = 0; i < 3000; i++) {
+        parts.push(`create table public.t${i} (id int);`);
+        parts.push(`create policy "p${i}a" on public.t${i} for insert with check (true);`);
+        parts.push(`create policy "p${i}b" on public.t${i} for select using (auth.uid() = id);`);
+      }
+      const sql = parts.join("\n");
+      const start = Date.now();
+      const findings = await run({ [MIG]: sql });
+      expect(Date.now() - start).toBeLessThan(10_000);
+      expect(missing(findings)).toHaveLength(3000);
+      const t2999 = findings.find((f) => f.title.includes('"t2999"'));
+      expect(t2999!.line).toBe(2999 * 3 + 1);
+    });
+
+    it("gives distinct ids to statements on the same line", async () => {
+      const findings = await run({ [MIG]: `create table a (id int); create table b (id int);` });
+      expect(findings).toHaveLength(2);
+      expect(new Set(findings.map((f) => f.id)).size).toBe(2);
+    });
+
+    it("tracks a renamed policy with a quoted name containing spaces", async () => {
+      const findings = await run({
+        [MIG]: [
+          `create table t (id int);`,
+          `alter table t enable row level security;`,
+          `create policy p on t for all using (true);`,
+          `alter policy p on t rename to "open all v2";`,
+          `drop policy "open all v2" on t;`,
+        ].join("\n"),
+      });
+      expect(permissive(findings)).toHaveLength(0);
+    });
+
+    it("words the consequence per command", async () => {
+      const mk = (cmd: string, clause: string) =>
+        run({
+          [MIG]: `create table t (id int);\nalter table t enable row level security;\ncreate policy p on t for ${cmd} ${clause};`,
+        });
+      const ins = permissive(await mk("insert", "with check (true)"))[0] as { whyItMatters: string };
+      expect(ins.whyItMatters).toContain("insert arbitrary rows");
+      expect(ins.whyItMatters).not.toContain("delete");
+      const upd = permissive(await mk("update", "using (true)"))[0] as { whyItMatters: string };
+      expect(upd.whyItMatters).toContain("change or delete");
+    });
+
+    it("drops a table literally named cascade", async () => {
+      const findings = await run({ [MIG]: `create table cascade (id int);\ndrop table cascade;` });
+      expect(findings).toHaveLength(0);
+    });
+
+    it("still strips a trailing cascade keyword", async () => {
+      const findings = await run({ [MIG]: `create table a (id int);\ndrop table a cascade;` });
+      expect(findings).toHaveLength(0);
+    });
+  });
+
   describe("stripSqlNoise", () => {
     it("preserves length and newlines", () => {
       const src = "a -- c\n'x\ny' /* z\n*/ $$q\nr$$ \"id\"";

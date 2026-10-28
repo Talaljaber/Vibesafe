@@ -132,10 +132,23 @@ function tableKey(schema: string | undefined, name: string): string | null {
   return `public.${normalizeIdent(name)}`;
 }
 
-function lineAt(text: string, offset: number): number {
-  let line = 1;
-  for (let i = 0; i < offset; i++) if (text.charCodeAt(i) === 10) line++;
-  return line;
+/** Offsets of every newline, ascending; computed once per file. */
+function newlineOffsets(text: string): number[] {
+  const out: number[] = [];
+  for (let i = text.indexOf("\n"); i !== -1; i = text.indexOf("\n", i + 1)) out.push(i);
+  return out;
+}
+
+/** 1-based line number of `offset`, by binary search over the newline offsets. */
+function lineAt(newlines: number[], offset: number): number {
+  let lo = 0;
+  let hi = newlines.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (newlines[mid]! < offset) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo + 1;
 }
 
 /** Returns the balanced-paren contents following `keywordRe` in the statement, if any. */
@@ -169,7 +182,6 @@ function statementAfter(sql: string, from: number): string {
 
 /** Display-safe identifier: control chars stripped, capped at the Postgres identifier limit. */
 function displayName(name: string): string {
-  // eslint-disable-next-line no-control-regex
   const clean = name.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
   return clean.length > MAX_NAME ? clean.slice(0, MAX_NAME) + "..." : clean;
 }
@@ -216,6 +228,7 @@ type SqlEvent =
     };
 
 interface TableState {
+  key: string;
   file: string;
   line: number;
   text: string;
@@ -223,6 +236,7 @@ interface TableState {
 }
 
 interface PolicyState extends PolicyData {
+  key: string;
   file: string;
   line: number;
   text: string;
@@ -252,6 +266,7 @@ export class SupabaseRlsDetector implements Detector {
       if (!inSupabaseDir(file) && !(await getUsage()).used) continue;
       const raw = await context.readFile(file);
       const sql = stripSqlNoise(raw);
+      const newlines = newlineOffsets(sql);
       const rawLines = raw.split("\n");
       const lineText = (line: number) => rawLines[line - 1] ?? "";
       const events: SqlEvent[] = [];
@@ -264,7 +279,7 @@ export class SupabaseRlsDetector implements Detector {
         if (/^[^;(]*\bpartition\s+of\b/i.test(after)) continue;
         const key = tableKey(m[2], m[3]!);
         if (!key) continue;
-        const line = lineAt(sql, m.index);
+        const line = lineAt(newlines, m.index);
         events.push({
           kind: "create",
           offset: m.index,
@@ -286,14 +301,14 @@ export class SupabaseRlsDetector implements Detector {
         if (from && to) events.push({ kind: "rename", offset: m.index, from, to });
       }
       for (const m of sql.matchAll(DROP_TABLE_RE)) {
-        const list = statementAfter(sql, m.index + m[0].length).replace(/\b(?:cascade|restrict)\s*$/i, "");
+        const list = statementAfter(sql, m.index + m[0].length).replace(/(?<=[\w"$,])\s+(?:cascade|restrict)\s*$/i, "");
         for (const q of list.matchAll(QUAL_G)) {
           const key = tableKey(q[1], q[2]!);
           if (key) events.push({ kind: "drop", offset: m.index, key });
         }
       }
       for (const m of sql.matchAll(POLICY_RE)) {
-        const line = lineAt(sql, m.index);
+        const line = lineAt(newlines, m.index);
         events.push({
           kind: "policy",
           offset: m.index,
@@ -308,8 +323,8 @@ export class SupabaseRlsDetector implements Detector {
       }
       for (const m of sql.matchAll(ALTER_POLICY_RE)) {
         const rest = statementAfter(sql, m.index + m[0].length);
-        const ren = /^\s*rename\s+to\s+(\S+)/i.exec(rest);
-        const line = lineAt(sql, m.index);
+        const ren = new RegExp(String.raw`^\s*rename\s+to\s+(${IDENT})`, "i").exec(rest);
+        const line = lineAt(newlines, m.index);
         events.push({
           kind: "policy",
           offset: m.index,
@@ -342,7 +357,7 @@ export class SupabaseRlsDetector implements Detector {
         if (ev.kind === "create") {
           // `create table if not exists` on a known table is a no-op in SQL.
           if (ev.ifNotExists && tables.has(ev.key)) continue;
-          tables.set(ev.key, { file, line: ev.line, text: ev.text, rls: false });
+          tables.set(ev.key, { key: ev.key, file, line: ev.line, text: ev.text, rls: false });
         } else if (ev.kind === "rls") {
           const t = tables.get(ev.key);
           if (t) t.rls = ev.enabled;
@@ -369,6 +384,7 @@ export class SupabaseRlsDetector implements Detector {
               using: null,
               check: null,
               ...parsePolicyClauses(ev.rest),
+              key: pk,
               file,
               line: ev.line,
               text: ev.text,
@@ -420,8 +436,12 @@ export class SupabaseRlsDetector implements Detector {
     const tableName = displayName(p.tableName);
     const ruleId = "authorization/supabase-permissive-policy";
     const action = cmd === "all" ? "every operation" : cmd;
+    const consequence =
+      cmd === "insert"
+        ? "anyone with your public Supabase key can insert arbitrary rows into this table."
+        : "anyone with your public Supabase key can change or delete every row in this table.";
     return {
-      id: createFindingId(CATEGORY_PREFIX.authorization, ruleId, file, line),
+      id: createFindingId(CATEGORY_PREFIX.authorization, ruleId, file, line, p.key),
       ruleId,
       title: `Permissive Supabase policy on ${tableName}`,
       severity: "high",
@@ -432,8 +452,7 @@ export class SupabaseRlsDetector implements Detector {
       line,
       evidence: sanitizeEvidence(text),
       plainEnglishProblem: `A row level security policy on "${tableName}" allows ${action} on any row, because its condition is just "true".`,
-      whyItMatters:
-        "Row level security is turned on, but this policy cancels it out: anyone with your public Supabase key can change or delete every row in this table.",
+      whyItMatters: `Row level security is turned on, but this policy cancels it out: ${consequence}`,
       fixSteps: [
         "Replace `true` with a condition that ties the row to the user, e.g. `auth.uid() = user_id`.",
         "If only your server should write here, limit the policy with `to service_role` or remove it.",
@@ -446,7 +465,7 @@ export class SupabaseRlsDetector implements Detector {
   private missingRlsFinding(table: string, t: TableState, severity: Severity, clientSide: boolean): Finding {
     const ruleId = "authorization/supabase-missing-rls";
     return {
-      id: createFindingId(CATEGORY_PREFIX.authorization, ruleId, t.file, t.line),
+      id: createFindingId(CATEGORY_PREFIX.authorization, ruleId, t.file, t.line, t.key),
       ruleId,
       title: `Supabase table "${table}" has no row level security`,
       severity,
