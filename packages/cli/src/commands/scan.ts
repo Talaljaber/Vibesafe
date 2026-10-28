@@ -8,18 +8,55 @@ import { generateHtmlReport } from "../ui/html-reporter.js";
 import open from "open";
 import { runFixWizard } from "./fix-wizard.js";
 import { pathToFileURL } from "node:url";
+import fs from "node:fs/promises";
+import { createRequire } from "node:module";
+import { OUTPUT_FORMAT_NAMES, isOutputFormat, renderOutput, type OutputFormat } from "../formatters/index.js";
+
+// Both dist/commands/scan.js and src/commands/scan.ts sit two levels below package.json.
+const require = createRequire(import.meta.url);
+const { version: CLI_VERSION } = require("../../package.json") as { version: string };
 
 export interface ScanOptions {
   interactive?: boolean;
   html?: boolean;
   openReport?: boolean;
   json?: boolean;
+  /** Machine-readable output format (see OUTPUT_FORMATS). Wins over --json. */
+  format?: string;
+  /**
+   * Write the report to this file instead of stdout (implies --format json when no format is
+   * given). Treated as trusted CLI input: parent directories are created, but an existing
+   * symlink at the path is refused.
+   */
+  output?: string;
   deep?: boolean;
   includeTests?: boolean;
 }
 
 export async function runScan(targetDir: string, options: ScanOptions = {}) {
   const rootPath = path.resolve(process.cwd(), targetDir);
+
+  if (options.output !== undefined && options.output.trim() === "") {
+    console.error("Error: --output requires a non-empty file path.");
+    process.exitCode = 2;
+    return;
+  }
+
+  let format: OutputFormat | undefined;
+  if (options.format !== undefined) {
+    if (!isOutputFormat(options.format)) {
+      console.error(
+        `Error: unknown --format "${options.format}". Supported formats: ${OUTPUT_FORMAT_NAMES.join(", ")}.`,
+      );
+      process.exitCode = 2;
+      return;
+    }
+    format = options.format;
+  } else if (options.json || options.output !== undefined) {
+    format = "json";
+  }
+  // Machine-readable mode: stdout carries only the report (or nothing, with --output).
+  options = { ...options, json: format !== undefined };
 
   if (!options.json) {
     console.log(chalk.cyan(`Ready to scan directory: ${rootPath}`));
@@ -76,8 +113,32 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
       }
     }
 
-    if (options.json) {
-      console.log(JSON.stringify(result, null, 2));
+    if (format) {
+      // Machine mode keeps stdout clean, so surface an incomplete scan on stderr.
+      if (result.errors && result.errors.length > 0) {
+        console.error(`Warning: ${result.errors.length} detector(s) failed. Scan may be incomplete.`);
+        for (const e of result.errors) console.error(`  - ${e.detectorName}: ${e.message}`);
+      }
+      for (const w of result.warnings ?? []) console.error(`Warning: ${w}`);
+      const rendered = renderOutput(format, result, { version: CLI_VERSION });
+      if (options.output !== undefined) {
+        const outPath = path.resolve(process.cwd(), options.output);
+        try {
+          const st = await fs.lstat(outPath).catch(() => undefined);
+          if (st?.isSymbolicLink()) throw new Error("refusing to write through a symbolic link");
+          await fs.mkdir(path.dirname(outPath), { recursive: true });
+          await fs.writeFile(outPath, rendered + "\n", { encoding: "utf-8", flag: "w" });
+        } catch (err: unknown) {
+          console.error(
+            `Error: could not write report to ${outPath}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          process.exitCode = 2;
+          return;
+        }
+        console.error(`Wrote ${format} report to ${outPath}`);
+      } else {
+        console.log(rendered);
+      }
     } else {
       if (result.errors && result.errors.length > 0) {
         console.log(
@@ -95,7 +156,9 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
     // Generate HTML Report if requested
     if (options.html || options.openReport) {
       const htmlReportPath = await generateHtmlReport(result);
-      if (!options.json) {
+      if (options.json) {
+        console.error(`HTML report generated: ${htmlReportPath}`);
+      } else {
         console.log(chalk.cyan.bold(`\n📄 Detailed HTML report generated: ${htmlReportPath}`));
       }
 
