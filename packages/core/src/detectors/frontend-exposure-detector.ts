@@ -1,7 +1,34 @@
+import path from "node:path";
 import { type Detector, type Finding, type ScanContext } from "@vibesafe/shared";
 import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
 import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
 import { isClientFile } from "./utils/file-classifier.js";
+
+const CODE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx"];
+const PUBLIC_PREFIXES = ["NEXT_PUBLIC_", "VITE_", "REACT_APP_", "EXPO_PUBLIC_", "NUXT_PUBLIC_", "PUBLIC_"];
+
+/** A public-prefixed variable whose name looks like a secret (not preceded by another name char). */
+const PUBLIC_SECRET_REGEX =
+  /(?<![A-Z0-9_])(?:NEXT_PUBLIC|VITE|REACT_APP|EXPO_PUBLIC|NUXT_PUBLIC|PUBLIC)_[A-Z0-9_]*(?:SECRET|PRIVATE|PASSWORD|SERVICE_ROLE)[A-Z0-9_]*/i;
+
+const SERVER_ENV_REGEX = /process\.env(?:\.([A-Za-z_][A-Za-z0-9_]*)|\[\s*["']([A-Za-z_][A-Za-z0-9_]*)["']\s*\])/g;
+const SECRET_LOOKING_NAME = /SERVICE_ROLE|SECRET|PRIVATE|PASSWORD|TOKEN|API_KEY|APIKEY/i;
+const SERVICE_ROLE_REGEX = /SERVICE_ROLE_KEY|service_role/;
+const IMPORT_REGEX = /(?:import|export)\s[^"';]*?from\s*["']([^"']+)["']|import\s*["']([^"']+)["']/g;
+
+/** Removes block and line comments, keeping line structure so line numbers stay valid. */
+function stripComments(content: string): string[] {
+  const noBlock = content.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "));
+  return noBlock.split("\n").map((l) => {
+    const idx = l.search(/(^|[^:"'`])\/\//);
+    if (idx === -1) return l;
+    return l.slice(0, l.indexOf("//", idx));
+  });
+}
+
+function hasPublicPrefix(name: string): boolean {
+  return PUBLIC_PREFIXES.some((p) => name.startsWith(p));
+}
 
 export class FrontendExposureDetector implements Detector {
   id = "frontend-exposure-detector";
@@ -11,75 +38,204 @@ export class FrontendExposureDetector implements Detector {
 
   async detect(context: ScanContext): Promise<Finding[]> {
     const findings: Finding[] = [];
+    const fileSet = new Set(context.files.map((f) => f.replace(/\\/g, "/")));
+
+    const resolveImport = (fromFile: string, spec: string): string | undefined => {
+      const bases: string[] = [];
+      const dir = path.posix.dirname(fromFile.replace(/\\/g, "/"));
+      if (spec.startsWith("./") || spec.startsWith("../")) {
+        bases.push(path.posix.normalize(path.posix.join(dir, spec)));
+      } else if (spec.startsWith("@/")) {
+        bases.push(`src/${spec.slice(2)}`, spec.slice(2));
+      } else {
+        return undefined;
+      }
+      for (const base of bases) {
+        const candidates = [
+          base,
+          ...CODE_EXTENSIONS.map((e) => base + e),
+          ...CODE_EXTENSIONS.map((e) => `${base}/index${e}`),
+        ];
+        const hit = candidates.find((c) => fileSet.has(c) && CODE_EXTENSIONS.some((e) => c.endsWith(e)));
+        if (hit) return hit;
+      }
+      return undefined;
+    };
 
     for (const filePath of context.files) {
-      if (!filePath.endsWith(".ts") && !filePath.endsWith(".tsx") && !filePath.endsWith(".js") && !filePath.endsWith(".jsx")) {
+      const base = path.basename(filePath);
+      if (base === ".env.example" || base === ".env.sample") continue;
+
+      // .env files: public-prefixed names that look like secrets
+      if (base.startsWith(".env")) {
+        const lines = (await context.readFile(filePath)).split("\n");
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i] ?? "";
+          if (line.trim().startsWith("#")) continue;
+          const name = /^\s*(?:export\s+)?([A-Za-z0-9_]+)\s*=/.exec(line)?.[1];
+          if (name && PUBLIC_SECRET_REGEX.test(name.toUpperCase())) {
+            findings.push(this.publicSecretFinding(filePath, i + 1, name, name));
+          }
+        }
         continue;
       }
+
+      if (!CODE_EXTENSIONS.some((e) => filePath.endsWith(e))) continue;
 
       const content = await context.readFile(filePath);
-      
-      if (!isClientFile(filePath, content)) {
-        continue;
-      }
+      if (!isClientFile(filePath, content)) continue;
 
-      const lines = content.split('\n');
+      const rawLines = content.split("\n");
+      const lines = stripComments(content);
 
       for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        if (line === undefined) continue;
+        const line = lines[i] ?? "";
+        const raw = rawLines[i] ?? "";
 
-        // 1. Detect service_role keys being used in client code
-        if (line.includes("SERVICE_ROLE_KEY") || line.includes("service_role")) {
-          findings.push({
-            id: createFindingId(CATEGORY_PREFIX.frontend_exposure, "frontend_exposure/service-role-key", filePath, i + 1),
-            ruleId: "frontend_exposure/service-role-key",
-            title: "Service Role Key used in client code",
-            severity: "critical",
-            category: "frontend_exposure",
-            deployBlocking: true,
-            confidence: "high",
-            file: filePath,
-            line: i + 1,
-            evidence: sanitizeEvidence(line),
-            plainEnglishProblem: "You are using an admin 'service role' key in frontend code.",
-            whyItMatters: "Client code is visible to everyone in the browser. Anyone can extract this key and gain full admin access to your database, bypassing all row-level security.",
-            fixSteps: [
-              "Never use service role keys in the browser.",
-              "Use the regular anonymous/public key for the frontend client.",
-              "If you need to perform admin actions, create a backend API route, do the action there, and call it from the frontend."
-            ],
-            autoFixAvailable: false,
-          });
+        // 1. service_role keys used directly in client code
+        if (SERVICE_ROLE_REGEX.test(line)) {
+          findings.push(this.serviceRoleFinding(filePath, i + 1, raw));
         }
 
-        // 2. Detect missing NEXT_PUBLIC_ on sensitive vars
-        const nextPublicSecretRegex = /NEXT_PUBLIC_[A-Z_]*(SECRET|PRIVATE|PASSWORD|SERVICE_ROLE)[A-Z_]*/i;
-        const match = nextPublicSecretRegex.exec(line);
-        if (match && match[0]) {
-          findings.push({
-            id: createFindingId(CATEGORY_PREFIX.frontend_exposure, "frontend_exposure/public-secret-var", filePath, i + 1, match[0]),
-            ruleId: "frontend_exposure/public-secret-var",
-            title: "Sensitive variable exposed to frontend",
-            severity: "high",
-            category: "frontend_exposure",
-            deployBlocking: true,
-            confidence: "high",
-            file: filePath,
-            line: i + 1,
-            evidence: sanitizeEvidence(match[0]),
-            plainEnglishProblem: `You have prefixed a sensitive variable (${match[0]}) with NEXT_PUBLIC_.`,
-            whyItMatters: "The NEXT_PUBLIC_ prefix bundles this variable into the code sent to the user's browser, exposing your secret.",
-            fixSteps: [
-              `Remove the NEXT_PUBLIC_ prefix from this variable in your .env file and code.`,
-              `Move the logic that requires this secret to a server-side API route or Server Component.`
-            ],
-            autoFixAvailable: false,
-          });
+        // 2. Public-prefixed variables with secret-looking names
+        const match = PUBLIC_SECRET_REGEX.exec(line);
+        if (match?.[0]) {
+          findings.push(this.publicSecretFinding(filePath, i + 1, match[0], match[0]));
+        }
+      }
+
+      // 3. Follow relative / "@/" imports one level and inspect the imported module
+      const noBlock = content.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "));
+      IMPORT_REGEX.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = IMPORT_REGEX.exec(noBlock)) !== null) {
+        const spec = m[1] ?? m[2];
+        if (!spec) continue;
+        const importLine = noBlock.slice(0, m.index).split("\n").length;
+        if ((lines[importLine - 1] ?? "").trim() === "") continue; // commented-out import
+        const target = resolveImport(filePath, spec);
+        if (!target || target === filePath) continue;
+
+        const targetContent = await context.readFile(target);
+        if (/^\s*import\s+["']server-only["']/m.test(targetContent)) continue;
+        const targetLines = stripComments(targetContent);
+        const raw = rawLines[importLine - 1] ?? "";
+
+        if (targetLines.some((l) => SERVICE_ROLE_REGEX.test(l))) {
+          findings.push(this.serviceRoleFinding(filePath, importLine, raw, target));
+          continue;
+        }
+
+        const seen = new Set<string>();
+        for (const l of targetLines) {
+          SERVER_ENV_REGEX.lastIndex = 0;
+          let e: RegExpExecArray | null;
+          while ((e = SERVER_ENV_REGEX.exec(l)) !== null) {
+            const name = e[1] ?? e[2];
+            if (name && !hasPublicPrefix(name) && SECRET_LOOKING_NAME.test(name) && !seen.has(name)) {
+              seen.add(name);
+              findings.push(this.serverEnvImportFinding(filePath, importLine, raw, target, name));
+            }
+          }
         }
       }
     }
 
     return findings;
+  }
+
+  private serviceRoleFinding(file: string, line: number, evidence: string, importedFile?: string): Finding {
+    const via = importedFile ? ` (via imported module ${importedFile})` : "";
+    return {
+      id: createFindingId(
+        CATEGORY_PREFIX.frontend_exposure,
+        "frontend_exposure/service-role-key",
+        file,
+        line,
+        importedFile,
+      ),
+      ruleId: "frontend_exposure/service-role-key",
+      title: "Service Role Key used in client code",
+      severity: "critical",
+      category: "frontend_exposure",
+      deployBlocking: true,
+      confidence: importedFile ? "medium" : "high",
+      file,
+      line,
+      evidence: sanitizeEvidence(evidence),
+      plainEnglishProblem: `You are using an admin 'service role' key in frontend code${via}.`,
+      whyItMatters:
+        "Client code is visible to everyone in the browser. Anyone can extract this key and gain full admin access to your database, bypassing all row-level security.",
+      fixSteps: [
+        "Never use service role keys in the browser.",
+        "Use the regular anonymous/public key for the frontend client.",
+        "If you need to perform admin actions, create a backend API route, do the action there, and call it from the frontend.",
+      ],
+      autoFixAvailable: false,
+    };
+  }
+
+  private serverEnvImportFinding(
+    file: string,
+    line: number,
+    evidence: string,
+    importedFile: string,
+    envName: string,
+  ): Finding {
+    return {
+      id: createFindingId(
+        CATEGORY_PREFIX.frontend_exposure,
+        "frontend_exposure/server-env-in-client-import",
+        file,
+        line,
+        `${importedFile}:${envName}`,
+      ),
+      ruleId: "frontend_exposure/server-env-in-client-import",
+      title: "Client file imports a module that reads a server-only secret",
+      severity: "high",
+      category: "frontend_exposure",
+      deployBlocking: false,
+      confidence: "medium",
+      file,
+      line,
+      evidence: sanitizeEvidence(evidence),
+      plainEnglishProblem: `This client component imports ${importedFile}, which reads the server-only variable ${envName}.`,
+      whyItMatters:
+        "Modules imported by client components are bundled for the browser. Server-only secrets are either leaked (if inlined) or the code breaks, and it signals that server logic is mixed into client code.",
+      fixSteps: [
+        "Move the code that uses this secret into a server-only module, API route or Server Action.",
+        "Call it from the client instead of importing it.",
+        'Consider adding `import "server-only"` to the module so the build fails if it is imported by client code.',
+      ],
+      autoFixAvailable: false,
+    };
+  }
+
+  /**
+   * Severity: `high` and not deploy-blocking. The rule matches on the variable *name*, so we
+   * cannot be sure the value is a real secret (e.g. `NEXT_PUBLIC_SECRET_SANTA`); the documented
+   * convention reserves critical + blocking for confirmed exposures such as service-role keys.
+   */
+  private publicSecretFinding(file: string, line: number, evidence: string, varName: string): Finding {
+    return {
+      id: createFindingId(CATEGORY_PREFIX.frontend_exposure, "frontend_exposure/public-secret-var", file, line, varName),
+      ruleId: "frontend_exposure/public-secret-var",
+      title: "Sensitive variable exposed to frontend",
+      severity: "high",
+      category: "frontend_exposure",
+      deployBlocking: false,
+      confidence: "high",
+      file,
+      line,
+      evidence: sanitizeEvidence(evidence),
+      plainEnglishProblem: `You have given a sensitive-looking variable (${varName}) a public prefix.`,
+      whyItMatters:
+        "Public prefixes (NEXT_PUBLIC_, VITE_, REACT_APP_, EXPO_PUBLIC_, NUXT_PUBLIC_, PUBLIC_) bundle the variable into the code sent to the user's browser, exposing your secret.",
+      fixSteps: [
+        "Remove the public prefix from this variable in your .env file and code.",
+        "Move the logic that requires this secret to a server-side API route or Server Component.",
+      ],
+      autoFixAvailable: false,
+    };
   }
 }

@@ -37,6 +37,68 @@ describe("FrontendExposureDetector", () => {
     expect(findings[0].ruleId).toBe("frontend_exposure/service-role-key");
   });
 
+  it("follows relative imports from client files into server-only secrets", async () => {
+    const findings = await detector.detect(
+      createContext({
+        "app/page.tsx": `"use client";\nimport { db } from "../lib/db";\n`,
+        "lib/db.ts": `export const db = connect(process.env.DATABASE_PASSWORD);\n`,
+      }),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.file).toBe("app/page.tsx");
+    expect(findings[0]?.line).toBe(2);
+    expect(findings[0]?.plainEnglishProblem).toContain("lib/db.ts");
+  });
+
+  it("resolves @/ aliases and index files, ignores public-prefixed vars", async () => {
+    const findings = await detector.detect(
+      createContext({
+        "src/app/a.tsx": `"use client";\nimport x from "@/lib/x";\nimport y from "@/lib/y";\n`,
+        "src/lib/x/index.ts": `export default process.env.STRIPE_SECRET_KEY;\n`,
+        "src/lib/y.ts": `export default import.meta.env.VITE_API_URL + process.env.NEXT_PUBLIC_API_KEY;\n`,
+      }),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.line).toBe(2);
+  });
+
+  it("ignores service-role mentions in comments", async () => {
+    const findings = await detector.detect(
+      createContext({
+        "app/page.tsx": `"use client";\n// never use SUPABASE_SERVICE_ROLE_KEY here\n/* service_role */\n`,
+      }),
+    );
+    expect(findings).toHaveLength(0);
+  });
+
+  it("detects other public prefixes and .env files", async () => {
+    const findings = await detector.detect(
+      createContext({
+        "app/page.tsx": `"use client";\nconst a = import.meta.env.VITE_DB_PASSWORD;\n`,
+        ".env": "NEXT_PUBLIC_API_SECRET=abc\nVITE_OK=1\n",
+        ".env.example": "NEXT_PUBLIC_API_SECRET=\n",
+      }),
+    );
+    expect(findings.map((f) => f.file).sort()).toEqual([".env", "app/page.tsx"]);
+    expect(findings.every((f) => f.severity === "high" && !f.deployBlocking)).toBe(true);
+  });
+
+  it("requires use client as first statement; supports src/pages", async () => {
+    const mk = (files: Record<string, string>) => detector.detect(createContext(files));
+    expect(
+      await mk({ "components/a.tsx": `const s = "use client";\nconst k = process.env.NEXT_PUBLIC_X_SECRET;` }),
+    ).toHaveLength(0);
+    expect(
+      await mk({ "src/pages/a.tsx": `const k = process.env.NEXT_PUBLIC_X_SECRET;` }),
+    ).toHaveLength(1);
+    expect(
+      await mk({ "pages/api/a.ts": `const k = process.env.NEXT_PUBLIC_X_SECRET;` }),
+    ).toHaveLength(0);
+    expect(
+      await mk({ "components/a.tsx": `// header\n\n'use client'\nconst k = process.env.NEXT_PUBLIC_X_SECRET;` }),
+    ).toHaveLength(1);
+  });
+
   it("should not detect SERVICE_ROLE_KEY in server component", async () => {
     const context = createContext({
       "app/api/test/route.ts": `
