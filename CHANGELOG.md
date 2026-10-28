@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
 - **Detectors**: insecure CORS configuration, missing helmet / security headers, missing rate limiting on sensitive endpoints, Supabase Row Level Security, Express route auth and validation, Django/Python settings (with `.py` / `.sql` discovery and a `security_config` category), Vite project detection with a `define` `process.env` leak check, Firebase Admin SDK in client code, Stripe webhook signature verification, and broader AWS key detection that ignores placeholders. Also `dangerouslySetInnerHTML` XSS, hardcoded localhost, React error boundary and git history detectors.
 - **Config file**: `.vibesafe.config.json` with rule overrides, disabled detectors, excludes, `includeTests`, `minSeverity` and `deep`; script configs only with `--trust-config`.
 - **Inline ignores**: `vibesafe-disable-line`, `-next-line` and `-file` directives accept rule ids.
@@ -19,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Repository hygiene: `.gitattributes` (LF), `pnpm format:check` in CI, `scripts/sync-versions.mjs`, README rewrite and a canonical repository URL.
 
 ### Changed
+
 - Finding ids are deterministic (`PREFIX-<10 hex>`) and the `CATEGORY_PREFIX` map is authoritative.
 - Secret severity is per pattern; frontend exposure follows imports and supports all public env prefixes; auth, authorization and validation detectors are more precise about routes, middleware and line numbers.
 - Dependency and error-boundary detectors use the root `package.json`; the git history scan streams its output and works from subdirectories.
@@ -26,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The error-boundary rule was renamed and dead code and exports were cleaned up.
 
 ### Fixed
+
 - Scan timeout is enforced, lines are counted correctly and truncation produces a warning.
 - `fix --yes` and non-TTY handling, `--version`, and `targetFiles` handling in the VS Code extension.
 - The console.log fixer only comments out standalone statements; `.env.example` generation no longer copies secrets.
@@ -34,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documentation: monorepo structure, marketplace id and repository and screenshot links.
 
 ### Security
+
 - Fixer target paths are validated to stay inside the project root.
 - Trusted commands in VS Code hover markdown are restricted.
 - MCP scans are limited to allowed roots and file writes are opt-in.
@@ -43,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2026-06-29
 
 ### Added
+
 - **Core Engine**: Deterministic static analysis pipeline.
 - **Detectors**:
   - `SecretDetector`: Finds leaked API keys (OpenAI, Anthropic, Stripe, AWS, Supabase, JWTs).
@@ -59,8 +64,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **VS Code Extension**: Sidebar UI, inline diagnostics, and quick-fix context menus.
 
 ### Changed
+
 - Standardized the monorepo structure utilizing `pnpm` and `Turborepo`.
 - Shared constants and models moved to `@vibesafe/shared`.
 
 ### Security
+
 - Introduced regex and AST-level checks for the most common security pitfalls made during vibe coding.

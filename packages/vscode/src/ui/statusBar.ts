@@ -5,10 +5,7 @@ export class VibeSafeStatusBar {
   private statusBarItem: vscode.StatusBarItem;
 
   constructor() {
-    this.statusBarItem = vscode.window.createStatusBarItem(
-      vscode.StatusBarAlignment.Left,
-      100
-    );
+    this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
     this.statusBarItem.command = "vibesafe.scan";
     this.statusBarItem.text = "$(shield) VibeSafe: Ready";
     this.statusBarItem.show();

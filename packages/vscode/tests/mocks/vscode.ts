@@ -18,14 +18,14 @@ export class Range {
     public startLine: number,
     public startChar: number,
     public endLine: number,
-    public endChar: number
+    public endChar: number,
   ) {}
 }
 
 export class Position {
   constructor(
     public line: number,
-    public character: number
+    public character: number,
   ) {}
 }
 

@@ -25,11 +25,7 @@ function makeFinding(overrides: Partial<Finding> = {}): Finding {
   };
 }
 
-function mockDetector(
-  id: string,
-  findings: Finding[],
-  delayMs = 0,
-): Detector {
+function mockDetector(id: string, findings: Finding[], delayMs = 0): Detector {
   return {
     id,
     name: id,

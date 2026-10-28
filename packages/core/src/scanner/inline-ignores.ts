@@ -100,7 +100,8 @@ function parseDirectives(content: string): FileDirectives {
       while ((m = DIRECTIVE_RE.exec(comment)) !== null) {
         const spec = parseRuleIds(m[2] ?? "");
         if (m[1] === "file") result.file = merge(result.file, spec);
-        else if (m[1] === "line") result.line.set(lineNo, merge(result.line.get(lineNo) ?? null, spec));
+        else if (m[1] === "line")
+          result.line.set(lineNo, merge(result.line.get(lineNo) ?? null, spec));
         else result.nextLine.set(lineNo, merge(result.nextLine.get(lineNo) ?? null, spec));
       }
     }

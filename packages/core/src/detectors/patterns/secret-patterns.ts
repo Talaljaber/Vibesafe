@@ -165,5 +165,5 @@ export const SECRET_PATTERNS: SecretPattern[] = [
     severity: "medium",
     confidence: "low",
     valueGroup: 2,
-  }
+  },
 ];

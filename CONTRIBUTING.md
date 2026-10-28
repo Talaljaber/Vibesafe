@@ -17,22 +17,26 @@ A good branch name would be (where issue #325 is the ticket you're working on): 
 VibeSafe is a monorepo using `pnpm`.
 
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/Talaljaber/Vibesafe.git
    cd Vibesafe
    ```
 
 2. Install dependencies:
+
    ```bash
    pnpm install
    ```
 
 3. Build the project:
+
    ```bash
    pnpm build
    ```
 
 4. Run tests:
+
    ```bash
    pnpm test
    ```

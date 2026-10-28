@@ -7,9 +7,13 @@
 
 import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
 import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
-import { isApiRoute, hasAuthCheck, findAnyHandlerLine, middlewareProtectsApi } from "./utils/route-analyzer.js";
+import {
+  isApiRoute,
+  hasAuthCheck,
+  findAnyHandlerLine,
+  middlewareProtectsApi,
+} from "./utils/route-analyzer.js";
 import { AUTHZ_CHECK_PATTERNS } from "./patterns/auth-patterns.js";
-
 
 /** Admin-sounding routes that need a role check, not just a session check. */
 const ADMIN_ROUTE_PATTERNS = ["/admin", "/superuser", "/manage", "/moderat"];
@@ -23,7 +27,9 @@ export class MissingAuthorizationDetector implements Detector {
 
   async detect(context: ScanContext): Promise<Finding[]> {
     const findings: Finding[] = [];
-    const protectedByMiddleware = await middlewareProtectsApi(context.files, (f) => context.readFile(f));
+    const protectedByMiddleware = await middlewareProtectsApi(context.files, (f) =>
+      context.readFile(f),
+    );
 
     for (const filePath of context.files) {
       if (!isApiRoute(filePath)) continue;
@@ -34,9 +40,7 @@ export class MissingAuthorizationDetector implements Detector {
       if (!hasAuthCheck(content) && !protectedByMiddleware) continue;
 
       const normalizedPath = filePath.replace(/\\/g, "/");
-      const isAdminRoute = ADMIN_ROUTE_PATTERNS.some((p) =>
-        normalizedPath.includes(p)
-      );
+      const isAdminRoute = ADMIN_ROUTE_PATTERNS.some((p) => normalizedPath.includes(p));
 
       if (isAdminRoute) {
         const hasAuthzCheck = AUTHZ_CHECK_PATTERNS.some((re) => re.test(content));
@@ -44,7 +48,12 @@ export class MissingAuthorizationDetector implements Detector {
         if (!hasAuthzCheck) {
           const line = findAnyHandlerLine(content) ?? 1;
           findings.push({
-            id: createFindingId(CATEGORY_PREFIX.authorization, "authorization/missing-role-check", filePath, line),
+            id: createFindingId(
+              CATEGORY_PREFIX.authorization,
+              "authorization/missing-role-check",
+              filePath,
+              line,
+            ),
             ruleId: "authorization/missing-role-check",
             title: "Admin route missing role check",
             severity: "high",

@@ -35,7 +35,10 @@ describe("docs hygiene", () => {
       expect(text, f).not.toContain("talaljaber.vibesafe");
       expect(text, f).toContain("talaljaber.vibeguard-scanner");
     }
-    const pkg = JSON.parse(read("packages/vscode/package.json")) as { name: string; publisher: string };
+    const pkg = JSON.parse(read("packages/vscode/package.json")) as {
+      name: string;
+      publisher: string;
+    };
     expect(`${pkg.publisher}.${pkg.name}`).toBe("talaljaber.vibeguard-scanner");
   });
 
@@ -51,7 +54,9 @@ describe("docs hygiene", () => {
 
   it("marketplace README screenshots point at the real repo and existing files", () => {
     const text = read("packages/vscode/README.md");
-    const urls = [...text.matchAll(/raw\.githubusercontent\.com\/Talaljaber\/Vibesafe\/main\/([^"]+\.png)/g)];
+    const urls = [
+      ...text.matchAll(/raw\.githubusercontent\.com\/Talaljaber\/Vibesafe\/main\/([^"]+\.png)/g),
+    ];
     expect(urls.length).toBeGreaterThan(0);
     for (const m of urls) expect(fs.existsSync(path.join(repoRoot, m[1]!)), m[1]).toBe(true);
   });

@@ -26,7 +26,9 @@ describe("MissingAuthDetector (route shapes, severity, lines, middleware)", () =
 
   it("does not treat a bare auth import as an auth check", async () => {
     const f = await detector.detect(
-      ctx({ "app/api/a/route.ts": 'import { auth } from "@/auth";\nexport async function POST() {}' }),
+      ctx({
+        "app/api/a/route.ts": 'import { auth } from "@/auth";\nexport async function POST() {}',
+      }),
     );
     expect(f).toHaveLength(1);
     expect(f[0]!.line).toBe(2);
@@ -48,14 +50,17 @@ describe("MissingAuthDetector (route shapes, severity, lines, middleware)", () =
   });
 
   it("ignores non-route files under api directories", async () => {
-    const f = await detector.detect(ctx({ "lib/api/client.ts": "export async function POST() {}" }));
+    const f = await detector.detect(
+      ctx({ "lib/api/client.ts": "export async function POST() {}" }),
+    );
     expect(f).toHaveLength(0);
   });
 
   it("treats auth middleware covering /api as protection", async () => {
     const f = await detector.detect(
       ctx({
-        "middleware.ts": 'export default clerkMiddleware(); export const config = { matcher: ["/api/(.*)"] };',
+        "middleware.ts":
+          'export default clerkMiddleware(); export const config = { matcher: ["/api/(.*)"] };',
         "app/api/a/route.ts": "export async function POST() {}",
       }),
     );
@@ -84,8 +89,10 @@ export async function GET() {
   it("accepts isAdmin and hasPermission( checks", async () => {
     const f = await detector.detect(
       ctx({
-        "app/api/admin/a/route.ts": "const s = await auth();\nif (!isAdmin(s)) return;\nexport async function GET() {}",
-        "app/api/admin/b/route.ts": "await auth();\nif (!hasPermission(u, 'x')) return;\nexport async function GET() {}",
+        "app/api/admin/a/route.ts":
+          "const s = await auth();\nif (!isAdmin(s)) return;\nexport async function GET() {}",
+        "app/api/admin/b/route.ts":
+          "await auth();\nif (!hasPermission(u, 'x')) return;\nexport async function GET() {}",
       }),
     );
     expect(f).toHaveLength(0);

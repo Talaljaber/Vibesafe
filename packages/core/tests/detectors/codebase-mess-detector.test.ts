@@ -16,12 +16,12 @@ describe("CodebaseMessDetector", () => {
   it("should detect huge files", async () => {
     let content = "";
     for (let i = 0; i < 505; i++) content += "const a = 1;\n";
-    
+
     const context = createContext({
       "app/page.tsx": content,
     });
     const findings = await detector.detect(context);
-    expect(findings.some(f => f.ruleId === "code_quality/huge-file")).toBe(true);
+    expect(findings.some((f) => f.ruleId === "code_quality/huge-file")).toBe(true);
   });
 
   it("should detect empty catch blocks", async () => {
@@ -34,7 +34,7 @@ describe("CodebaseMessDetector", () => {
       `,
     });
     const findings = await detector.detect(context);
-    expect(findings.some(f => f.ruleId === "code_quality/empty-catch")).toBe(true);
+    expect(findings.some((f) => f.ruleId === "code_quality/empty-catch")).toBe(true);
   });
 
   it("should detect leftover console.log", async () => {
@@ -42,6 +42,6 @@ describe("CodebaseMessDetector", () => {
       "app/page.tsx": `console.log("hello");`,
     });
     const findings = await detector.detect(context);
-    expect(findings.some(f => f.ruleId === "code_quality/console-log")).toBe(true);
+    expect(findings.some((f) => f.ruleId === "code_quality/console-log")).toBe(true);
   });
 });

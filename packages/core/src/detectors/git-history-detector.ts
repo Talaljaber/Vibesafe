@@ -1,4 +1,10 @@
-import { type Detector, type Finding, type ScanContext, type Severity, redactSecret } from "@vibesafe/shared";
+import {
+  type Detector,
+  type Finding,
+  type ScanContext,
+  type Severity,
+  redactSecret,
+} from "@vibesafe/shared";
 import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
 import { SECRET_PATTERNS, matchSecretPattern } from "./patterns/secret-patterns.js";
 import {
@@ -184,7 +190,13 @@ export class GitHistoryDetector implements Detector {
       : "This key is exposed twice: once in the current working tree (where the standard secret scanner already flags it) and permanently in git history. Removing it from the file alone will not remove it from history.";
 
     return {
-      id: createFindingId(CATEGORY_PREFIX.secret, `secret/git-history-${occurrence.patternId}`, occurrence.file, undefined, `${redacted}|${shortSha}`),
+      id: createFindingId(
+        CATEGORY_PREFIX.secret,
+        `secret/git-history-${occurrence.patternId}`,
+        occurrence.file,
+        undefined,
+        `${redacted}|${shortSha}`,
+      ),
       ruleId: `secret/git-history-${occurrence.patternId}`,
       title,
       severity,

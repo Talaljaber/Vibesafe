@@ -3,7 +3,9 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ScanState } from "../state.js";
 
 export const explainInputShape = {
-  findingId: z.string().describe('The finding ID returned by vibesafe_scan (e.g. "SEC-1a2b3c4d5e").'),
+  findingId: z
+    .string()
+    .describe('The finding ID returned by vibesafe_scan (e.g. "SEC-1a2b3c4d5e").'),
 };
 
 export function registerExplainTool(server: McpServer, state: ScanState): void {

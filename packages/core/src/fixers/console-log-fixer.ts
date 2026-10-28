@@ -89,7 +89,10 @@ function analyze(content: string, line: number): Analysis {
   const first = lines[idx] ?? "";
   const m = /^([ \t]*)console\.log\s*\(/.exec(first);
   if (!m) {
-    return { ok: false, reason: `Line ${line} no longer contains a standalone console.log( statement.` };
+    return {
+      ok: false,
+      reason: `Line ${line} no longer contains a standalone console.log( statement.`,
+    };
   }
 
   let lineStart = 0;
@@ -106,7 +109,8 @@ function analyze(content: string, line: number): Analysis {
     if (prev.endsWith(")") || prev.endsWith("=>") || /(^|[\s}])else$/.test(prev)) {
       return {
         ok: false,
-        reason: "Previous line may be a control statement or unterminated expression; not safe to comment out.",
+        reason:
+          "Previous line may be a control statement or unterminated expression; not safe to comment out.",
       };
     }
     break;
@@ -123,7 +127,10 @@ function analyze(content: string, line: number): Analysis {
   const lastLineEnd = end - (content.slice(0, end).lastIndexOf("\n") + 1);
   const tail = lastLine.slice(lastLineEnd).replace(/\r$/, "");
   if (!/^\s*;?\s*(\/\/.*)?$/.test(tail)) {
-    return { ok: false, reason: "console.log(...) is part of a larger expression or statement; not modifying it." };
+    return {
+      ok: false,
+      reason: "console.log(...) is part of a larger expression or statement; not modifying it.",
+    };
   }
 
   const before = lines.slice(idx, endLineIdx + 1);
@@ -143,17 +150,28 @@ export class ConsoleLogFixer implements AutoFixer {
 
   canFix(finding: Finding): boolean {
     if (finding.ruleId !== this.ruleId || !finding.file || !finding.line) return false;
-    return !path.isAbsolute(finding.file) && !path.win32.isAbsolute(finding.file) && !finding.file.split(/[\\/]/).includes("..");
+    return (
+      !path.isAbsolute(finding.file) &&
+      !path.win32.isAbsolute(finding.file) &&
+      !finding.file.split(/[\\/]/).includes("..")
+    );
   }
 
-  private async load(finding: Finding, rootPath: string): Promise<{ filePath: string; result: Analysis }> {
+  private async load(
+    finding: Finding,
+    rootPath: string,
+  ): Promise<{ filePath: string; result: Analysis }> {
     const filePath = await resolveInsideRoot(rootPath, finding.file as string);
     const content = await fs.readFile(filePath, "utf-8");
     return { filePath, result: analyze(content, finding.line as number) };
   }
 
   async preview(finding: Finding, rootPath: string): Promise<FixPreview> {
-    const none = (description: string): FixPreview => ({ description, filesToModify: [], filesToCreate: [] });
+    const none = (description: string): FixPreview => ({
+      description,
+      filesToModify: [],
+      filesToCreate: [],
+    });
     if (!finding.file || !finding.line) return none("Missing file or line number.");
 
     try {
@@ -164,7 +182,10 @@ export class ConsoleLogFixer implements AutoFixer {
         description: `Comments out console.log on line ${finding.line} in ${finding.file}`,
         filesToModify: [finding.file],
         filesToCreate: [],
-        diff: edit.before.map((l) => `- ${l}`).join("\n") + "\n" + edit.after.map((l) => `+ ${l}`).join("\n"),
+        diff:
+          edit.before.map((l) => `- ${l}`).join("\n") +
+          "\n" +
+          edit.after.map((l) => `+ ${l}`).join("\n"),
       };
     } catch (error) {
       return none(`Cannot read file: ${(error as Error).message}`);

@@ -27,5 +27,4 @@ export { DangerousHtmlDetector } from "./detectors/dangerous-html-detector.js";
 // Fixers
 export * from "./fixers/index.js";
 
-
 export { sanitizeEvidence, MAX_EVIDENCE_LENGTH } from "./detectors/utils/sanitize-evidence.js";

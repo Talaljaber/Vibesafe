@@ -15,7 +15,8 @@ export class DangerousHtmlDetector implements Detector {
   id = "dangerous-html-detector";
   name = "Dangerous HTML Detection";
   category = "xss" as const;
-  description = "Detects `dangerouslySetInnerHTML` usage, a common XSS vector when input isn't sanitized.";
+  description =
+    "Detects `dangerouslySetInnerHTML` usage, a common XSS vector when input isn't sanitized.";
 
   async detect(context: ScanContext): Promise<Finding[]> {
     const findings: Finding[] = [];
@@ -36,7 +37,8 @@ export class DangerousHtmlDetector implements Detector {
           // Look at the surrounding JSX (the attribute value often spans lines)
           const window = lines.slice(Math.max(0, i - 3), i + 4).join("\n");
           const sanitized = /\b(?:DOMPurify\.)?sanitize(?:Html)?\s*\(/.test(window);
-          const jsonLd = /application\/ld\+json/.test(window) && /JSON\.stringify\s*\(/.test(window);
+          const jsonLd =
+            /application\/ld\+json/.test(window) && /JSON\.stringify\s*\(/.test(window);
           if (sanitized || jsonLd) continue;
           findings.push(this.createFinding(filePath, i + 1, sanitizeEvidence(match[0])));
         }
@@ -48,7 +50,13 @@ export class DangerousHtmlDetector implements Detector {
 
   private createFinding(filePath: string, line: number, evidence: string): Finding {
     return {
-      id: createFindingId(CATEGORY_PREFIX.xss, "xss/dangerously-set-inner-html", filePath, line, evidence),
+      id: createFindingId(
+        CATEGORY_PREFIX.xss,
+        "xss/dangerously-set-inner-html",
+        filePath,
+        line,
+        evidence,
+      ),
       ruleId: "xss/dangerously-set-inner-html",
       title: "dangerouslySetInnerHTML usage",
       severity: "high",

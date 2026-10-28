@@ -23,8 +23,8 @@ export function openDashboard(extensionUri: vscode.Uri, result: ScanResult | nul
     column || vscode.ViewColumn.One,
     {
       enableScripts: true,
-      localResourceRoots: [vscode.Uri.joinPath(extensionUri, "media")]
-    }
+      localResourceRoots: [vscode.Uri.joinPath(extensionUri, "media")],
+    },
   );
 
   currentPanel.onDidDispose(() => {
@@ -111,7 +111,7 @@ function getHtmlForResult(result: ScanResult, webview: vscode.Webview) {
   const high = result.summary.highCount;
   const medium = result.summary.mediumCount || 0;
   const low = result.summary.lowCount || 0;
-  
+
   let reason = "No obvious deployment blockers found in this scan.";
   if (critical > 0 && high > 0) {
     reason = critical + " critical issues and " + high + " high severity issues found.";
@@ -124,29 +124,35 @@ function getHtmlForResult(result: ScanResult, webview: vscode.Webview) {
   }
 
   const firstStep = result.repairPlan.steps[0];
-  const nextAction = firstStep ? "Start with: " + escapeHtml(firstStep.title) : "No actions required.";
+  const nextAction = firstStep
+    ? "Start with: " + escapeHtml(firstStep.title)
+    : "No actions required.";
 
-  const statusClass = result.deployStatus.toLowerCase() === 'ready' ? 'low-pill' : 
-                     (critical > 0 ? 'critical-pill' : 'high-pill');
+  const statusClass =
+    result.deployStatus.toLowerCase() === "ready"
+      ? "low-pill"
+      : critical > 0
+        ? "critical-pill"
+        : "high-pill";
 
   const critPct = totalFindings ? (critical / totalFindings) * 100 : 0;
   const highPct = totalFindings ? (high / totalFindings) * 100 : 0;
   const medPct = totalFindings ? (medium / totalFindings) * 100 : 0;
   const lowPct = totalFindings ? (low / totalFindings) * 100 : 0;
 
-  let errorsHtml = '';
+  let errorsHtml = "";
   if (result.errors && result.errors.length > 0) {
     errorsHtml = `
       <div class="error-banner">
         <h3>Some detectors failed. Results may be incomplete.</h3>
         <ul>
-          ${result.errors.map((e) => `<li>${escapeHtml(e.detectorName)}: ${escapeHtml(e.message)}</li>`).join('')}
+          ${result.errors.map((e) => `<li>${escapeHtml(e.detectorName)}: ${escapeHtml(e.message)}</li>`).join("")}
         </ul>
       </div>
     `;
   }
 
-  let stepsHtml = '';
+  let stepsHtml = "";
   if (result.repairPlan.steps.length === 0) {
     stepsHtml = `
       <div class="empty-state" style="padding: 40px 0;">
@@ -155,28 +161,34 @@ function getHtmlForResult(result: ScanResult, webview: vscode.Webview) {
       </div>
     `;
   } else {
-    stepsHtml = result.repairPlan.steps.map((step) => {
-      const sevClass = step.severity.toLowerCase();
-      return `
+    stepsHtml = result.repairPlan.steps
+      .map((step) => {
+        const sevClass = step.severity.toLowerCase();
+        return `
         <div class="issue-card" data-severity="${sevClass}">
           <div class="issue-header">
             <span class="severity-pill ${sevClass}-pill">${escapeHtml(step.severity)}</span>
             <h3 class="issue-title">${escapeHtml(step.title)}</h3>
           </div>
-          ${step.file ? `<div class="filepath-pill">${escapeHtml(step.file)}${step.line ? `:${step.line}` : ''}</div>` : ''}
+          ${step.file ? `<div class="filepath-pill">${escapeHtml(step.file)}${step.line ? `:${step.line}` : ""}</div>` : ""}
           <div class="issue-desc">${escapeHtml(step.description)}</div>
           <ol class="fix-steps">
-            ${step.fixSteps.map((f: string) => `<li>${escapeHtml(f)}</li>`).join('')}
+            ${step.fixSteps.map((f: string) => `<li>${escapeHtml(f)}</li>`).join("")}
           </ol>
-          ${step.aiFixPrompt ? `
+          ${
+            step.aiFixPrompt
+              ? `
             <div class="ai-prompt">
               <div class="ai-prompt-header">✨ AI Prompt</div>
               ${escapeHtml(step.aiFixPrompt)}
             </div>
-          ` : ''}
+          `
+              : ""
+          }
         </div>
       `;
-    }).join('');
+      })
+      .join("");
   }
 
   return `
@@ -496,7 +508,7 @@ function getHtmlForResult(result: ScanResult, webview: vscode.Webview) {
 
     <div class="panel decision-panel">
       <div class="decision-title">
-        Deploy Status: <span class="${critical > 0 ? 'critical-color' : (high > 0 ? 'high-color' : 'low-color')}">${escapeHtml(result.deployStatus)}</span>
+        Deploy Status: <span class="${critical > 0 ? "critical-color" : high > 0 ? "high-color" : "low-color"}">${escapeHtml(result.deployStatus)}</span>
       </div>
       <div class="decision-reason">${escapeHtml(reason)}</div>
       <div class="decision-action">${escapeHtml(nextAction)}</div>
@@ -504,7 +516,7 @@ function getHtmlForResult(result: ScanResult, webview: vscode.Webview) {
 
     <div class="metrics-grid">
       <div class="metric-card">
-        <div class="metric-value" style="color: ${result.score > 80 ? 'var(--low)' : result.score > 50 ? 'var(--medium)' : 'var(--critical)'}">${result.score}</div>
+        <div class="metric-value" style="color: ${result.score > 80 ? "var(--low)" : result.score > 50 ? "var(--medium)" : "var(--critical)"}">${result.score}</div>
         <div class="metric-label">Score / 100</div>
       </div>
       <div class="metric-card">

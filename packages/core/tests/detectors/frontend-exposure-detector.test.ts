@@ -86,7 +86,9 @@ describe("FrontendExposureDetector", () => {
   it("requires use client as first statement; supports src/pages", async () => {
     const mk = (files: Record<string, string>) => detector.detect(createContext(files));
     expect(
-      await mk({ "components/a.tsx": `const s = "use client";\nconst k = process.env.NEXT_PUBLIC_X_SECRET;` }),
+      await mk({
+        "components/a.tsx": `const s = "use client";\nconst k = process.env.NEXT_PUBLIC_X_SECRET;`,
+      }),
     ).toHaveLength(0);
     expect(
       await mk({ "src/pages/a.tsx": `const k = process.env.NEXT_PUBLIC_X_SECRET;` }),
@@ -95,7 +97,9 @@ describe("FrontendExposureDetector", () => {
       await mk({ "pages/api/a.ts": `const k = process.env.NEXT_PUBLIC_X_SECRET;` }),
     ).toHaveLength(0);
     expect(
-      await mk({ "components/a.tsx": `// header\n\n'use client'\nconst k = process.env.NEXT_PUBLIC_X_SECRET;` }),
+      await mk({
+        "components/a.tsx": `// header\n\n'use client'\nconst k = process.env.NEXT_PUBLIC_X_SECRET;`,
+      }),
     ).toHaveLength(1);
   });
 

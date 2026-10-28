@@ -56,7 +56,8 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
     // Only draw a progress bar for interactive terminals, never in --json mode.
     const showProgress = !options.json && Boolean(process.stdout.isTTY);
     const progressBar = new cliProgress.SingleBar({
-      format: chalk.cyan("{bar}") + " {percentage}% | {value}/{total} | " + chalk.magenta("{message}"),
+      format:
+        chalk.cyan("{bar}") + " {percentage}% | {value}/{total} | " + chalk.magenta("{message}"),
       barCompleteChar: "█",
       barIncompleteChar: "░",
       hideCursor: true,
@@ -116,7 +117,8 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
           const fileUrl = pathToFileURL(htmlReportPath).href;
           await open(fileUrl);
         } catch {
-          if (!options.json) console.log(chalk.gray("Could not automatically open the report in your browser."));
+          if (!options.json)
+            console.log(chalk.gray("Could not automatically open the report in your browser."));
         }
       }
     }
@@ -125,11 +127,16 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
     // process.exit) so piped stdout is fully flushed.
     if (result.deployStatus === "blocker" || result.deployStatus === "danger") {
       if (!options.json) {
-        console.log(chalk.red.bold("\n❌ Scan failed: Blocking issues found. Please fix them before deploying."));
+        console.log(
+          chalk.red.bold(
+            "\n❌ Scan failed: Blocking issues found. Please fix them before deploying.",
+          ),
+        );
       }
       process.exitCode = 1;
     } else {
-      if (!options.json) console.log(chalk.green.bold("\n✅ Scan passed! You are clear to deploy."));
+      if (!options.json)
+        console.log(chalk.green.bold("\n✅ Scan passed! You are clear to deploy."));
       process.exitCode = 0;
     }
   } catch (error: unknown) {

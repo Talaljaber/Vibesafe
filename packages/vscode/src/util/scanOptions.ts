@@ -11,9 +11,7 @@ export interface ConfigReader {
  * Translate `vibesafe.*` settings into scan config overrides.
  * An empty `enabledCategories` means "all", so it is omitted.
  */
-export function readScanOptions(
-  cfg: ConfigReader
-): Partial<ScanConfig> {
+export function readScanOptions(cfg: ConfigReader): Partial<ScanConfig> {
   const out: Partial<ScanConfig> = {};
   const sev = cfg.get<string>("minSeverity");
   if (sev && (SEVERITIES as string[]).includes(sev)) out.minSeverity = sev as Severity;

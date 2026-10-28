@@ -24,7 +24,10 @@ interface JsonRpcMessage {
   error?: unknown;
 }
 
-function sendRequest(child: ChildProcessWithoutNullStreams, message: Record<string, unknown>): void {
+function sendRequest(
+  child: ChildProcessWithoutNullStreams,
+  message: Record<string, unknown>,
+): void {
   child.stdin.write(JSON.stringify(message) + "\n");
 }
 
@@ -68,7 +71,11 @@ class StdoutLineCollector {
     if (this.lines.length > index) return this.lines[index]!;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
-        reject(new Error(`Timed out waiting for stdout line ${index}. Got so far: ${JSON.stringify(this.lines)}`));
+        reject(
+          new Error(
+            `Timed out waiting for stdout line ${index}. Got so far: ${JSON.stringify(this.lines)}`,
+          ),
+        );
       }, timeoutMs);
       this.waiters.push({
         index,
@@ -141,7 +148,12 @@ describe("MCP server smoke test (stdio)", () => {
     expect(toolsMessage.error).toBeUndefined();
 
     const toolNames = (toolsMessage.result?.tools ?? []).map((t) => t.name).sort();
-    expect(toolNames).toEqual(["vibesafe_explain", "vibesafe_fix", "vibesafe_repair_plan", "vibesafe_scan"]);
+    expect(toolNames).toEqual([
+      "vibesafe_explain",
+      "vibesafe_fix",
+      "vibesafe_repair_plan",
+      "vibesafe_scan",
+    ]);
 
     // Every line collected on stdout must parse as JSON-RPC — this is the
     // actual stdout-purity assertion: no banner, no progress bar, no stray log.

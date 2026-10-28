@@ -5,12 +5,16 @@ import type { ScanContext } from "@vibesafe/shared";
 describe("ProjectStructureDetector", () => {
   const detector = new ProjectStructureDetector();
 
-  const createContext = (hasGitignore: boolean, hasReadme: boolean, hasTests: boolean): ScanContext => ({
+  const createContext = (
+    hasGitignore: boolean,
+    hasReadme: boolean,
+    hasTests: boolean,
+  ): ScanContext => ({
     rootPath: "/fake/path",
     projectContext: {
       hasGitignore,
       hasReadme,
-      hasTests
+      hasTests,
     } as any,
     files: [],
     config: {} as any,
@@ -21,9 +25,9 @@ describe("ProjectStructureDetector", () => {
     const context = createContext(false, false, false);
     const findings = await detector.detect(context);
     expect(findings).toHaveLength(3);
-    expect(findings.some(f => f.ruleId === "structure/missing-gitignore")).toBe(true);
-    expect(findings.some(f => f.ruleId === "structure/missing-readme")).toBe(true);
-    expect(findings.some(f => f.ruleId === "structure/missing-tests")).toBe(true);
+    expect(findings.some((f) => f.ruleId === "structure/missing-gitignore")).toBe(true);
+    expect(findings.some((f) => f.ruleId === "structure/missing-readme")).toBe(true);
+    expect(findings.some((f) => f.ruleId === "structure/missing-tests")).toBe(true);
   });
 
   it("should not detect if files are present", async () => {

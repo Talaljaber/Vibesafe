@@ -9,8 +9,17 @@
     "color": "#0f111a",
     "theme": "dark"
   },
-  "categories": ["Linters", "Other"],
-  "keywords": ["security", "vibe coding", "scanner", "secrets", "code quality"],
+  "categories": [
+    "Linters",
+    "Other"
+  ],
+  "keywords": [
+    "security",
+    "vibe coding",
+    "scanner",
+    "secrets",
+    "code quality"
+  ],
   "publisher": "talaljaber",
   "repository": {
     "type": "git",
@@ -82,12 +91,26 @@
     ],
     "menus": {
       "commandPalette": [
-        { "command": "vibesafe.copyFixPrompt", "when": "false" },
-        { "command": "vibesafe.applyFix", "when": "false" }
+        {
+          "command": "vibesafe.copyFixPrompt",
+          "when": "false"
+        },
+        {
+          "command": "vibesafe.applyFix",
+          "when": "false"
+        }
       ],
       "view/title": [
-        { "command": "vibesafe.scan", "when": "view == vibesafe.issues", "group": "navigation@1" },
-        { "command": "vibesafe.openDashboard", "when": "view == vibesafe.issues", "group": "navigation@2" }
+        {
+          "command": "vibesafe.scan",
+          "when": "view == vibesafe.issues",
+          "group": "navigation@1"
+        },
+        {
+          "command": "vibesafe.openDashboard",
+          "when": "view == vibesafe.issues",
+          "group": "navigation@2"
+        }
       ],
       "view/item/context": [
         {

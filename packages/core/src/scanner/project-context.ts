@@ -18,20 +18,25 @@ export class ProjectContextBuilder {
     const readmePath = path.join(this.rootPath, "README.md");
 
     const packageJson = await this.readJson(packageJsonPath);
-    
+
     const dependencies = packageJson?.dependencies ?? {};
     const devDependencies = packageJson?.devDependencies ?? {};
     const scripts = packageJson?.scripts ?? {};
 
     const hasTypeScript = await this.fileExists(tsconfigPath);
-    const hasGitignore = await this.fileExists(gitignorePath) || await this.fileExists(path.join(this.rootPath, ".gitignore"));
-    const hasEnvFile = await this.fileExists(envPath) || await this.fileExists(path.join(this.rootPath, ".env.local"));
+    const hasGitignore =
+      (await this.fileExists(gitignorePath)) ||
+      (await this.fileExists(path.join(this.rootPath, ".gitignore")));
+    const hasEnvFile =
+      (await this.fileExists(envPath)) ||
+      (await this.fileExists(path.join(this.rootPath, ".env.local")));
     const hasEnvExample = await this.fileExists(envExamplePath);
     const hasReadme = await this.fileExists(readmePath);
-    
-    const hasTests = Object.keys(devDependencies).some(dep => 
-      ['jest', 'vitest', 'mocha', 'cypress', 'playwright'].includes(dep)
-    ) || Object.keys(scripts).some(script => script.includes('test'));
+
+    const hasTests =
+      Object.keys(devDependencies).some((dep) =>
+        ["jest", "vitest", "mocha", "cypress", "playwright"].includes(dep),
+      ) || Object.keys(scripts).some((script) => script.includes("test"));
 
     // Framework detection
     let framework: ProjectContext["framework"] = "unknown";

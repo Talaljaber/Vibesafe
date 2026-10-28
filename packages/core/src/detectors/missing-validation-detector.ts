@@ -23,7 +23,6 @@ export class MissingValidationDetector implements Detector {
       }
 
       const content = await context.readFile(filePath);
-      
 
       let inputIndex = -1;
       for (const re of INPUT_READ_REGEXES) {
@@ -40,24 +39,31 @@ export class MissingValidationDetector implements Detector {
 
         if (!validated) {
           findings.push({
-            id: createFindingId(CATEGORY_PREFIX.validation, "validation/missing-body-validation", filePath, line),
+            id: createFindingId(
+              CATEGORY_PREFIX.validation,
+              "validation/missing-body-validation",
+              filePath,
+              line,
+            ),
             ruleId: "validation/missing-body-validation",
             title: "Unvalidated Request Body",
             severity: "high",
             category: "validation",
             deployBlocking: false,
-            confidence: "medium", 
+            confidence: "medium",
             file: filePath,
             line,
-            plainEnglishProblem: "This API route reads data sent by the user, but doesn't validate if the data is correct before using it.",
-            whyItMatters: "Malicious users can send unexpected data types (like an object instead of a string) to crash your server or bypass security checks. This is a common cause of downtime.",
+            plainEnglishProblem:
+              "This API route reads data sent by the user, but doesn't validate if the data is correct before using it.",
+            whyItMatters:
+              "Malicious users can send unexpected data types (like an object instead of a string) to crash your server or bypass security checks. This is a common cause of downtime.",
             fixSteps: [
               "Install a validation library like Zod (`npm i zod`).",
               "Define a schema that strictly types what you expect the request body to look like.",
-              "Parse the request body with the schema before using it."
+              "Parse the request body with the schema before using it.",
             ],
             autoFixAvailable: false,
-            aiFixPrompt: `This API route reads the request body but doesn't validate it. Please write a Zod schema for the expected data and parse the body using safeParse.`
+            aiFixPrompt: `This API route reads the request body but doesn't validate it. Please write a Zod schema for the expected data and parse the body using safeParse.`,
           });
         }
       }

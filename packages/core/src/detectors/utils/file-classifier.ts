@@ -35,7 +35,10 @@ export function isClientFile(filePath: string, fileContent: string): boolean {
 
   // Next.js Pages router: files in pages/ or src/pages/ (except pages/api) are client-accessible
   const normalizedPath = filePath.replace(/\\/g, "/");
-  if (/(^|\/)(src\/)?pages\//.test(normalizedPath) && !/(^|\/)(src\/)?pages\/api\//.test(normalizedPath)) {
+  if (
+    /(^|\/)(src\/)?pages\//.test(normalizedPath) &&
+    !/(^|\/)(src\/)?pages\/api\//.test(normalizedPath)
+  ) {
     return true;
   }
 

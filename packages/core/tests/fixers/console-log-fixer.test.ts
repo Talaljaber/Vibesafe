@@ -68,7 +68,8 @@ describe("ConsoleLogFixer", () => {
     // Either left untouched or turned into a plain comment: never `foo()/* */(...)`.
     const out = await read();
     expect(out).not.toMatch(/\/\*/);
-    if (result.success) expect(out).toBe("const x = foo()\n// console.log('hi')\n[1, 2].forEach(f)\n");
+    if (result.success)
+      expect(out).toBe("const x = foo()\n// console.log('hi')\n[1, 2].forEach(f)\n");
     else expect(out).toBe(src);
   });
 
@@ -98,7 +99,7 @@ describe("ConsoleLogFixer", () => {
 
   it("does not touch strings, braceless control bodies or larger expressions", async () => {
     for (const src of [
-      "const s = \"console.log(1)\";\n",
+      'const s = "console.log(1)";\n',
       "if (x)\n  console.log(1);\n",
       "foo(console.log(1));\n",
       "console.log(1), other();\n",

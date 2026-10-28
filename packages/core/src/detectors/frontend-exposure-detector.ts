@@ -5,16 +5,25 @@ import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
 import { isClientFile } from "./utils/file-classifier.js";
 
 const CODE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx"];
-const PUBLIC_PREFIXES = ["NEXT_PUBLIC_", "VITE_", "REACT_APP_", "EXPO_PUBLIC_", "NUXT_PUBLIC_", "PUBLIC_"];
+const PUBLIC_PREFIXES = [
+  "NEXT_PUBLIC_",
+  "VITE_",
+  "REACT_APP_",
+  "EXPO_PUBLIC_",
+  "NUXT_PUBLIC_",
+  "PUBLIC_",
+];
 
 /** A public-prefixed variable whose name looks like a secret (not preceded by another name char). */
 const PUBLIC_SECRET_REGEX =
   /(?<![A-Z0-9_])(?:NEXT_PUBLIC|VITE|REACT_APP|EXPO_PUBLIC|NUXT_PUBLIC|PUBLIC)_[A-Z0-9_]*(?:SECRET|PRIVATE|PASSWORD|SERVICE_ROLE)[A-Z0-9_]*/i;
 
-const SERVER_ENV_REGEX = /process\.env(?:\.([A-Za-z_][A-Za-z0-9_]*)|\[\s*["']([A-Za-z_][A-Za-z0-9_]*)["']\s*\])/g;
+const SERVER_ENV_REGEX =
+  /process\.env(?:\.([A-Za-z_][A-Za-z0-9_]*)|\[\s*["']([A-Za-z_][A-Za-z0-9_]*)["']\s*\])/g;
 const SECRET_LOOKING_NAME = /SERVICE_ROLE|SECRET|PRIVATE|PASSWORD|TOKEN|API_KEY|APIKEY/i;
 const SERVICE_ROLE_REGEX = /SERVICE_ROLE_KEY|service_role/;
-const IMPORT_REGEX = /(?:import|export)\s[^"';]*?from\s*["']([^"']+)["']|import\s*["']([^"']+)["']/g;
+const IMPORT_REGEX =
+  /(?:import|export)\s[^"';]*?from\s*["']([^"']+)["']|import\s*["']([^"']+)["']/g;
 
 /** Removes block and line comments, keeping line structure so line numbers stay valid. */
 function stripComments(content: string): string[] {
@@ -56,7 +65,9 @@ export class FrontendExposureDetector implements Detector {
           ...CODE_EXTENSIONS.map((e) => base + e),
           ...CODE_EXTENSIONS.map((e) => `${base}/index${e}`),
         ];
-        const hit = candidates.find((c) => fileSet.has(c) && CODE_EXTENSIONS.some((e) => c.endsWith(e)));
+        const hit = candidates.find(
+          (c) => fileSet.has(c) && CODE_EXTENSIONS.some((e) => c.endsWith(e)),
+        );
         if (hit) return hit;
       }
       return undefined;
@@ -132,7 +143,12 @@ export class FrontendExposureDetector implements Detector {
           let e: RegExpExecArray | null;
           while ((e = SERVER_ENV_REGEX.exec(l)) !== null) {
             const name = e[1] ?? e[2];
-            if (name && !hasPublicPrefix(name) && SECRET_LOOKING_NAME.test(name) && !seen.has(name)) {
+            if (
+              name &&
+              !hasPublicPrefix(name) &&
+              SECRET_LOOKING_NAME.test(name) &&
+              !seen.has(name)
+            ) {
               seen.add(name);
               findings.push(this.serverEnvImportFinding(filePath, importLine, raw, target, name));
             }
@@ -144,7 +160,12 @@ export class FrontendExposureDetector implements Detector {
     return findings;
   }
 
-  private serviceRoleFinding(file: string, line: number, evidence: string, importedFile?: string): Finding {
+  private serviceRoleFinding(
+    file: string,
+    line: number,
+    evidence: string,
+    importedFile?: string,
+  ): Finding {
     const via = importedFile ? ` (via imported module ${importedFile})` : "";
     return {
       id: createFindingId(
@@ -216,9 +237,20 @@ export class FrontendExposureDetector implements Detector {
    * cannot be sure the value is a real secret (e.g. `NEXT_PUBLIC_SECRET_SANTA`); the documented
    * convention reserves critical + blocking for confirmed exposures such as service-role keys.
    */
-  private publicSecretFinding(file: string, line: number, evidence: string, varName: string): Finding {
+  private publicSecretFinding(
+    file: string,
+    line: number,
+    evidence: string,
+    varName: string,
+  ): Finding {
     return {
-      id: createFindingId(CATEGORY_PREFIX.frontend_exposure, "frontend_exposure/public-secret-var", file, line, varName),
+      id: createFindingId(
+        CATEGORY_PREFIX.frontend_exposure,
+        "frontend_exposure/public-secret-var",
+        file,
+        line,
+        varName,
+      ),
       ruleId: "frontend_exposure/public-secret-var",
       title: "Sensitive variable exposed to frontend",
       severity: "high",

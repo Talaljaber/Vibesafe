@@ -28,12 +28,12 @@ describe("EnvExampleFixer", () => {
     plainEnglishProblem: "Test",
     whyItMatters: "Test",
     fixSteps: [],
-    autoFixAvailable: true
+    autoFixAvailable: true,
   };
 
   it("should create .env.example with stripped values", async () => {
     await fs.writeFile(path.join(tempDir, ".env"), "API_KEY=supersecret\n# Comment\nDB_PASS=12345");
-    
+
     const preview = await fixer.preview(finding, tempDir);
     expect(preview.filesToCreate).toContain(".env.example");
 

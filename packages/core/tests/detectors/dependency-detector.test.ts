@@ -17,8 +17,8 @@ describe("DependencyDetector", () => {
     const context = createContext({
       "package.json": JSON.stringify({
         scripts: {
-          postinstall: "node install.js"
-        }
+          postinstall: "node install.js",
+        },
       }),
     });
     const findings = await detector.detect(context);
@@ -47,7 +47,7 @@ describe("DependencyDetector", () => {
     }
     const context = createContext({
       "package.json": JSON.stringify({
-        dependencies: deps
+        dependencies: deps,
       }),
     });
     const findings = await detector.detect(context);
@@ -59,7 +59,7 @@ describe("DependencyDetector", () => {
     const context = createContext({
       "package.json": JSON.stringify({
         scripts: { dev: "next dev" },
-        dependencies: { "react": "18.0.0" }
+        dependencies: { react: "18.0.0" },
       }),
     });
     const findings = await detector.detect(context);

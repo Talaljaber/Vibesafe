@@ -11,7 +11,10 @@ export class GitignoreEnvFixer implements AutoFixer {
     "Safely adds .env and .env.* to .gitignore (keeping .env.example tracked) to prevent committing secrets.";
 
   canFix(finding: Finding): boolean {
-    return finding.ruleId === "secret/env-not-ignored" || finding.ruleId === "structure/missing-gitignore";
+    return (
+      finding.ruleId === "secret/env-not-ignored" ||
+      finding.ruleId === "structure/missing-gitignore"
+    );
   }
 
   private plan(content: string): { hasEnv: boolean; append: string } {
@@ -32,7 +35,8 @@ export class GitignoreEnvFixer implements AutoFixer {
     try {
       return { path: gitignorePath, content: await fs.readFile(gitignorePath, "utf-8") };
     } catch (error) {
-      if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return { path: gitignorePath, content: null };
+      if ((error as NodeJS.ErrnoException)?.code === "ENOENT")
+        return { path: gitignorePath, content: null };
       throw error;
     }
   }
@@ -42,16 +46,21 @@ export class GitignoreEnvFixer implements AutoFixer {
     try {
       content = (await this.read(rootPath)).content;
     } catch (error) {
-      return { description: `Cannot update .gitignore: ${(error as Error).message}`, filesToModify: [], filesToCreate: [] };
+      return {
+        description: `Cannot update .gitignore: ${(error as Error).message}`,
+        filesToModify: [],
+        filesToCreate: [],
+      };
     }
     const exists = content !== null;
-    const added = content !== null
-      ? this.plan(content)
-          .append.split("\n")
-          .filter(Boolean)
-          .map((l) => `+ ${l}`)
-          .join("\n") + "\n"
-      : "";
+    const added =
+      content !== null
+        ? this.plan(content)
+            .append.split("\n")
+            .filter(Boolean)
+            .map((l) => `+ ${l}`)
+            .join("\n") + "\n"
+        : "";
     return {
       description: "Appends `.env`, `.env.*` and `!.env.example` to .gitignore to protect secrets.",
       filesToModify: exists ? [".gitignore"] : [],

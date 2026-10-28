@@ -1,6 +1,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { ScanConfig, ScanResult, ScanContext, Finding, ScanSummary, RepairPlan } from "@vibesafe/shared";
+import type {
+  ScanConfig,
+  ScanResult,
+  ScanContext,
+  Finding,
+  ScanSummary,
+  RepairPlan,
+} from "@vibesafe/shared";
 import {
   getDeployStatus,
   isDeployBlocker,
@@ -26,26 +33,30 @@ export class ScannerPipeline {
   /**
    * Runs the full scanning pipeline on a project.
    */
-  async scan(userConfig: Partial<ScanConfig> & { rootPath: string }, onProgress?: (message: string, current: number, total: number) => void): Promise<ScanResult> {
+  async scan(
+    userConfig: Partial<ScanConfig> & { rootPath: string },
+    onProgress?: (message: string, current: number, total: number) => void,
+  ): Promise<ScanResult> {
     const startTime = Date.now();
     const warnings: string[] = [];
     const config = mergeConfig(userConfig.rootPath, userConfig);
-    
+
     // Validate config
     const errors = validateConfig(config);
     if (errors.length > 0) {
-      throw new Error(`Invalid configuration: ${errors.map(e => e.message).join(", ")}`);
+      throw new Error(`Invalid configuration: ${errors.map((e) => e.message).join(", ")}`);
     }
 
     // 1. Discover files
     const fileDiscovery = new FileDiscovery(config.rootPath);
-    let files = config.targetFiles && config.targetFiles.length > 0 
-      ? config.targetFiles 
-      : await fileDiscovery.discoverFiles(config.excludePatterns, {
-          // Not in mergeConfig's defaults; undefined/false = exclude tests.
-          includeTests: userConfig.includeTests ?? config.includeTests,
-        });
-    
+    let files =
+      config.targetFiles && config.targetFiles.length > 0
+        ? config.targetFiles
+        : await fileDiscovery.discoverFiles(config.excludePatterns, {
+            // Not in mergeConfig's defaults; undefined/false = exclude tests.
+            includeTests: userConfig.includeTests ?? config.includeTests,
+          });
+
     if (config.maxFiles && files.length > config.maxFiles) {
       // Trim to maxFiles if we exceed the limit to prevent out-of-memory or hanging
       warnings.push(
@@ -86,7 +97,7 @@ export class ScannerPipeline {
           // If we fail to read a file, return empty string so detectors don't crash
           return "";
         }
-      }
+      },
     };
 
     // 4. Run detectors
@@ -104,9 +115,10 @@ export class ScannerPipeline {
 
     // 5.5. Filter findings based on config
     if (config.minSeverity) {
-      findings = findings.filter(f => 
-        // Keep if finding severity is >= minSeverity. lower index means more severe
-        !isMoreSevere(config.minSeverity!, f.severity)
+      findings = findings.filter(
+        (f) =>
+          // Keep if finding severity is >= minSeverity. lower index means more severe
+          !isMoreSevere(config.minSeverity!, f.severity),
       );
     }
 
@@ -148,7 +160,10 @@ export class ScannerPipeline {
     };
   }
 
-  public calculateScore(findings: Finding[]): { score: number; deployStatus: ReturnType<typeof getDeployStatus> } {
+  public calculateScore(findings: Finding[]): {
+    score: number;
+    deployStatus: ReturnType<typeof getDeployStatus>;
+  } {
     let score = 100;
     let hasBlocker = false;
 
@@ -160,7 +175,7 @@ export class ScannerPipeline {
 
       const rawWeight = SEVERITY_WEIGHTS[finding.severity];
       const multiplier = CATEGORY_MULTIPLIERS[finding.category];
-      score += (rawWeight * multiplier);
+      score += rawWeight * multiplier;
     }
 
     score = Math.max(0, Math.round(score));
@@ -214,7 +229,7 @@ export class ScannerPipeline {
       fixSteps: f.fixSteps,
       aiFixPrompt: f.aiFixPrompt,
       autoFixAvailable: f.autoFixAvailable,
-      estimatedMinutes: f.severity === 'critical' ? 15 : f.severity === 'high' ? 10 : 5,
+      estimatedMinutes: f.severity === "critical" ? 15 : f.severity === "high" ? 10 : 5,
     }));
 
     const totalMinutes = steps.reduce((sum, step) => sum + step.estimatedMinutes, 0);

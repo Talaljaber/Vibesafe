@@ -11,6 +11,6 @@ export function redactSecret(secret: string): string {
   if (secret.length <= 8) {
     return secret.substring(0, 2) + "***" + secret.substring(secret.length - 1);
   }
-  
+
   return secret.substring(0, 4) + "..." + secret.substring(secret.length - 4);
 }

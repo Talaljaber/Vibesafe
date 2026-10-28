@@ -17,7 +17,9 @@ export function sanitizeEvidence(line: string, maxLength: number = MAX_EVIDENCE_
   let out = line.trim();
 
   for (const pattern of SECRET_PATTERNS) {
-    const flags = pattern.regex.flags.includes("g") ? pattern.regex.flags : pattern.regex.flags + "g";
+    const flags = pattern.regex.flags.includes("g")
+      ? pattern.regex.flags
+      : pattern.regex.flags + "g";
     const re = new RegExp(pattern.regex.source, flags);
     out = out.replace(re, (...args: unknown[]) => {
       const matched = args[0] as string;
@@ -31,7 +33,10 @@ export function sanitizeEvidence(line: string, maxLength: number = MAX_EVIDENCE_
     });
   }
 
-  out = out.replace(URL_CREDENTIALS_RE, (_m, scheme: string, user: string) => `${scheme}${user}:***@`);
+  out = out.replace(
+    URL_CREDENTIALS_RE,
+    (_m, scheme: string, user: string) => `${scheme}${user}:***@`,
+  );
 
   if (out.length > maxLength) {
     out = out.slice(0, maxLength) + "…";

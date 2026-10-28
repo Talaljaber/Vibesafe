@@ -11,13 +11,15 @@
 <hr />
 
 ## 🚨 The "Vibe Coding" Problem
-"Vibe coding" with AI tools (like Cursor, GitHub Copilot, or Claude) is incredibly fast and fun, but it often leads to messy codebases, exposed secrets, and subtle security flaws. 
+
+"Vibe coding" with AI tools (like Cursor, GitHub Copilot, or Claude) is incredibly fast and fun, but it often leads to messy codebases, exposed secrets, and subtle security flaws.
 
 **VibeSafe** acts as your automated security engineer. It scans your code before you deploy and tells you exactly what to fix, complete with copy-pasteable AI prompts and one-click auto-fixes.
 
 ---
 
 ### Before / After
+
 - **Before:** Secrets hardcoded, empty `.env.example`, missing dependency declarations.
 - **After:** Clean `.env.example`, safer configurations, and fewer obvious deployment risks.
 
@@ -41,22 +43,27 @@
 You can run VibeSafe instantly using `npx`, or install it locally in your project.
 
 > [!NOTE]
-> **For Local Testing / Contributors:** If you have cloned this repository and want to test your local changes on *other* projects on your computer, DO NOT use `npx @vibesafe/cli` as it will download the published version from NPM. Instead, link it globally:
+> **For Local Testing / Contributors:** If you have cloned this repository and want to test your local changes on _other_ projects on your computer, DO NOT use `npx @vibesafe/cli` as it will download the published version from NPM. Instead, link it globally:
+>
 > ```bash
 > cd packages/cli
 > npm link
 > ```
+>
 > Then, in any other folder on your computer, you can run the local build directly:
+>
 > ```bash
 > vibesafe scan . --html
 > ```
 
 **Option 1: Run instantly (No installation)**
+
 ```bash
 npx @vibesafe/cli scan .
 ```
 
 **Option 2: Install locally in your project**
+
 ```bash
 npm install -D @vibesafe/cli
 # or
@@ -66,12 +73,14 @@ yarn add -D @vibesafe/cli
 ```
 
 Once installed, you can run the scanner via your package manager:
+
 ```bash
 npx vibesafe scan .
 # or pnpm vibesafe scan .
 ```
 
 **CLI Commands & Options:**
+
 - `npx @vibesafe/cli scan .` - Scans the current directory and outputs a detailed **Repair Plan** to your terminal.
 - `npx @vibesafe/cli scan . --html` - Scans the directory and generates a beautiful `vibesafe-report.html` dashboard.
 - `npx @vibesafe/cli scan . --open-report` - Generates the HTML dashboard and opens it in your default browser automatically.
@@ -116,18 +125,18 @@ Found 7 issues needing your attention. Expected fix time: ~70 mins.
 
 ### 🔍 What VibeSafe detects
 
-| Area | Checks |
-| --- | --- |
-| Secrets | Hardcoded API keys and tokens (OpenAI, Anthropic, Stripe, AWS access key ids and secret keys, Supabase, JWTs) with per-pattern severity, placeholder filtering and redacted evidence; optional git history scan with `--deep` |
-| Frontend exposure | Server secrets reachable from client code (all public env prefixes, import following), Firebase Admin SDK in client code, Vite `define` blocks that leak `process.env` |
-| Auth and authorization | Unprotected Next.js API routes and Express routes, missing role checks, Stripe webhook handlers without signature verification |
-| Validation | Raw request input used without validation (Zod, express-validator, celebrate, ...) in Next.js and Express |
-| Security configuration | Insecure CORS (reflected origins, wildcard with credentials), missing helmet / security headers, missing rate limiting on login, AI and email endpoints, Supabase tables without Row Level Security |
-| Python / Django | Django project detection, `.py` file scanning and insecure Django settings |
-| XSS | `dangerouslySetInnerHTML` with dynamic content |
-| Dependencies | Suspicious install scripts, excessive dependencies |
-| Code quality | Large files and components, excessive `any`, leftover `console.log`, hardcoded localhost URLs, missing React error boundaries |
-| Project structure | Missing `.env.example`, `.gitignore` and `README.md` |
+| Area                   | Checks                                                                                                                                                                                                                        |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Secrets                | Hardcoded API keys and tokens (OpenAI, Anthropic, Stripe, AWS access key ids and secret keys, Supabase, JWTs) with per-pattern severity, placeholder filtering and redacted evidence; optional git history scan with `--deep` |
+| Frontend exposure      | Server secrets reachable from client code (all public env prefixes, import following), Firebase Admin SDK in client code, Vite `define` blocks that leak `process.env`                                                        |
+| Auth and authorization | Unprotected Next.js API routes and Express routes, missing role checks, Stripe webhook handlers without signature verification                                                                                                |
+| Validation             | Raw request input used without validation (Zod, express-validator, celebrate, ...) in Next.js and Express                                                                                                                     |
+| Security configuration | Insecure CORS (reflected origins, wildcard with credentials), missing helmet / security headers, missing rate limiting on login, AI and email endpoints, Supabase tables without Row Level Security                           |
+| Python / Django        | Django project detection, `.py` file scanning and insecure Django settings                                                                                                                                                    |
+| XSS                    | `dangerouslySetInnerHTML` with dynamic content                                                                                                                                                                                |
+| Dependencies           | Suspicious install scripts, excessive dependencies                                                                                                                                                                            |
+| Code quality           | Large files and components, excessive `any`, leftover `console.log`, hardcoded localhost URLs, missing React error boundaries                                                                                                 |
+| Project structure      | Missing `.env.example`, `.gitignore` and `README.md`                                                                                                                                                                          |
 
 Test and fixture paths (for example `**/*.test.*`, `__tests__`, `fixtures`) are excluded by default; pass `--include-tests` to scan them.
 
@@ -188,28 +197,27 @@ Inputs: `path`, `fail-on`, `comment`, `github-token`, `deep`, `version`, `node-v
 
 `vibesafe scan . --format sarif --output vibesafe.sarif` writes SARIF 2.1.0 that you can upload with `github/codeql-action/upload-sarif` to see findings in GitHub code scanning.
 
-
 ### 🤖 MCP server
 
 `@vibesafe/mcp` is a stdio [Model Context Protocol](https://modelcontextprotocol.io) server that lets AI assistants (Claude Code, Claude Desktop, ...) run VibeSafe scans.
 
 **Tools**
 
-| Tool | What it does |
-| --- | --- |
-| `vibesafe_scan` | Scan a directory (`path`, optional `minSeverity`, `category`, `includeTests`, and `deep` to also inspect git history for leaked secrets; `deep` is slower). Returns score, deploy status, scan warnings and the top findings. |
-| `vibesafe_explain` | Full explanation, fix steps and AI fix prompt for a finding ID from the last scan. |
-| `vibesafe_repair_plan` | The ordered repair plan from the last scan. |
-| `vibesafe_fix` | Preview (default, `dryRun: true`) or apply a safe auto-fix for a finding. |
+| Tool                   | What it does                                                                                                                                                                                                                  |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vibesafe_scan`        | Scan a directory (`path`, optional `minSeverity`, `category`, `includeTests`, and `deep` to also inspect git history for leaked secrets; `deep` is slower). Returns score, deploy status, scan warnings and the top findings. |
+| `vibesafe_explain`     | Full explanation, fix steps and AI fix prompt for a finding ID from the last scan.                                                                                                                                            |
+| `vibesafe_repair_plan` | The ordered repair plan from the last scan.                                                                                                                                                                                   |
+| `vibesafe_fix`         | Preview (default, `dryRun: true`) or apply a safe auto-fix for a finding.                                                                                                                                                     |
 
 Finding IDs are only valid until the next `vibesafe_scan`.
 
 **Scan roots and writes.** By default `vibesafe_scan` only accepts directories inside the server's working directory, and `vibesafe_fix` with `dryRun: false` only returns a preview. Change this with server arguments or environment variables:
 
-| Setting | Effect |
-| --- | --- |
-| `--root <dir>` (repeatable) or `VIBESAFE_MCP_ROOTS` (separated by the OS path delimiter) | Directories that may be scanned (subtrees). |
-| `--allow-fix` or `VIBESAFE_MCP_ALLOW_FIX=1` | Allow `vibesafe_fix` to write files when `dryRun: false`. |
+| Setting                                                                                  | Effect                                                    |
+| ---------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `--root <dir>` (repeatable) or `VIBESAFE_MCP_ROOTS` (separated by the OS path delimiter) | Directories that may be scanned (subtrees).               |
+| `--allow-fix` or `VIBESAFE_MCP_ALLOW_FIX=1`                                              | Allow `vibesafe_fix` to write files when `dryRun: false`. |
 
 **Build step.** The server runs from `dist/`, so build first (from the repo root):
 
@@ -253,6 +261,7 @@ Prefer working entirely within your editor? Install the **VibeSafe** extension!
 ## ⚠️ Known Limitations
 
 VibeSafe is in early release and is meant to catch the most common "vibe-coding" mistakes. Please be aware of the following:
+
 - **Rule Engine Scope:** Detectors are heuristic (regex and light structural analysis). Cross-file data flow tracking is not implemented, so some findings can be false positives or misses.
 - **Frameworks:** Best coverage is for Next.js, Vite and Express; Django/Python support is an early slice.
 - **Auto-fixes:** Some auto-fixes might require manual review to ensure they don't alter intended app logic.
@@ -292,17 +301,20 @@ Package versions are kept aligned with `node scripts/sync-versions.mjs` (see [CO
 To run VibeSafe locally:
 
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/Talaljaber/Vibesafe.git
    cd Vibesafe
    ```
 
 2. Install dependencies using `pnpm`:
+
    ```bash
    pnpm install
    ```
 
 3. Build all packages:
+
    ```bash
    pnpm run build
    ```

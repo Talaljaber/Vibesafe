@@ -22,7 +22,7 @@ export class VibeSafeHoverProvider implements vscode.HoverProvider {
   public provideHover(
     document: vscode.TextDocument,
     position: vscode.Position,
-    _token: vscode.CancellationToken
+    _token: vscode.CancellationToken,
   ): vscode.ProviderResult<vscode.Hover> {
     const latestResult = this.resultFor(document.uri.fsPath);
     if (!latestResult) return null;
@@ -59,13 +59,13 @@ export class VibeSafeHoverProvider implements vscode.HoverProvider {
     if (finding.aiFixPrompt) {
       markdown.appendMarkdown(`---\n`);
       markdown.appendMarkdown(
-        `[✨ Copy AI Prompt for Copilot](${findingCommandUri("vibesafe.copyFixPrompt", finding.id)})\n`
+        `[✨ Copy AI Prompt for Copilot](${findingCommandUri("vibesafe.copyFixPrompt", finding.id)})\n`,
       );
     }
 
     if (finding.autoFixAvailable) {
       markdown.appendMarkdown(
-        `\n[🔧 Apply Safe Fix](${findingCommandUri("vibesafe.applyFix", finding.id)})\n`
+        `\n[🔧 Apply Safe Fix](${findingCommandUri("vibesafe.applyFix", finding.id)})\n`,
       );
     }
 

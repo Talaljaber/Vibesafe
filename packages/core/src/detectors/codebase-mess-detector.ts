@@ -15,16 +15,22 @@ export class CodebaseMessDetector implements Detector {
   id = "codebase-mess-detector";
   name = "Codebase Mess Detection";
   category = "code_quality" as const;
-  description = "Detects overly large files, excessive 'any' usage, leftover console.logs, and empty catch blocks.";
+  description =
+    "Detects overly large files, excessive 'any' usage, leftover console.logs, and empty catch blocks.";
 
   async detect(context: ScanContext): Promise<Finding[]> {
     const findings: Finding[] = [];
 
     let totalAnyCount = 0;
-    
+
     for (const filePath of context.files) {
       // Only check code files
-      if (!filePath.endsWith(".ts") && !filePath.endsWith(".tsx") && !filePath.endsWith(".js") && !filePath.endsWith(".jsx")) {
+      if (
+        !filePath.endsWith(".ts") &&
+        !filePath.endsWith(".tsx") &&
+        !filePath.endsWith(".js") &&
+        !filePath.endsWith(".jsx")
+      ) {
         continue;
       }
 
@@ -44,13 +50,15 @@ export class CodebaseMessDetector implements Detector {
           file: filePath,
           evidence: `${lines.length} lines`,
           plainEnglishProblem: `This file is ${lines.length} lines long, which is very hard to read and maintain.`,
-          whyItMatters: "Huge files usually mean a component or function is doing too many things. This leads to bugs and makes it difficult for AI or humans to understand the code.",
+          whyItMatters:
+            "Huge files usually mean a component or function is doing too many things. This leads to bugs and makes it difficult for AI or humans to understand the code.",
           fixSteps: [
             "Break this file down into smaller, focused modules or components.",
-            "Move helper functions to a separate `utils.ts` file."
+            "Move helper functions to a separate `utils.ts` file.",
           ],
           autoFixAvailable: false,
-          aiFixPrompt: "This file is too large and does too many things. Please refactor it by extracting smaller, reusable components/functions into separate files."
+          aiFixPrompt:
+            "This file is too large and does too many things. Please refactor it by extracting smaller, reusable components/functions into separate files.",
         });
       }
 
@@ -70,7 +78,12 @@ export class CodebaseMessDetector implements Detector {
       while ((catchMatch = emptyCatchRe.exec(content)) !== null) {
         const catchLine = content.slice(0, catchMatch.index).split("\n").length;
         findings.push({
-          id: createFindingId(CATEGORY_PREFIX.code_quality, "code_quality/empty-catch", filePath, catchLine),
+          id: createFindingId(
+            CATEGORY_PREFIX.code_quality,
+            "code_quality/empty-catch",
+            filePath,
+            catchLine,
+          ),
           ruleId: "code_quality/empty-catch",
           title: "Empty catch block",
           severity: "medium",
@@ -80,14 +93,17 @@ export class CodebaseMessDetector implements Detector {
           file: filePath,
           line: catchLine,
           evidence: sanitizeEvidence(lines[catchLine - 1] ?? catchMatch[0]),
-          plainEnglishProblem: "You are catching an error but doing nothing with it (swallowing the error).",
-          whyItMatters: "If this code fails, you will never know. The app might break silently, making it impossible to debug.",
+          plainEnglishProblem:
+            "You are catching an error but doing nothing with it (swallowing the error).",
+          whyItMatters:
+            "If this code fails, you will never know. The app might break silently, making it impossible to debug.",
           fixSteps: [
             "Add at least a `console.error(error)` inside the catch block.",
-            "If the error is expected, add a comment explaining why it's ignored."
+            "If the error is expected, add a comment explaining why it's ignored.",
           ],
           autoFixAvailable: false,
-          aiFixPrompt: "Please fix this empty catch block by adding proper error logging or handling."
+          aiFixPrompt:
+            "Please fix this empty catch block by adding proper error logging or handling.",
         });
       }
 
@@ -99,7 +115,12 @@ export class CodebaseMessDetector implements Detector {
         // 3. console.log leftovers
         if (line.includes("console.log(")) {
           findings.push({
-            id: createFindingId(CATEGORY_PREFIX.code_quality, "code_quality/console-log", filePath, i + 1),
+            id: createFindingId(
+              CATEGORY_PREFIX.code_quality,
+              "code_quality/console-log",
+              filePath,
+              i + 1,
+            ),
             ruleId: "code_quality/console-log",
             title: "Leftover console.log",
             severity: "low",
@@ -110,7 +131,8 @@ export class CodebaseMessDetector implements Detector {
             line: i + 1,
             evidence: sanitizeEvidence(line),
             plainEnglishProblem: "You left a `console.log` statement in your code.",
-            whyItMatters: "While harmless, excessive logging in production clutters the console and can occasionally leak sensitive information if you log full objects.",
+            whyItMatters:
+              "While harmless, excessive logging in production clutters the console and can occasionally leak sensitive information if you log full objects.",
             fixSteps: ["Remove the `console.log` statement."],
             autoFixAvailable: true,
           });
@@ -130,10 +152,11 @@ export class CodebaseMessDetector implements Detector {
         confidence: "high",
         evidence: `${totalAnyCount} uses of 'any' across the project`,
         plainEnglishProblem: `Your project uses the 'any' type ${totalAnyCount} times.`,
-        whyItMatters: "Using 'any' defeats the purpose of TypeScript. It hides potential crashes and bugs until your code is running in production.",
+        whyItMatters:
+          "Using 'any' defeats the purpose of TypeScript. It hides potential crashes and bugs until your code is running in production.",
         fixSteps: [
           "Define proper TypeScript interfaces for your data.",
-          "Use `unknown` instead of `any` if you aren't sure of the type."
+          "Use `unknown` instead of `any` if you aren't sure of the type.",
         ],
         autoFixAvailable: false,
       });

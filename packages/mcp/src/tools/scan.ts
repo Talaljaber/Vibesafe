@@ -21,7 +21,9 @@ const CATEGORIES = [
 ] as const;
 
 export const scanInputShape = {
-  path: z.string().describe("Directory to scan. Absolute, or relative to the MCP server's working directory."),
+  path: z
+    .string()
+    .describe("Directory to scan. Absolute, or relative to the MCP server's working directory."),
   minSeverity: z
     .enum(SEVERITIES)
     .optional()
@@ -39,7 +41,9 @@ export const scanInputShape = {
   includeTests: z
     .boolean()
     .optional()
-    .describe("Also scan test files and fixtures, which are excluded by default. Defaults to false."),
+    .describe(
+      "Also scan test files and fixtures, which are excluded by default. Defaults to false.",
+    ),
 };
 
 export function registerScanTool(server: McpServer, state: ScanState, policy: ServerPolicy): void {
