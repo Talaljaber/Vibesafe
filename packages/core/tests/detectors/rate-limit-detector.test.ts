@@ -55,17 +55,36 @@ describe("RateLimitDetector", () => {
       expect(f[0]!.line).toBe(3);
     });
 
-    it("flags anthropic and ai sdk imports", async () => {
+    it("flags anthropic and ai sdk usage", async () => {
       const f = await run({
-        "app/api/a/route.ts": `import Anthropic from "@anthropic-ai/sdk";\nexport async function POST() {}`,
-        "app/api/b/route.ts": `import { streamText } from "ai";\nexport async function POST() {}`,
+        "app/api/a/route.ts": `import Anthropic from "@anthropic-ai/sdk";\nconst c = new Anthropic();\nexport async function POST() { await c.messages.create({}); }`,
+        "app/api/b/route.ts": `import { streamText } from "ai";\nexport async function POST() { return streamText({}); }`,
       });
       expect(f).toHaveLength(2);
     });
 
-    it.each(["resend", "nodemailer", "twilio"])("flags %s as medium", async (lib) => {
+    it("does not flag a route that only imports an AI/messaging SDK", async () => {
       const f = await run({
-        "app/api/notify/route.ts": `import x from "${lib}";\nexport async function POST() {}`,
+        "app/api/a/route.ts": `import Anthropic from "@anthropic-ai/sdk";\nexport async function POST() {}`,
+        "app/api/b/route.ts": `import type { Resend } from "resend";\nexport async function POST() {}`,
+      });
+      expect(f).toEqual([]);
+    });
+
+    it("skips webhook receivers", async () => {
+      const f = await run({
+        "app/api/webhooks/resend/route.ts": `import { Resend } from "resend";\nconst r = new Resend("k");\nexport async function POST() {}`,
+      });
+      expect(f).toEqual([]);
+    });
+
+    it.each([
+      ["resend", `const x = new Resend("k");`],
+      ["nodemailer", `const x = t.sendMail({});`],
+      ["twilio", `const x = twilio(a, b);`],
+    ])("flags %s as medium", async (lib, call) => {
+      const f = await run({
+        "app/api/notify/route.ts": `import x from "${lib}";\nexport async function POST() { ${call} }`,
       });
       expect(f).toHaveLength(1);
       expect(f[0]!.severity).toBe("medium");
@@ -73,7 +92,7 @@ describe("RateLimitDetector", () => {
 
     it("reports the highest severity once when kinds combine", async () => {
       const f = await run({
-        "app/api/login/route.ts": `import { Resend } from "resend";\nexport async function POST() {}`,
+        "app/api/login/route.ts": `import { Resend } from "resend";\nexport async function POST() { new Resend("k"); }`,
       });
       expect(f).toHaveLength(1);
       expect(f[0]!.severity).toBe("high");
@@ -151,6 +170,48 @@ describe("RateLimitDetector", () => {
       expect(f).toHaveLength(1);
     });
 
+    it("accepts slowDown and express-slow-down signals", async () => {
+      const f = await run({
+        "app/api/a/login/route.ts": `import slowDown from "express-slow-down";\nexport async function POST() {}`,
+        "app/api/b/login/route.ts": `const s = slowDown({});\nexport async function POST() {}`,
+      });
+      expect(f).toEqual([]);
+    });
+
+    it("accepts a limiter module imported via a relative path", async () => {
+      const f = await run({
+        "app/api/login/limit.ts": `import { Ratelimit } from "@upstash/ratelimit";\nexport const rl = 1;`,
+        "app/api/login/route.ts": `import { rl } from "./limit";\nexport async function POST() {}`,
+      });
+      expect(f).toEqual([]);
+    });
+
+    it("a quoted string mentioning rate-limit is not a signal", async () => {
+      const f = await run({
+        "app/api/login/route.ts": `const msg = "rate-limit exceeded";\nexport async function POST() {}`,
+      });
+      expect(f).toHaveLength(1);
+    });
+
+    it("recognises a monorepo middleware only for its own app", async () => {
+      const mw = `import { Ratelimit } from "@upstash/ratelimit";\nexport function middleware() {}`;
+      const f = await run({
+        "apps/web/middleware.ts": mw,
+        "apps/web/app/api/login/route.ts": `export async function POST() {}`,
+        "apps/admin/app/api/login/route.ts": `export async function POST() {}`,
+      });
+      expect(f).toHaveLength(1);
+      expect(f[0]!.file).toBe("apps/admin/app/api/login/route.ts");
+    });
+
+    it("redacts secrets in evidence", async () => {
+      const f = await run({
+        "app/api/chat/route.ts": `import OpenAI from "openai";\nexport async function POST() { new OpenAI({ apiKey: "sk-proj-abcdefghijklmnopqrstuvwxyz0123456789ABCD" }); }`,
+      });
+      expect(f).toHaveLength(1);
+      expect(f[0]!.evidence).not.toContain("abcdefghijklmnopqrstuvwxyz0123456789");
+    });
+
     it("ignores test files", async () => {
       const f = await run({ "tests/app/api/login/route.test.ts": `export async function POST() {}` });
       expect(f).toEqual([]);
@@ -198,12 +259,75 @@ describe("RateLimitDetector", () => {
       expect(f).toEqual([]);
     });
 
-    it("accepts a global limiter set up in another file", async () => {
+    it("accepts a global limiter in an app file that imports the router", async () => {
       const f = await run({
-        "app.js": `const express = require("express");\nconst app = express();\napp.use(limiter);\n`,
+        "app.js": `const express = require("express");\nconst auth = require("./routes/auth");\nconst app = express();\napp.use(limiter);\napp.use("/auth", auth);`,
         "routes/auth.js": `const express = require("express");\nconst router = express.Router();\nrouter.post("/login", (req, res) => {});`,
       });
       expect(f).toEqual([]);
+    });
+
+    it("a limiter in an unrelated file does not exempt other files", async () => {
+      const f = await run({
+        "other/app.js": `const express = require("express");\nconst app = express();\napp.use(limiter);`,
+        "routes/auth.js": `const express = require("express");\nconst router = express.Router();\nrouter.post("/login", (req, res) => {});`,
+      });
+      expect(f).toHaveLength(1);
+    });
+
+    it("a path-scoped limiter only covers matching routes", async () => {
+      const f = await run({
+        "server.js": `const express = require("express");\nconst app = express();\napp.use("/health", limiter);\napp.use("/auth", authLimiter);\napp.post("/login", (req, res) => {});\napp.post("/auth/login", (req, res) => {});`,
+      });
+      expect(f).toHaveLength(1);
+      expect(f[0]!.line).toBe(5);
+    });
+
+    it("express.json() plus a limiter on /login only still flags /signup", async () => {
+      const f = await run({
+        "server.js": `const express = require("express");\nconst rateLimit = require("express-rate-limit");\nconst app = express();\nconst loginLimiter = rateLimit({});\napp.use(express.json());\napp.post("/login", loginLimiter, (req, res) => {});\napp.post("/signup", (req, res) => {});`,
+      });
+      expect(f).toHaveLength(1);
+      expect(f[0]!.line).toBe(7);
+    });
+
+    it("a limiter imported but never applied is still flagged", async () => {
+      const f = await run({
+        "server.js": `const express = require("express");\nconst rateLimit = require("express-rate-limit");\nconst app = express();\napp.use(express.json());\napp.post("/login", (req, res) => {});`,
+      });
+      expect(f).toHaveLength(1);
+    });
+
+    it("accepts a shared limiter module applied with use()", async () => {
+      const f = await run({
+        "lib/guard.js": `const rateLimit = require("express-rate-limit");\nmodule.exports = rateLimit({});`,
+        "server.js": `const express = require("express");\nconst guard = require("./lib/guard");\nconst app = express();\napp.use(guard);\napp.post("/login", (req, res) => {});`,
+      });
+      expect(f).toEqual([]);
+    });
+
+    it("a shared limiter module that is imported but not applied does not protect", async () => {
+      const f = await run({
+        "lib/guard.js": `const rateLimit = require("express-rate-limit");\nmodule.exports = rateLimit({});`,
+        "server.js": `const express = require("express");\nconst guard = require("./lib/guard");\nconst app = express();\napp.use(express.json());\napp.post("/login", (req, res) => {});`,
+      });
+      expect(f).toHaveLength(1);
+    });
+
+    it("does not flag a GET login page but flags router.route().post()", async () => {
+      const f = await run({
+        "server.js": `const express = require("express");\nconst app = express();\napp.get("/login", (req, res) => res.render("login"));\napp.route("/signup").post((req, res) => {});`,
+      });
+      expect(f).toHaveLength(1);
+      expect(f[0]!.line).toBe(4);
+    });
+
+    it("flags twilio SMS routes as medium", async () => {
+      const f = await run({
+        "server.js": `const express = require("express");\nconst twilio = require("twilio");\nconst app = express();\napp.post("/send", async (req, res) => { await twilio(a, b).messages.create({}); });`,
+      });
+      expect(f).toHaveLength(1);
+      expect(f[0]!.severity).toBe("medium");
     });
 
     it("ignores non-sensitive routes", async () => {
