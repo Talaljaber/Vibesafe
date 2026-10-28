@@ -171,6 +171,10 @@ export function activate(context: vscode.ExtensionContext): void {
           hoverProvider.update(result);
           updateDashboardIfOpen(result);
           
+          if (result.warnings && result.warnings.length > 0) {
+            vscode.window.showWarningMessage(`VibeSafe: ${result.warnings.join(" ")}`);
+          }
+
           if (result.findings.length > 0) {
             vscode.window.showWarningMessage(`VibeSafe found ${result.findings.length} issues. Check the Problems panel!`);
             vscode.commands.executeCommand("workbench.action.problems.focus");
