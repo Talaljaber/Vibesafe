@@ -7,6 +7,7 @@ import {
   ROOT_ANCHORED_EXCLUDED_DIRS,
   SCANNABLE_EXTENSIONS,
   SCANNABLE_FILENAMES,
+  WORKSPACE_PACKAGE_CONTAINERS,
 } from "@vibesafe/shared";
 import type { Finding } from "@vibesafe/shared";
 import { createBatcher } from "../watch/batcher.js";
@@ -53,8 +54,15 @@ export function formatDelta(delta: ResultDelta, files: string[]): string[] {
 export function isExcludedPath(p: string): boolean {
   const parts = p.split(/[\\/]/);
   if (parts.some((part) => (ALWAYS_EXCLUDED_ANYWHERE_DIRS as readonly string[]).includes(part))) return true;
-  // Build-output dirs (dist, build, ...) are only excluded at the project root.
-  return parts.length > 1 && (ROOT_ANCHORED_EXCLUDED_DIRS as readonly string[]).includes(parts[0] ?? "");
+  // Build-output dirs (dist, build, ...) are only excluded at the project root
+  // or at a workspace-package root (packages/*/dist), mirroring FileDiscovery.
+  const anchored = ROOT_ANCHORED_EXCLUDED_DIRS as readonly string[];
+  if (parts.length > 1 && anchored.includes(parts[0] ?? "")) return true;
+  return (
+    parts.length > 3 &&
+    (WORKSPACE_PACKAGE_CONTAINERS as readonly string[]).includes(parts[0] ?? "") &&
+    anchored.includes(parts[2] ?? "")
+  );
 }
 
 /** True when a change to this path can affect scan results (source, config or project-level files). */
@@ -84,7 +92,6 @@ export async function runWatch(targetDir: string, options: WatchOptions = {}): P
 
   say(chalk.cyan(`Watching ${rootPath} (Ctrl+C to stop)`));
   say(chalk.gray("Running initial scan..."));
-  // (the initial scan runs below, once the file watcher is established)
 
   let snapshot: Snapshot | undefined;
   let stopped = false;
@@ -98,7 +105,8 @@ export async function runWatch(targetDir: string, options: WatchOptions = {}): P
       // using other files, so a partial scan yields false or missed findings.
       // computeDelta then reports only what actually changed.
       if (!files.some(isRelevantPath)) return; // nothing scannable changed
-      const findings = (await pipeline.scan({ rootPath, includeTests })).findings;      if (stopped) return;
+      const findings = (await pipeline.scan({ rootPath, includeTests })).findings;
+      if (stopped) return;
 
       const next: Snapshot = { findings, ...pipeline.calculateScore(findings) };
       const delta = computeDelta(snapshot, next);

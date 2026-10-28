@@ -30,11 +30,11 @@ const delta = (over = {}) => ({
 });
 
 describe("isExcludedPath", () => {
-  it.each(["node_modules/x/index.js", "src/node_modules/x.js", ".git/config", "dist/a.js", "build/a.js"])(
+  it.each(["node_modules/x/index.js", "src/node_modules/x.js", ".git/config", "dist/a.js", "build/a.js", "packages/cli/dist/a.js", "apps/web/build/x/a.js"])(
     "excludes %s",
     (p) => expect(isExcludedPath(p)).toBe(true),
   );
-  it.each(["src/dist/a.ts", "src/build/a.ts", "src/app.ts", "dist", ""])("keeps %s", (p) =>
+  it.each(["src/dist/a.ts", "src/build/a.ts", "src/app.ts", "dist", "", "packages/cli/src/a.ts", "packages/dist/a.js", "other/x/dist/a.js"])("keeps %s", (p) =>
     expect(isExcludedPath(p)).toBe(false),
   );
   it("handles windows separators", () => {
