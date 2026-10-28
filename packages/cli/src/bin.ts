@@ -3,7 +3,11 @@ import { Command } from "commander";
 import { printBanner } from "./ui/banner.js";
 import { runScan } from "./commands/scan.js";
 import { runFix } from "./commands/fix.js";
-import { VIBESAFE_VERSION } from "@vibesafe/shared";
+import { createRequire } from "node:module";
+
+// Real CLI version; both dist/bin.js and src/bin.ts sit one level below package.json.
+const require = createRequire(import.meta.url);
+const { version: CLI_VERSION } = require("../package.json") as { version: string };
 
 // Print banner unless --json is used, but we need to parse args first.
 const isJson = process.argv.includes("--json") || process.argv.includes("-j");
@@ -16,7 +20,7 @@ const program = new Command();
 program
   .name("vibesafe")
   .description("The don't-deploy-that-yet tool for vibe-coded apps")
-  .version(VIBESAFE_VERSION);
+  .version(CLI_VERSION);
 
 program
   .command("scan")
@@ -36,8 +40,9 @@ program
   .description("Automatically apply a safe fix for a specific finding or rule ID")
   .argument("<finding-id>", "The ID of the finding or rule to fix")
   .argument("[dir]", "Directory to run the fix in", ".")
-  .action(async (findingId, dir) => {
-    await runFix(findingId, dir);
+  .option("-y, --yes", "Skip confirmation (needs an exact finding id or a single match)", false)
+  .action(async (findingId, dir, options) => {
+    await runFix(findingId, dir, { yes: Boolean(options.yes) });
   });
 
 program.parse(process.argv);

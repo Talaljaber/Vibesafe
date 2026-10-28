@@ -1,7 +1,6 @@
 import { type Detector, type Finding, type ScanContext } from "@vibesafe/shared";
-import { CATEGORY_PREFIX } from "@vibesafe/shared";
+import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
 import { isApiRoute, hasRiskyHttpMethods, hasAuthCheck, isRiskyRoutePattern } from "./utils/route-analyzer.js";
-import crypto from "crypto";
 
 export class MissingAuthDetector implements Detector {
   id = "missing-auth-detector";
@@ -25,7 +24,7 @@ export class MissingAuthDetector implements Detector {
       if (isMutatingRoute || isSensitivePath) {
         if (!hasAuthCheck(content)) {
           findings.push({
-            id: `${CATEGORY_PREFIX.auth}-${crypto.randomBytes(3).toString("hex")}`,
+            id: createFindingId(CATEGORY_PREFIX.auth, "auth/missing-route-auth", filePath),
             ruleId: "auth/missing-route-auth",
             title: "Missing authentication in API Route",
             severity: isSensitivePath ? "critical" : "high",
