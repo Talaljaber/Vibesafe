@@ -8,7 +8,8 @@ import { VibeSafeDeployStatusProvider } from "./providers/deployStatusProvider.j
 import { VibeSafeIssuesProvider } from "./providers/issuesTreeProvider.js";
 import { VibeSafeHoverProvider } from "./providers/hoverProvider.js";
 import { openDashboard, updateDashboardIfOpen } from "./views/dashboard-webview.js";
-import type { Finding, ScanResult } from "@vibesafe/shared";
+import { findFindingById, resolveFindingId, isFindingInsideRoot } from "./util/findings.js";
+import type { ScanResult } from "@vibesafe/shared";
 
 // Keep a reference to the collection so we can clear/update it
 let diagnosticCollection: vscode.DiagnosticCollection;
@@ -70,8 +71,14 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Register command to copy the AI fix prompt to clipboard
   context.subscriptions.push(
-    vscode.commands.registerCommand("vibesafe.copyFixPrompt", async (prompt: string) => {
-      await vscode.env.clipboard.writeText(prompt);
+    vscode.commands.registerCommand("vibesafe.copyFixPrompt", async (arg: unknown) => {
+      // Never trust finding data from arguments; look it up by id.
+      const finding = findFindingById(lastFullScanResult, resolveFindingId(arg));
+      if (!finding?.aiFixPrompt) {
+        vscode.window.showWarningMessage("VibeSafe: Finding not found. Re-run the scan and try again.");
+        return;
+      }
+      await vscode.env.clipboard.writeText(finding.aiFixPrompt);
       vscode.window.showInformationMessage("✨ VibeSafe AI Fix Prompt copied to clipboard! Paste it into Copilot.");
     })
   );
@@ -85,15 +92,28 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Register applySafeFix command with Workspace Trust check
   context.subscriptions.push(
-    vscode.commands.registerCommand("vibesafe.applyFix", async (finding: Finding) => {
+    vscode.commands.registerCommand("vibesafe.applyFix", async (arg: unknown) => {
       if (!vscode.workspace.isTrusted) {
         vscode.window.showErrorMessage("VibeSafe: Cannot apply fixes in Restricted Mode. Please trust this workspace first.");
+        return;
+      }
+
+      // Never trust finding data from arguments; look it up by id.
+      const finding = findFindingById(lastFullScanResult, resolveFindingId(arg));
+      if (!finding) {
+        vscode.window.showWarningMessage("VibeSafe: Finding not found. Re-run the scan and try again.");
         return;
       }
 
       const rootFolder = vscode.workspace.workspaceFolders?.[0];
       if (!rootFolder) return;
       const rootPath = rootFolder.uri.fsPath;
+
+      // Defense in depth: never touch files outside the workspace folder.
+      if (!isFindingInsideRoot(rootPath, finding)) {
+        vscode.window.showErrorMessage("VibeSafe: Refusing to fix a file outside the workspace.");
+        return;
+      }
 
       const fixRegistry = createDefaultFixRegistry();
       const fixer = fixRegistry.getFixer(finding.ruleId);

@@ -45,7 +45,7 @@ export class VibeSafeCodeActionProvider implements vscode.CodeActionProvider {
         action.command = {
           command: "vibesafe.copyFixPrompt",
           title: "Copy AI Fix Prompt",
-          arguments: [finding.aiFixPrompt]
+          arguments: [finding.id]
         };
 
         actions.push(action);
@@ -61,7 +61,7 @@ export class VibeSafeCodeActionProvider implements vscode.CodeActionProvider {
         fixAction.command = {
           command: "vibesafe.applyFix",
           title: "Apply Safe Fix",
-          arguments: [finding]
+          arguments: [finding.id]
         };
         actions.push(fixAction);
       }

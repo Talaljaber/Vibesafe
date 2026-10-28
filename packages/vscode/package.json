@@ -24,7 +24,7 @@
     "build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "echo \"VS Code extension tests run separately via vscode-test\" && exit 0",
+    "test": "vitest run",
     "clean": "rimraf dist *.tsbuildinfo",
     "package": "vsce package --no-dependencies",
     "publish": "vsce publish --no-dependencies"
@@ -130,6 +130,7 @@
     "@vscode/vsce": "^3.0.0",
     "esbuild": "^0.28.1",
     "rimraf": "^6.0.0",
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
   }
 }
