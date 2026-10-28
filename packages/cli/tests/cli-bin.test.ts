@@ -37,6 +37,12 @@ describe("vibesafe CLI (built binary)", () => {
     expect(res.stderr).toContain("--interactive takes an optional directory");
   }, 30000);
 
+  it("fix rejects --all combined with --interactive", () => {
+    const res = spawnSync(process.execPath, [BIN, "fix", "--all", "-i", FIXTURE], { encoding: "utf-8" });
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain("--all and --interactive cannot be used together");
+  }, 30000);
+
   it("fix with no arguments errors with exit code 1", () => {
     const res = spawnSync(process.execPath, [BIN, "fix"], { encoding: "utf-8" });
     expect(res.status).toBe(1);

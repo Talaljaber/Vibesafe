@@ -4,6 +4,7 @@ import { printBanner } from "./ui/banner.js";
 import { runScan } from "./commands/scan.js";
 import { runFix } from "./commands/fix.js";
 import { runFixWizard } from "./commands/fix-wizard.js";
+import { runFixAllCommand } from "./commands/fix-all.js";
 import { createRequire } from "node:module";
 
 // Real CLI version; both dist/bin.js and src/bin.ts sit one level below package.json.
@@ -39,12 +40,30 @@ program
 
 program
   .command("fix")
-  .description("Automatically apply a safe fix for a specific finding or rule ID, or walk through fixes with -i")
-  .argument("[finding-id]", "The ID of the finding or rule to fix (with -i: optional directory instead)")
+  .description(
+    "Automatically apply a safe fix for a finding or rule ID, all auto-fixable findings with --all, or walk through fixes with -i",
+  )
+  .argument("[finding-id]", "The ID of the finding or rule to fix (with --all or -i: optional directory instead)")
   .argument("[dir]", "Directory to run the fix in (default: .)")
-  .option("-y, --yes", "Skip confirmation (needs an exact finding id or a single match)", false)
+  .option("-a, --all", "Preview and apply every auto-fixable finding with a single confirmation (the one positional is then the directory)", false)
   .option("-i, --interactive", "Scan, then walk through the fixes one by one", false)
+  .option("-y, --yes", "Skip confirmation (single fix: needs an exact finding id or a single match)", false)
   .action(async (first: string | undefined, second: string | undefined, options) => {
+    if (options.all && options.interactive) {
+      console.error("error: --all and --interactive cannot be used together");
+      process.exitCode = 1;
+      return;
+    }
+    if (options.all) {
+      // With --all there is no finding id, so `vibesafe fix --all ./app` puts the dir in the first positional.
+      if (first !== undefined && second !== undefined) {
+        console.error("error: --all takes no finding id; pass only the directory (vibesafe fix --all [dir])");
+        process.exitCode = 1;
+        return;
+      }
+      await runFixAllCommand(first ?? ".", { yes: Boolean(options.yes) });
+      return;
+    }
     if (options.interactive) {
       if (first !== undefined && second !== undefined) {
         console.error(
@@ -62,7 +81,7 @@ program
       return;
     }
     if (first === undefined) {
-      console.error("error: missing required argument 'finding-id' (or use --interactive)");
+      console.error("error: missing required argument 'finding-id' (or use --all / --interactive)");
       process.exitCode = 1;
       return;
     }

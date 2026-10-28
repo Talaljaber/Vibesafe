@@ -20,7 +20,9 @@ export type FindingCategory =
   | "dependency"
   | "code_quality"
   | "structure"
-  | "xss";
+  | "xss"
+  /** Web/framework security configuration: CORS, security headers, rate limiting, framework settings. */
+  | "security_config";
 
 /** How confident is the detector in this finding? */
 export type Confidence = "high" | "medium" | "low";
