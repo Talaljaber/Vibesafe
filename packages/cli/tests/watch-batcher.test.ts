@@ -11,13 +11,11 @@ describe("createBatcher", () => {
     b.add("a.ts");
     b.add("b.ts");
     b.add("a.ts");
-    expect(b.size).toBe(2);
     vi.advanceTimersByTime(299);
     expect(onFlush).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     expect(onFlush).toHaveBeenCalledTimes(1);
     expect(onFlush).toHaveBeenCalledWith(["a.ts", "b.ts"]);
-    expect(b.size).toBe(0);
   });
 
   it("restarts the timer on every new key", () => {
@@ -42,22 +40,6 @@ describe("createBatcher", () => {
     expect(onFlush.mock.calls).toEqual([[["a"]], [["b"]]]);
   });
 
-  it("flush() runs immediately and does not fire again", () => {
-    const onFlush = vi.fn();
-    const b = createBatcher(300, onFlush);
-    b.add("a");
-    b.flush();
-    expect(onFlush).toHaveBeenCalledWith(["a"]);
-    vi.advanceTimersByTime(1000);
-    expect(onFlush).toHaveBeenCalledTimes(1);
-  });
-
-  it("flush() with nothing pending is a no-op", () => {
-    const onFlush = vi.fn();
-    createBatcher(300, onFlush).flush();
-    expect(onFlush).not.toHaveBeenCalled();
-  });
-
   it("cancel() drops pending keys", () => {
     const onFlush = vi.fn();
     const b = createBatcher(300, onFlush);
@@ -65,6 +47,5 @@ describe("createBatcher", () => {
     b.cancel();
     vi.advanceTimersByTime(1000);
     expect(onFlush).not.toHaveBeenCalled();
-    expect(b.size).toBe(0);
   });
 });

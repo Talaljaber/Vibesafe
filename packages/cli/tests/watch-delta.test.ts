@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Finding } from "@vibesafe/shared";
-import { computeDelta, mergeFindings, needsFullRescan } from "../src/watch/delta.js";
+import { computeDelta } from "../src/watch/delta.js";
 
 function finding(over: Partial<Finding> = {}): Finding {
   return {
@@ -60,43 +60,5 @@ describe("computeDelta", () => {
   it("is empty for identical snapshots", () => {
     const d = computeDelta(snap([finding()], 90), snap([finding()], 90));
     expect(d).toMatchObject({ added: [], resolved: [], scoreChange: 0 });
-  });
-});
-
-describe("mergeFindings", () => {
-  const a = finding({ file: "a.ts" });
-  const b = finding({ file: "b.ts", title: "B" });
-  const project = finding({ file: undefined, title: "project" });
-
-  it("replaces findings of rescanned files and keeps the rest", () => {
-    const fresh = finding({ file: "a.ts", title: "new" });
-    const merged = mergeFindings([a, b, project], ["a.ts"], [fresh]);
-    expect(merged).toEqual([b, project, fresh]);
-  });
-
-  it("drops findings of deleted files (empty rescan)", () => {
-    expect(mergeFindings([a, b], ["a.ts"], [])).toEqual([b]);
-  });
-
-  it("ignores rescanned findings outside the changed set or without a file", () => {
-    const stray = finding({ file: "c.ts" });
-    expect(mergeFindings([a], ["a.ts"], [stray, project])).toEqual([]);
-  });
-
-  it("keeps project-level findings", () => {
-    expect(mergeFindings([project], ["a.ts"], [])).toEqual([project]);
-  });
-});
-
-describe("needsFullRescan", () => {
-  it.each(["package.json", "apps/web/package.json", ".gitignore", ".env", ".env.local", "pnpm-lock.yaml"])(
-    "true for %s",
-    (p) => expect(needsFullRescan([p])).toBe(true),
-  );
-  it.each(["src/app.ts", "src/package.json.ts", "README.md"])("false for %s", (p) =>
-    expect(needsFullRescan([p])).toBe(false),
-  );
-  it("true if any file in the batch qualifies", () => {
-    expect(needsFullRescan(["src/a.ts", ".gitignore"])).toBe(true);
   });
 });

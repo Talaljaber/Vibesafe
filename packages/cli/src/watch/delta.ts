@@ -6,7 +6,6 @@ export interface ResultDelta {
   scoreBefore: number;
   scoreAfter: number;
   scoreChange: number;
-  statusBefore: DeployStatus;
   statusAfter: DeployStatus;
 }
 
@@ -21,6 +20,9 @@ export interface Snapshot {
  * so it changes when unrelated edits shift code; the delta instead keys on
  * rule + file + evidence (falling back to title), with an occurrence index so
  * duplicates are counted individually.
+ *
+ * Limitation: evidence is already redacted by sanitizeEvidence, so replacing one
+ * secret with another that redacts to the same string is reported as unchanged.
  */
 function identityKeys(findings: Finding[]): Map<string, Finding> {
   const seen = new Map<string, number>();
@@ -48,35 +50,6 @@ export function computeDelta(before: Snapshot, after: Snapshot): ResultDelta {
     scoreBefore: before.score,
     scoreAfter: after.score,
     scoreChange: after.score - before.score,
-    statusBefore: before.deployStatus,
     statusAfter: after.deployStatus,
   };
-}
-
-/**
- * Merges a partial rescan into the previous findings. Findings located in any
- * of `changedFiles` (rescanned or deleted) are replaced by `rescanned`;
- * everything else (including project-level findings without a file) is kept.
- */
-export function mergeFindings(
-  previous: Finding[],
-  changedFiles: Iterable<string>,
-  rescanned: Finding[],
-): Finding[] {
-  const changed = new Set(changedFiles);
-  const kept = previous.filter((f) => f.file === undefined || !changed.has(f.file));
-  const fresh = rescanned.filter((f) => f.file !== undefined && changed.has(f.file));
-  return [...kept, ...fresh];
-}
-
-/** Files whose change can affect project-level findings, forcing a full rescan. */
-const PROJECT_LEVEL_FILE =
-  /^(package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|\.gitignore|\.env(\..*)?|.*\.env)$/;
-
-export function needsFullRescan(relativePaths: Iterable<string>): boolean {
-  for (const p of relativePaths) {
-    const base = p.split("/").pop() ?? p;
-    if (PROJECT_LEVEL_FILE.test(base)) return true;
-  }
-  return false;
 }

@@ -16,12 +16,8 @@ const defaultScheduler: Scheduler = {
 export interface Batcher {
   /** Adds a key to the pending batch and (re)starts the debounce timer. */
   add(key: string): void;
-  /** Flushes the pending batch immediately (no-op when empty). */
-  flush(): void;
   /** Drops the pending batch without flushing. */
   cancel(): void;
-  /** Number of keys currently pending. */
-  readonly size: number;
 }
 
 export function createBatcher(
@@ -55,13 +51,9 @@ export function createBatcher(
       handle = scheduler.setTimeout(flush, delayMs);
       armed = true;
     },
-    flush,
     cancel() {
       disarm();
       pending.clear();
-    },
-    get size() {
-      return pending.size;
     },
   };
 }

@@ -1,17 +1,16 @@
 import path from "node:path";
 import chalk from "chalk";
 import chokidar from "chokidar";
-import { FileDiscovery, ScannerPipeline, createDefaultRegistry } from "@vibesafe/core";
-import { ALWAYS_EXCLUDED_ANYWHERE_DIRS, ROOT_ANCHORED_EXCLUDED_DIRS } from "@vibesafe/shared";
+import { ScannerPipeline, createDefaultRegistry } from "@vibesafe/core";
+import {
+  ALWAYS_EXCLUDED_ANYWHERE_DIRS,
+  ROOT_ANCHORED_EXCLUDED_DIRS,
+  SCANNABLE_EXTENSIONS,
+  SCANNABLE_FILENAMES,
+} from "@vibesafe/shared";
 import type { Finding } from "@vibesafe/shared";
 import { createBatcher } from "../watch/batcher.js";
-import {
-  computeDelta,
-  mergeFindings,
-  needsFullRescan,
-  type ResultDelta,
-  type Snapshot,
-} from "../watch/delta.js";
+import { computeDelta, type ResultDelta, type Snapshot } from "../watch/delta.js";
 
 export const DEFAULT_DEBOUNCE_MS = 300;
 
@@ -26,14 +25,20 @@ export interface WatchOptions {
   write?: (line: string) => void;
 }
 
+/** Strips C0/C1 control characters (incl. ESC) so untrusted names cannot inject terminal sequences. */
+export function stripControl(s: string): string {
+  // eslint-disable-next-line no-control-regex
+  return s.replace(/[\x00-\x1f\x7f-\x9f]/g, "");
+}
+
 function describe(f: Finding): string {
-  const where = f.file ? ` (${f.file}${f.line ? `:${f.line}` : ""})` : "";
-  return `[${f.severity}] ${f.title}${where}`;
+  const where = f.file ? ` (${stripControl(f.file)}${f.line ? `:${f.line}` : ""})` : "";
+  return `[${f.severity}] ${stripControl(f.title)}${where}`;
 }
 
 export function formatDelta(delta: ResultDelta, files: string[]): string[] {
   const lines: string[] = [];
-  lines.push(chalk.cyan(`Changed: ${files.slice(0, 5).join(", ")}${files.length > 5 ? `, +${files.length - 5} more` : ""}`));
+  lines.push(chalk.cyan(`Changed: ${files.slice(0, 5).map(stripControl).join(", ")}${files.length > 5 ? `, +${files.length - 5} more` : ""}`));
   for (const f of delta.added) lines.push(chalk.red(`  + new      ${describe(f)}`));
   for (const f of delta.resolved) lines.push(chalk.green(`  - resolved ${describe(f)}`));
   if (delta.added.length === 0 && delta.resolved.length === 0) lines.push(chalk.gray("  no change in findings"));
@@ -45,11 +50,20 @@ export function formatDelta(delta: ResultDelta, files: string[]): string[] {
 }
 
 /** True when the path is inside a default-excluded directory (node_modules, .git, ...). */
-function isExcludedPath(p: string): boolean {
+export function isExcludedPath(p: string): boolean {
   const parts = p.split(/[\\/]/);
   if (parts.some((part) => (ALWAYS_EXCLUDED_ANYWHERE_DIRS as readonly string[]).includes(part))) return true;
   // Build-output dirs (dist, build, ...) are only excluded at the project root.
   return parts.length > 1 && (ROOT_ANCHORED_EXCLUDED_DIRS as readonly string[]).includes(parts[0] ?? "");
+}
+
+/** True when a change to this path can affect scan results (source, config or project-level files). */
+export function isRelevantPath(p: string): boolean {
+  const base = p.split("/").pop() ?? p;
+  if ((SCANNABLE_FILENAMES as readonly string[]).includes(base)) return true;
+  if (base === ".gitignore" || base === "package.json" || /^\.env(\..*)?$|\.env$/.test(base)) return true;
+  const dot = base.lastIndexOf(".");
+  return dot >= 0 && (SCANNABLE_EXTENSIONS as readonly string[]).includes(base.slice(dot));
 }
 
 /**
@@ -67,7 +81,6 @@ export async function runWatch(targetDir: string, options: WatchOptions = {}): P
   };
 
   const pipeline = new ScannerPipeline(createDefaultRegistry());
-  const discovery = new FileDiscovery(rootPath);
 
   say(chalk.cyan(`Watching ${rootPath} (Ctrl+C to stop)`));
   say(chalk.gray("Running initial scan..."));
@@ -80,34 +93,16 @@ export async function runWatch(targetDir: string, options: WatchOptions = {}): P
   const rescan = async (files: string[]) => {
     if (stopped || !snapshot) return;
     try {
-      const present = new Set<string>();
-      const gone = new Set<string>();
-      const full = needsFullRescan(files);
-      if (!full) {
-        const discovered = new Set(await discovery.discoverFiles([], { includeTests }));
-        const hadFindings = new Set(snapshot.findings.map((f) => f.file));
-        for (const f of files) {
-          if (discovered.has(f)) present.add(f);
-          else if (hadFindings.has(f)) gone.add(f); // deleted or newly ignored
-        }
-      }
-
-      let findings: Finding[];
-      if (full) {
-        findings = (await pipeline.scan({ rootPath, includeTests })).findings;
-      } else if (present.size === 0 && gone.size === 0) {
-        return; // nothing scannable changed (ignored/unsupported files)
-      } else {
-        const rescanned =
-          present.size > 0
-            ? (await pipeline.scan({ rootPath, includeTests, targetFiles: [...present] })).findings
-            : [];
-        findings = mergeFindings(snapshot.findings, [...present, ...gone], rescanned);
-      }
-      if (stopped) return;
+      // Always rescan the whole project: several detectors (middleware auth,
+      // error boundaries, frontend exposure, security headers) judge a file
+      // using other files, so a partial scan yields false or missed findings.
+      // computeDelta then reports only what actually changed.
+      if (!files.some(isRelevantPath)) return; // nothing scannable changed
+      const findings = (await pipeline.scan({ rootPath, includeTests })).findings;      if (stopped) return;
 
       const next: Snapshot = { findings, ...pipeline.calculateScore(findings) };
-      const delta = computeDelta(snapshot, next);      snapshot = next;
+      const delta = computeDelta(snapshot, next);
+      snapshot = next;
 
       if (options.json) {
         emit({
@@ -139,6 +134,7 @@ export async function runWatch(targetDir: string, options: WatchOptions = {}): P
 
   const watcher = chokidar.watch(rootPath, {
     ignoreInitial: true,
+    followSymlinks: false, // match FileDiscovery: never follow symlinks
     ignored: (p: string) => isExcludedPath(path.relative(rootPath, p)),
   });
 
@@ -156,7 +152,10 @@ export async function runWatch(targetDir: string, options: WatchOptions = {}): P
 
   // The watcher is live before the initial scan starts, so edits made while it
   // runs are queued instead of lost.
-  const watcherReady = new Promise<void>((resolve) => watcher.once("ready", () => resolve()));
+  const watcherReady = new Promise<void>((resolve) => {
+    watcher.once("ready", () => resolve());
+    watcher.once("error", () => resolve()); // do not hang if the watcher fails to start
+  });
   chain = (async () => {
     await watcherReady;
     try {
