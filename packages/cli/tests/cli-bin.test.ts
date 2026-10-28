@@ -57,6 +57,56 @@ describe("vibesafe CLI --format / --output", () => {
     }
   }, 30000);
 
+  const run = (args: string[]) =>
+    spawnSync(process.execPath, [BIN, "scan", FIXTURE, ...args], { encoding: "utf-8", maxBuffer: 64 * 1024 * 1024 });
+
+  it("--output alone implies json and keeps stdout empty", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vibesafe-out-"));
+    try {
+      const out = path.join(dir, "r.json");
+      const res = run(["--output", out]);
+      expect(res.stdout).toBe("");
+      const parsed = JSON.parse(fs.readFileSync(out, "utf-8"));
+      expect(parsed.findings.length).toBeGreaterThan(0);
+      expect(parsed.version).toBeUndefined();
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  it("--format wins over --json", () => {
+    const res = run(["--json", "--format", "sarif"]);
+    expect(JSON.parse(res.stdout).version).toBe("2.1.0");
+  }, 30000);
+
+  it("--format=sarif suppresses the banner", () => {
+    const res = run(["--format=sarif"]);
+    expect(res.stdout.startsWith("{")).toBe(true);
+    expect(JSON.parse(res.stdout).version).toBe("2.1.0");
+  }, 30000);
+
+  it("--format json prints ScanResult JSON", () => {
+    const res = run(["--format", "json"]);
+    expect(JSON.parse(res.stdout).findings.length).toBeGreaterThan(0);
+  }, 30000);
+
+  it("rejects an empty --output with exit code 2", () => {
+    const res = run(["--output", ""]);
+    expect(res.status).toBe(2);
+    expect(res.stdout).toBe("");
+    expect(res.stderr).toContain("--output");
+  }, 30000);
+
+  it("exits 2 with a clear message when the --output file cannot be written", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vibesafe-out-"));
+    try {
+      const res = run(["--format", "sarif", "--output", dir]); // a directory, not a file
+      expect(res.status).toBe(2);
+      expect(res.stderr).toContain("could not write report");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30000);
   it("rejects an unknown --format with exit code 2", () => {
     const res = spawnSync(process.execPath, [BIN, "scan", FIXTURE, "--format", "xml"], { encoding: "utf-8" });
     expect(res.status).toBe(2);

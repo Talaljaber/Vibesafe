@@ -22,7 +22,11 @@ export interface ScanOptions {
   json?: boolean;
   /** Machine-readable output format (see OUTPUT_FORMATS). Wins over --json. */
   format?: string;
-  /** Write the --format/--json output to this file instead of stdout. */
+  /**
+   * Write the report to this file instead of stdout (implies --format json when no format is
+   * given). Treated as trusted CLI input: parent directories are created, but an existing
+   * symlink at the path is refused.
+   */
   output?: string;
   deep?: boolean;
   includeTests?: boolean;
@@ -30,6 +34,12 @@ export interface ScanOptions {
 
 export async function runScan(targetDir: string, options: ScanOptions = {}) {
   const rootPath = path.resolve(process.cwd(), targetDir);
+
+  if (options.output !== undefined && options.output.trim() === "") {
+    console.error("Error: --output requires a non-empty file path.");
+    process.exitCode = 2;
+    return;
+  }
 
   let format: OutputFormat | undefined;
   if (options.format !== undefined) {
@@ -41,7 +51,7 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
       return;
     }
     format = options.format;
-  } else if (options.json || options.output) {
+  } else if (options.json || options.output !== undefined) {
     format = "json";
   }
   // Machine-readable mode: stdout carries only the report (or nothing, with --output).
@@ -116,11 +126,27 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
     }
 
     if (format) {
+      // Machine mode keeps stdout clean, so surface an incomplete scan on stderr.
+      if (result.errors && result.errors.length > 0) {
+        console.error(`Warning: ${result.errors.length} detector(s) failed. Scan may be incomplete.`);
+        for (const e of result.errors) console.error(`  - ${e.detectorName}: ${e.message}`);
+      }
+      for (const w of result.warnings ?? []) console.error(`Warning: ${w}`);
       const rendered = renderOutput(format, result, { version: CLI_VERSION });
-      if (options.output) {
+      if (options.output !== undefined) {
         const outPath = path.resolve(process.cwd(), options.output);
-        await fs.mkdir(path.dirname(outPath), { recursive: true });
-        await fs.writeFile(outPath, rendered + "\n", "utf-8");
+        try {
+          const st = await fs.lstat(outPath).catch(() => undefined);
+          if (st?.isSymbolicLink()) throw new Error("refusing to write through a symbolic link");
+          await fs.mkdir(path.dirname(outPath), { recursive: true });
+          await fs.writeFile(outPath, rendered + "\n", { encoding: "utf-8", flag: "w" });
+        } catch (err: unknown) {
+          console.error(
+            `Error: could not write report to ${outPath}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          process.exitCode = 2;
+          return;
+        }
         console.error(`Wrote ${format} report to ${outPath}`);
       } else {
         console.log(rendered);
@@ -142,7 +168,9 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
     // Generate HTML Report if requested
     if (options.html || options.openReport) {
       const htmlReportPath = await generateHtmlReport(result);
-      if (!options.json) {
+      if (options.json) {
+        console.error(`HTML report generated: ${htmlReportPath}`);
+      } else {
         console.log(chalk.cyan.bold(`\n📄 Detailed HTML report generated: ${htmlReportPath}`));
       }
 

@@ -51,6 +51,16 @@ export interface SarifResult {
   properties: { severity: Severity; confidence: string; deployBlocking: boolean };
 }
 
+export interface SarifNotification {
+  level: "error" | "warning";
+  message: { text: string };
+}
+
+export interface SarifNotification {
+  level: "error" | "warning";
+  message: { text: string };
+}
+
 export interface SarifLog {
   $schema: string;
   version: typeof SARIF_VERSION;
@@ -63,6 +73,8 @@ export interface SarifLog {
         rules: SarifRule[];
       };
     };
+    originalUriBaseIds: Record<string, { description: { text: string } }>;
+    invocations: { executionSuccessful: boolean; toolExecutionNotifications: SarifNotification[] }[];
     results: SarifResult[];
   }[];
 }
@@ -106,15 +118,43 @@ function buildRegion(f: Finding): SarifRegion | undefined {
   return region;
 }
 
-function buildRule(f: Finding, severity: Severity, tags: string[]): SarifRule {
-  const steps = f.fixSteps ?? [];
+/** "dependency/risky-install-script" -> "dependency: risky install script" */
+function humanizeRuleId(ruleId: string): string {
+  const [head, ...rest] = ruleId.split("/");
+  const tail = rest.join("/").replace(/[-_]+/g, " ");
+  return tail ? `${head}: ${tail}` : (head ?? ruleId).replace(/[-_]+/g, " ");
+}
+
+/**
+ * Some rules put instance-specific text (script names, URLs, variable names) in
+ * title/problem. A rule-level field is only used when every finding of the rule
+ * agrees on it; otherwise a generic, ruleId-derived text is used. Instance
+ * details live only in result.message.
+ */
+function consistent<T>(findings: Finding[], pick: (f: Finding) => T): T | undefined {
+  const first = findings[0];
+  if (!first) return undefined;
+  const value = pick(first);
+  const key = JSON.stringify(value);
+  return findings.every((f) => JSON.stringify(pick(f)) === key) ? value : undefined;
+}
+
+function buildRule(findings: Finding[], severity: Severity, tags: string[]): SarifRule {
+  const f = findings[0] as Finding;
+  const generic = humanizeRuleId(f.ruleId);
+  const title = consistent(findings, (x) => x.title) || generic;
+  const why = consistent(findings, (x) => x.whyItMatters);
+  const steps = consistent(findings, (x) => x.fixSteps ?? []) ?? [];
+  const problem = consistent(findings, (x) => x.plainEnglishProblem);
   const help =
-    steps.length > 0 ? steps.map((s, i) => `${i + 1}. ${s}`).join("\n") : f.plainEnglishProblem;
+    steps.length > 0
+      ? steps.map((s, i) => `${i + 1}. ${s}`).join("\n")
+      : problem || `See the individual results for ${generic}.`;
   const rule: SarifRule = {
     id: f.ruleId,
     name: f.ruleId,
-    shortDescription: { text: f.title },
-    fullDescription: { text: f.whyItMatters || f.plainEnglishProblem },
+    shortDescription: { text: title },
+    fullDescription: { text: why || problem || title },
     help: { text: help, markdown: help },
     defaultConfiguration: { level: LEVEL[severity] },
     properties: {
@@ -123,7 +163,8 @@ function buildRule(f: Finding, severity: Severity, tags: string[]): SarifRule {
       "security-severity": SECURITY_SEVERITY[severity],
     },
   };
-  if (f.learnMoreUrl) rule.helpUri = f.learnMoreUrl;
+  const url = consistent(findings, (x) => x.learnMoreUrl);
+  if (url) rule.helpUri = url;
   return rule;
 }
 
@@ -132,6 +173,7 @@ export function formatSarif(result: ScanResult, toolVersion: string): SarifLog {
   const ruleIndex = new Map<string, number>();
   const ruleSeverity = new Map<string, Severity>();
   const ruleTags = new Map<string, Set<string>>();
+  const ruleFindings = new Map<string, Finding[]>();
 
   // One rule per ruleId, with the max severity and union of tags across that
   // rule's findings so rule metadata is consistent with the results.
@@ -143,6 +185,9 @@ export function formatSarif(result: ScanResult, toolVersion: string): SarifLog {
     const tags = ruleTags.get(f.ruleId) ?? new Set<string>();
     for (const t of f.tags ?? []) tags.add(t);
     ruleTags.set(f.ruleId, tags);
+    const group = ruleFindings.get(f.ruleId) ?? [];
+    group.push(f);
+    ruleFindings.set(f.ruleId, group);
   }
 
   const results: SarifResult[] = [];
@@ -152,7 +197,7 @@ export function formatSarif(result: ScanResult, toolVersion: string): SarifLog {
       idx = rules.length;
       ruleIndex.set(f.ruleId, idx);
       rules.push(
-        buildRule(f, ruleSeverity.get(f.ruleId) ?? f.severity, [...(ruleTags.get(f.ruleId) ?? [])].sort()),
+        buildRule(ruleFindings.get(f.ruleId) ?? [f], ruleSeverity.get(f.ruleId) ?? f.severity, [...(ruleTags.get(f.ruleId) ?? [])].sort()),
       );
     }
 
@@ -164,6 +209,8 @@ export function formatSarif(result: ScanResult, toolVersion: string): SarifLog {
       partialFingerprints: { [FINGERPRINT_KEY]: f.id },
       properties: { severity: f.severity, confidence: f.confidence, deployBlocking: f.deployBlocking },
     };
+    // Findings without a file get no location (a placeholder path would mislead);
+    // GitHub code scanning may not display such results. Known limitation.
     if (f.file) {
       const region = buildRegion(f);
       sarifResult.locations = [
@@ -178,6 +225,11 @@ export function formatSarif(result: ScanResult, toolVersion: string): SarifLog {
     results.push(sarifResult);
   }
 
+  const notifications: SarifNotification[] = [
+    ...(result.errors ?? []).map((m): SarifNotification => ({ level: "error", message: { text: `${m.detectorName}: ${m.message}` } })),
+    ...(result.warnings ?? []).map((m): SarifNotification => ({ level: "warning", message: { text: m } })),
+  ];
+
   return {
     $schema: SARIF_SCHEMA_URI,
     version: SARIF_VERSION,
@@ -191,6 +243,15 @@ export function formatSarif(result: ScanResult, toolVersion: string): SarifLog {
             rules,
           },
         },
+        // %SRCROOT% is intentional (GitHub code scanning resolves it against the
+        // repository root). Result URIs are relative to the scan root, so scans
+        // should run from the repository root.
+        originalUriBaseIds: {
+          "%SRCROOT%": { description: { text: "The scanned directory (run vibesafe from the repository root)." } },
+        },
+        invocations: [
+          { executionSuccessful: (result.errors ?? []).length === 0, toolExecutionNotifications: notifications },
+        ],
         results,
       },
     ],

@@ -152,6 +152,39 @@ describe("formatSarif", () => {
     expect(without.runs[0]!.tool.driver.rules[0]).not.toHaveProperty("helpUri");
   });
 
+  it("keeps instance-specific text out of rule metadata", () => {
+    const log = formatSarif(
+      scan([
+        finding({ ruleId: "dependency/risky-install-script", title: 'Risky lifecycle script: "postinstall"', plainEnglishProblem: "postinstall runs x", whyItMatters: "Scripts run on install.", fixSteps: ["Review a"] }),
+        finding({ id: "B", ruleId: "dependency/risky-install-script", title: 'Risky lifecycle script: "preinstall"', plainEnglishProblem: "preinstall runs y", whyItMatters: "Scripts run on install.", fixSteps: ["Review b"] }),
+      ]),
+      "1",
+    );
+    const rule = log.runs[0]!.tool.driver.rules[0]!;
+    expect(rule.shortDescription.text).toBe("dependency: risky install script");
+    expect(rule.fullDescription.text).toBe("Scripts run on install.");
+    expect(JSON.stringify(rule)).not.toMatch(/postinstall|preinstall|Review/);
+    expect(log.runs[0]!.results.map((r) => r.message.text)).toEqual(["postinstall runs x", "preinstall runs y"]);
+  });
+
+  it("reports detector errors and warnings as invocation notifications", () => {
+    const ok = formatSarif(scan([]), "1");
+    expect(ok.runs[0]!.invocations).toEqual([{ executionSuccessful: true, toolExecutionNotifications: [] }]);
+    const bad = formatSarif(
+      { findings: [], errors: [{ detectorId: "d", detectorName: "Det", message: "boom" }], warnings: ["careful"] } as unknown as ScanResult,
+      "1",
+    );
+    const inv = bad.runs[0]!.invocations[0]!;
+    expect(inv.executionSuccessful).toBe(false);
+    expect(inv.toolExecutionNotifications).toEqual([
+      { level: "error", message: { text: "Det: boom" } },
+      { level: "warning", message: { text: "careful" } },
+    ]);
+  });
+
+  it("declares %SRCROOT% in originalUriBaseIds", () => {
+    expect(formatSarif(scan([finding()]), "1").runs[0]!.originalUriBaseIds).toHaveProperty("%SRCROOT%");
+  });
   it("round-trips through JSON", () => {
     const log = formatSarif(scan([finding()]), "1");
     expect(JSON.parse(JSON.stringify(log))).toEqual(log);

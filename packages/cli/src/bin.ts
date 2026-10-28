@@ -38,9 +38,9 @@ program
   .option("-i, --interactive", "Prompt for confirmation before scanning", false)
   .option("--html", "Generate HTML report", false)
   .option("--open-report", "Automatically open the HTML report after scan", false)
-  .option("-j, --json", "Output pure JSON without console formatting", false)
+  .option("-j, --json", "Output pure JSON without console formatting (alias of --format json)", false)
   .option("--format <format>", "Machine-readable output format: json | sarif (pure output on stdout)")
-  .option("--output <file>", "Write --format/--json output to a file instead of stdout")
+  .option("--output <file>", "Write the report to a file (defaults to json format)")
   .option("--deep", "Also scan git history for leaked secrets (slower)", false)
   .option("--include-tests", "Also scan test files and fixtures (excluded by default)", false)
   .action(async (dir, options) => {
