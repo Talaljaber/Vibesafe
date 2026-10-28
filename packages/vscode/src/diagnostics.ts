@@ -75,6 +75,8 @@ export function updateDiagnostics(
 }
 
 import * as path from "path";
+import { isInsideRoot } from "./util/findings.js";
+import { diagnosticRangeCoords } from "./util/range.js";
 
 /**
  * Updates the VS Code DiagnosticCollection with VibeSafe findings for the entire project.
@@ -84,8 +86,12 @@ export function updateAllDiagnostics(
   collection: vscode.DiagnosticCollection,
   findings: Finding[]
 ): void {
-  // Clear existing diagnostics to avoid stale squiggles
-  collection.clear();
+  // Clear existing diagnostics for this root only (other workspace folders keep theirs)
+  const stale: vscode.Uri[] = [];
+  collection.forEach((uri) => {
+    if (isInsideRoot(rootPath, uri.fsPath)) stale.push(uri);
+  });
+  for (const uri of stale) collection.delete(uri);
 
   // Group findings by file path
   const findingsByFile = new Map<string, Finding[]>();
@@ -106,10 +112,13 @@ export function updateAllDiagnostics(
     const diagnostics: vscode.Diagnostic[] = [];
     
     for (const finding of fileFindings) {
-      const lineIndex = finding.line! - 1;
-      
-      // Since we don't have the TextDocument loaded, we highlight the first 100 chars of the line.
-      const range = new vscode.Range(lineIndex, 0, lineIndex, 100);
+      // Use the real line length when the document is open, otherwise extend to end of line.
+      const openDoc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === absPath);
+      const lineIdx = finding.line! - 1;
+      const lineText =
+        openDoc && lineIdx >= 0 && lineIdx < openDoc.lineCount ? openDoc.lineAt(lineIdx).text : undefined;
+      const [sl, sc, el, ec] = diagnosticRangeCoords(finding.line!, lineText);
+      const range = new vscode.Range(sl, sc, el, ec);
       
       const message = `VibeSafe [${finding.ruleId}]: ${finding.title}\n\n${finding.plainEnglishProblem}\n\nWhy it matters: ${finding.whyItMatters}`;
       const diagnostic = new vscode.Diagnostic(
