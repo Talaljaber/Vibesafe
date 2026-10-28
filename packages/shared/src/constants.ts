@@ -26,6 +26,7 @@ export const SCANNABLE_EXTENSIONS = [
   ".mjs",
   ".cjs",
   ".json",
+  ".sql",
   ".py",
 ] as const;
 
@@ -43,6 +44,9 @@ export const SCANNABLE_FILENAMES = [
   "package-lock.json",
   "pnpm-lock.yaml",
   "yarn.lock",
+  "requirements.txt",
+  "pyproject.toml",
+  "manage.py",
 ] as const;
 
 /**
@@ -67,6 +71,7 @@ export const ALWAYS_EXCLUDED_ANYWHERE_DIRS = [
   ".tox",
   ".mypy_cache",
   ".pytest_cache",
+  ".ruff_cache",
   ".eggs",
 ] as const;
 
@@ -127,10 +132,6 @@ export const TEST_PATH_GLOBS = [
   "**/__tests__/**",
   "**/*.test.*",
   "**/*.spec.*",
-  "**/test/**",
-  "**/test_*.py",
-  "**/*_test.py",
-  "**/conftest.py",
   "fixtures/**",
 ] as const;
 
@@ -158,7 +159,7 @@ export const CATEGORY_PREFIX: Record<FindingCategory, string> = {
 
 // ─── Version ──────────────────────────────────────────────────────────────────
 
-export const VIBESAFE_VERSION = "0.1.5";
+export const VIBESAFE_VERSION = "0.3.0";
 
 // ─── Branding ─────────────────────────────────────────────────────────────────
 

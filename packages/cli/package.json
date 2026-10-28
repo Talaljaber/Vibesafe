@@ -1,6 +1,6 @@
 {
   "name": "@vibesafe/cli",
-  "version": "0.1.5",
+  "version": "0.3.0",
   "description": "The don't-deploy-that-yet tool for vibe-coded apps — CLI",
   "license": "MIT",
   "type": "module",
@@ -29,6 +29,7 @@
     "@vibesafe/shared": "workspace:*",
     "boxen": "^8.0.1",
     "chalk": "^5.6.2",
+    "chokidar": "^4.0.3",
     "cli-progress": "^3.12.0",
     "commander": "^15.0.0",
     "figlet": "^1.11.0",

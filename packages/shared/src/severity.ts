@@ -43,7 +43,7 @@ export const CATEGORY_MULTIPLIERS: Record<FindingCategory, number> = {
   authorization: 1.1,
   validation: 1.0,
   xss: 1.2,
-  security_config: 1.2,
+  security_config: 1.1,
   dependency: 0.8,
   code_quality: 0.5,
   structure: 0.3,

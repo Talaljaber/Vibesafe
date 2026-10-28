@@ -1,6 +1,6 @@
 {
   "name": "@vibesafe/core",
-  "version": "0.1.5",
+  "version": "0.3.0",
   "description": "VibeSafe scanning engine — detectors, scoring, repair plan, auto-fixes",
   "license": "MIT",
   "type": "module",

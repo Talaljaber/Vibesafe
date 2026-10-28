@@ -21,6 +21,7 @@ export type FindingCategory =
   | "code_quality"
   | "structure"
   | "xss"
+  /** Web/framework security configuration: CORS, security headers, rate limiting, framework settings. */
   | "security_config";
 
 /** How confident is the detector in this finding? */
@@ -168,8 +169,8 @@ export interface ScanResult {
  * tsconfig.json, and file structure analysis.
  */
 export interface ProjectContext {
-  framework: "nextjs" | "vite" | "express" | "django" | "unknown";
-  language: "typescript" | "javascript" | "python" | "mixed";
+  framework: "nextjs" | "vite" | "express" | "unknown";
+  language: "typescript" | "javascript" | "mixed";
   hasTypeScript: boolean;
   packageManager: "npm" | "pnpm" | "yarn" | "unknown";
   /** Direct dependencies from package.json. */

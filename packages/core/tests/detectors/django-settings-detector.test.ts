@@ -368,7 +368,7 @@ describe("Python file discovery and pipeline", () => {
   });
 
   it("wires the security_config category into shared tables", () => {
-    expect(CATEGORY_MULTIPLIERS.security_config).toBe(1.2);
+    expect(CATEGORY_MULTIPLIERS.security_config).toBe(1.1);
     expect(CATEGORY_PREFIX.security_config).toBe("CFG");
   });
 });

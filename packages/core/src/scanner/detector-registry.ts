@@ -13,6 +13,11 @@ import { ErrorBoundaryDetector } from "../detectors/error-boundary-detector.js";
 import { GitHistoryDetector } from "../detectors/git-history-detector.js";
 import { DangerousHtmlDetector } from "../detectors/dangerous-html-detector.js";
 import { DjangoSettingsDetector } from "../detectors/django-settings-detector.js";
+import { SupabaseRlsDetector } from "../detectors/supabase-rls-detector.js";
+import { SecurityHeadersDetector } from "../detectors/security-headers-detector.js";
+import { CorsDetector } from "../detectors/cors-detector.js";
+import { StripeWebhookDetector } from "../detectors/stripe-webhook-detector.js";
+import { RateLimitDetector } from "../detectors/rate-limit-detector.js";
 
 export function createDefaultRegistry(): DetectorRegistry {
   const registry = new DetectorRegistry();
@@ -29,6 +34,11 @@ export function createDefaultRegistry(): DetectorRegistry {
   registry.register(new GitHistoryDetector());
   registry.register(new DangerousHtmlDetector());
   registry.register(new DjangoSettingsDetector());
+  registry.register(new SupabaseRlsDetector());
+  registry.register(new SecurityHeadersDetector());
+  registry.register(new CorsDetector());
+  registry.register(new StripeWebhookDetector());
+  registry.register(new RateLimitDetector());
   return registry;
 }
 export class DetectorRegistry {
