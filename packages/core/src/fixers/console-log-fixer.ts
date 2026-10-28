@@ -102,7 +102,7 @@ function analyze(content: string, line: number): Analysis {
   // A braceless if/else/for/while body would change meaning if its statement were removed.
   for (let k = idx - 1; k >= 0; k--) {
     const prev = (lines[k] ?? "").trim();
-    if (!prev) continue;
+    if (!prev || prev.startsWith("//")) continue;
     if (prev.endsWith(")") || prev.endsWith("=>") || /(^|[\s}])else$/.test(prev)) {
       return {
         ok: false,

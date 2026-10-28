@@ -73,6 +73,8 @@ npx vibesafe scan .
 - `npx @vibesafe/cli scan .` - Scans the current directory and outputs a detailed **Repair Plan** to your terminal.
 - `npx @vibesafe/cli scan . --html` - Scans the directory and generates a beautiful `vibesafe-report.html` dashboard.
 - `npx @vibesafe/cli scan . --open-report` - Generates the HTML dashboard and opens it in your default browser automatically.
+- `npx @vibesafe/cli scan . -i` - After the scan, offers to walk through the findings one by one (apply the safe auto-fix, skip, or quit). Needs an interactive terminal; the scan's exit code is preserved.
+- `npx @vibesafe/cli fix -i [dir]` - Scans, then runs the same interactive fix wizard (no `--deep` or `--include-tests`; use `scan -i` for those).
 - `npx @vibesafe/cli --help` - Shows all available options and commands.
 
 ```text
