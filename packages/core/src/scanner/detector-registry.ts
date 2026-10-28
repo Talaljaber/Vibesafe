@@ -61,8 +61,10 @@ export class DetectorRegistry {
 
     // Filter detectors based on config.enabledCategories
     const enabledCategories = context.config.enabledCategories;
+    const disabled = context.config.disabledDetectors ?? [];
     const activeDetectors = this.detectors.filter(
-      (d) => !enabledCategories || enabledCategories.includes(d.category),
+      (d) =>
+        (!enabledCategories || enabledCategories.includes(d.category)) && !disabled.includes(d.id),
     );
 
     const total = activeDetectors.length;

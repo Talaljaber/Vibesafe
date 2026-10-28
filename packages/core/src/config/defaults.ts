@@ -39,6 +39,9 @@ export function mergeConfig(rootPath: string, userConfig?: Partial<ScanConfig>):
     timeoutMs: userConfig?.timeoutMs ?? DEFAULT_CONFIG.timeoutMs,
     deep: userConfig?.deep ?? DEFAULT_CONFIG.deep,
     includeTests: userConfig?.includeTests ?? DEFAULT_CONFIG.includeTests,
+    ...(userConfig?.ruleOverrides !== undefined ? { ruleOverrides: userConfig.ruleOverrides } : {}),
+    ...(userConfig?.disabledDetectors !== undefined ? { disabledDetectors: userConfig.disabledDetectors } : {}),
+    ...(userConfig?.useConfigFile !== undefined ? { useConfigFile: userConfig.useConfigFile } : {}),
     ...(userConfig?.targetFiles !== undefined ? { targetFiles: userConfig.targetFiles } : {}),
   };
 }

@@ -78,7 +78,12 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
     let result;
     try {
       result = await pipeline.scan(
-        { rootPath, deep: options.deep ?? false, includeTests: options.includeTests ?? false },
+        // Only pass flags the user set, so config-file values apply otherwise.
+        {
+          rootPath,
+          ...(options.deep ? { deep: true } : {}),
+          ...(options.includeTests ? { includeTests: true } : {}),
+        },
         onProgress,
       );
     } finally {

@@ -163,6 +163,26 @@ Prefer working entirely within your editor? Install the **VibeSafe** extension!
 
 ---
 
+## ⚙️ Configuration File
+
+Create `.vibesafe.config.{ts,mts,js,mjs,cjs,json}` (or `vibesafe.config.*`) in the project root. TypeScript configs are loaded with [jiti](https://github.com/unjs/jiti), so no build step is needed on Node 20+.
+
+```ts
+import { defineConfig } from "@vibesafe/core";
+
+export default defineConfig({
+  rules: { "code_quality/*": "off", "secret/hardcoded-api-key": "high" }, // "off" or a severity; "*" globs allowed
+  disabledDetectors: ["git-history"],
+  categories: ["secret", "auth"], // omit for all
+  exclude: ["legacy/**"],
+  includeTests: false,
+  minSeverity: "medium",
+  deep: false,
+});
+```
+
+Explicit CLI flags / API options always win over file values. An exact rule id beats a glob; among globs the longest wins. Rule overrides run after detection, so severity changes are re-sorted and re-scored. API users can skip the file with `useConfigFile: false`.
+
 ## ⚠️ Known Limitations (v0.1)
 
 VibeSafe is currently in early release (v0.1) and is meant to catch the most common "vibe-coding" mistakes. Please be aware of the following:

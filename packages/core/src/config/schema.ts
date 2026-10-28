@@ -20,3 +20,90 @@ export function validateConfig(config: ScanConfig): Error[] {
 
   return errors;
 }
+
+const SEVERITIES = ["critical", "high", "medium", "low"];
+const CATEGORIES = [
+  "secret",
+  "auth",
+  "authorization",
+  "frontend_exposure",
+  "validation",
+  "dependency",
+  "code_quality",
+  "structure",
+  "xss",
+];
+const KNOWN_KEYS = [
+  "rules",
+  "disabledDetectors",
+  "categories",
+  "exclude",
+  "includeTests",
+  "minSeverity",
+  "deep",
+];
+
+const isStringArray = (v: unknown): v is string[] =>
+  Array.isArray(v) && v.every((x) => typeof x === "string");
+
+/**
+ * Validates the shape of a user config file's exported value. Returns a list of
+ * human-readable problems (empty when valid).
+ */
+export function validateUserConfig(value: unknown): string[] {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return ["config must be an object (export default defineConfig({ ... }))."];
+  }
+  const cfg = value as Record<string, unknown>;
+  const errors: string[] = [];
+
+  for (const key of Object.keys(cfg)) {
+    if (!KNOWN_KEYS.includes(key)) {
+      errors.push(`unknown option "${key}" (expected one of: ${KNOWN_KEYS.join(", ")}).`);
+    }
+  }
+
+  if (cfg.rules !== undefined) {
+    if (typeof cfg.rules !== "object" || cfg.rules === null || Array.isArray(cfg.rules)) {
+      errors.push(`"rules" must be an object mapping rule ids to "off" or a severity.`);
+    } else {
+      for (const [rule, v] of Object.entries(cfg.rules)) {
+        if (v !== "off" && !(typeof v === "string" && SEVERITIES.includes(v))) {
+          errors.push(
+            `rules["${rule}"] must be "off" or one of ${SEVERITIES.join(", ")} (got ${JSON.stringify(v)}).`,
+          );
+        }
+      }
+    }
+  }
+  if (cfg.disabledDetectors !== undefined && !isStringArray(cfg.disabledDetectors)) {
+    errors.push(`"disabledDetectors" must be an array of strings.`);
+  }
+  if (cfg.exclude !== undefined && !isStringArray(cfg.exclude)) {
+    errors.push(`"exclude" must be an array of glob strings.`);
+  }
+  if (cfg.categories !== undefined) {
+    if (!isStringArray(cfg.categories)) {
+      errors.push(`"categories" must be an array of category names.`);
+    } else {
+      for (const c of cfg.categories) {
+        if (!CATEGORIES.includes(c)) {
+          errors.push(`unknown category "${c}" (expected one of: ${CATEGORIES.join(", ")}).`);
+        }
+      }
+    }
+  }
+  if (cfg.includeTests !== undefined && typeof cfg.includeTests !== "boolean") {
+    errors.push(`"includeTests" must be a boolean.`);
+  }
+  if (cfg.deep !== undefined && typeof cfg.deep !== "boolean") {
+    errors.push(`"deep" must be a boolean.`);
+  }
+  if (
+    cfg.minSeverity !== undefined &&
+    !(typeof cfg.minSeverity === "string" && SEVERITIES.includes(cfg.minSeverity))
+  ) {
+    errors.push(`"minSeverity" must be one of ${SEVERITIES.join(", ")}.`);
+  }
+  return errors;
+}

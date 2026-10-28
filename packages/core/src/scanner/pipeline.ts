@@ -15,6 +15,8 @@ import { ProjectContextBuilder } from "./project-context.js";
 import type { DetectorRegistry } from "./detector-registry.js";
 import { mergeConfig } from "../config/defaults.js";
 import { validateConfig } from "../config/schema.js";
+import { loadUserConfig } from "../config/load-config.js";
+import { applyRuleOverrides } from "./rule-overrides.js";
 
 export class ScannerPipeline {
   private registry: DetectorRegistry;
@@ -29,7 +31,18 @@ export class ScannerPipeline {
   async scan(userConfig: Partial<ScanConfig> & { rootPath: string }, onProgress?: (message: string, current: number, total: number) => void): Promise<ScanResult> {
     const startTime = Date.now();
     const warnings: string[] = [];
-    const config = mergeConfig(userConfig.rootPath, userConfig);
+    // Config file values are the base; explicit (defined) options win.
+    let effective: Partial<ScanConfig> = userConfig;
+    if (userConfig.useConfigFile !== false) {
+      const loaded = await loadUserConfig(userConfig.rootPath);
+      if (loaded) {
+        const explicit = Object.fromEntries(
+          Object.entries(userConfig).filter(([, v]) => v !== undefined),
+        );
+        effective = { ...loaded.scanConfig, ...explicit };
+      }
+    }
+    const config = mergeConfig(userConfig.rootPath, effective);
     
     // Validate config
     const errors = validateConfig(config);
@@ -43,7 +56,7 @@ export class ScannerPipeline {
       ? config.targetFiles 
       : await fileDiscovery.discoverFiles(config.excludePatterns, {
           // Not in mergeConfig's defaults; undefined/false = exclude tests.
-          includeTests: userConfig.includeTests ?? config.includeTests,
+          includeTests: config.includeTests,
         });
     
     if (config.maxFiles && files.length > config.maxFiles) {
@@ -96,6 +109,9 @@ export class ScannerPipeline {
 
     // 4.5. Apply inline ignores
     findings = await applyInlineIgnores(findings, scanContext.readFile);
+
+    // 4.6. Apply rule overrides ("off" drops; severity changes are scored/sorted below)
+    findings = applyRuleOverrides(findings, config.ruleOverrides);
 
     // 5. Score BEFORE the minSeverity filter. minSeverity only controls which
     // findings are displayed; filtering must not inflate the score or hide a
