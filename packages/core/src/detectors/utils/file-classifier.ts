@@ -5,7 +5,7 @@ import type { ProjectContext } from "@vibesafe/shared";
  * real statement of a file can be inspected.
  */
 function stripLeadingComments(content: string): string {
-  let rest = content.replace(/^ï»¿/, "");
+  let rest = content.replace(/^\uFEFF/, "");
   for (;;) {
     const trimmed = rest.replace(/^\s+/, "");
     if (trimmed.startsWith("//")) {
@@ -32,13 +32,18 @@ export function isViteConfigFile(filePath: string): boolean {
 
 /**
  * In a Vite project everything under `src/` is bundled for the browser, except the
- * Vite config itself and files that are clearly server-side (`server/`, `api/`, `*.server.*`).
+ * Vite config itself, tests/mocks/e2e and files that are clearly server-side (`server/`, `api/`,
+ * `*.server.*`, `entry-server.*`). Fullstack Vite + Express layouts are best-effort.
  */
 function isViteClientPath(normalizedPath: string): boolean {
   if (!/(^|\/)src\//.test(normalizedPath)) return false;
   if (!/\.(ts|tsx|js|jsx)$/.test(normalizedPath)) return false;
   if (isViteConfigFile(normalizedPath)) return false;
   if (/(^|\/)(server|api)\//.test(normalizedPath)) return false;
+  // Tests, mocks, e2e suites and SSR entries are never bundled for the browser.
+  if (/\.(test|spec)\.[^/]+$/.test(normalizedPath)) return false;
+  if (/(^|\/)(__tests__|__mocks__|e2e)\//.test(normalizedPath)) return false;
+  if (/(^|\/)entry-server\.[^/]+$/.test(normalizedPath)) return false;
   if (/\.server\.[^/]+$/.test(normalizedPath)) return false;
   return true;
 }

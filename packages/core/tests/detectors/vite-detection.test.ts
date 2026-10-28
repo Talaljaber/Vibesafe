@@ -1,6 +1,6 @@
-﻿import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vitest";
 import { FrontendExposureDetector } from "../../src/detectors/frontend-exposure-detector";
-import { isClientFile } from "../../src/detectors/utils/file-classifier";
+import { hasUseClientDirective, isClientFile, isViteConfigFile } from "../../src/detectors/utils/file-classifier";
 import type { ScanContext } from "@vibesafe/shared";
 
 const detector = new FrontendExposureDetector();
@@ -29,9 +29,20 @@ describe("isClientFile in Vite projects", () => {
       "src/db.server.ts",
       "scripts/build.ts",
       "src/styles.css",
+      "src/lib/a.test.ts",
+      "src/lib/a.spec.tsx",
+      "src/__tests__/a.ts",
+      "src/__mocks__/a.ts",
+      "src/e2e/a.ts",
+      "src/entry-server.tsx",
     ]) {
       expect(isClientFile(p, "", vite)).toBe(false);
     }
+  });
+  it("handles Windows-style paths", () => {
+    expect(isClientFile("app\\src\\main.tsx", "", vite)).toBe(true);
+    expect(isClientFile("src\\server\\db.ts", "", vite)).toBe(false);
+    expect(isViteConfigFile("apps\\web\\vite.config.ts")).toBe(true);
   });
   it("does not apply Vite rules to other frameworks or without context", () => {
     expect(isClientFile("src/main.tsx", "", { framework: "express" })).toBe(false);
@@ -39,7 +50,25 @@ describe("isClientFile in Vite projects", () => {
   });
 });
 
+describe("BOM handling", () => {
+  it("still detects a BOM-prefixed use client file", () => {
+    const bom = String.fromCharCode(0xfeff);
+    expect(hasUseClientDirective(bom + '"use client";')).toBe(true);
+    expect(isClientFile("components/a.tsx", bom + "'use client'\n")).toBe(true);
+  });
+  it("does not strip mojibake text", () => {
+    expect(hasUseClientDirective("\u00ef\u00bb\u00bf" + '"use client";')).toBe(false);
+  });
+});
+
 describe("FrontendExposureDetector in Vite projects", () => {
+  it("does not flag secrets in test files of a Vite project", async () => {
+    expect(await detector.detect(ctx({ "src/a.test.ts": "const k = process.env.SUPABASE_SERVICE_ROLE_KEY;\n" }))).toHaveLength(0);
+  });
+  it("does not trigger a define finding for src files", async () => {
+    const f = await detector.detect(ctx({ "src/a.ts": 'const c = { define: { "process.env": process.env } };' }));
+    expect(f.map((r) => r.ruleId)).not.toContain("frontend_exposure/vite-define-process-env");
+  });
   it("flags a service role key in plain src code of a Vite project", async () => {
     const f = await detector.detect(ctx({ "src/lib/supa.ts": `const k = import.meta.env.SUPABASE_SERVICE_ROLE_KEY;\n` }));
     expect(f.map((x) => x.ruleId)).toContain("frontend_exposure/service-role-key");
@@ -88,6 +117,33 @@ describe("vite.config define leaks", () => {
       ctx({ "apps/web/vite.config.ts": `export default { define: { "process.env": process.env } };` }, "unknown"),
     );
     expect(f).toHaveLength(1);
+  });
+
+  it("flags quoted define key, TS casts, aliases and loadEnv with empty prefix", async () => {
+    expect(await run("vite.config.ts", 'export default { "define": { "process.env": process.env as any } };')).toHaveLength(1);
+    expect(await run("vite.config.ts", "export default { define: { 'process.env': process.env satisfies X } };")).toHaveLength(1);
+    expect(
+      await run("vite.config.ts", 'const env = process.env;\nexport default { define: { "process.env": env } };'),
+    ).toHaveLength(1);
+    expect(
+      await run("vite.config.ts", 'export default ({ mode }) => {\n  const env = loadEnv(mode, process.cwd(), "");\n  return { define: { ...env } };\n};'),
+    ).toHaveLength(1);
+  });
+
+  it("handles multiple and nested define blocks and braces in strings", async () => {
+    const nested = 'export default {\n  define: {\n    A: { b: 1 },\n    s: "}",\n    "process.env": process.env,\n  },\n};';
+    const f = await run("vite.config.ts", nested);
+    expect(f).toHaveLength(1);
+    expect(f[0].line).toBe(5);
+    const two = 'const a = { define: { x: 1 } };\nexport default { define: { ...process.env } };';
+    expect(await run("vite.config.ts", two)).toHaveLength(1);
+  });
+
+  it("does not flag loadEnv with a prefix or a non-leaking spread", async () => {
+    const ok = 'export default ({ mode }) => {\n  const env = loadEnv(mode, process.cwd());\n  return { define: { ...env } };\n};';
+    expect(await run("vite.config.ts", ok)).toHaveLength(0);
+    const ok2 = 'const env = loadEnv(mode, cwd, "VITE_");\nexport default { define: { ...env } };';
+    expect(await run("vite.config.ts", ok2)).toHaveLength(0);
   });
 
   it("does not flag safe define usage", async () => {
