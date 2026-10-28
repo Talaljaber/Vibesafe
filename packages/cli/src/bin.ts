@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { printBanner } from "./ui/banner.js";
+import { shouldPrintBanner } from "./ui/format-args.js";
 import { runScan } from "./commands/scan.js";
 import { runFix } from "./commands/fix.js";
 import { runWatch } from "./commands/watch.js";
@@ -14,16 +15,7 @@ const { version: CLI_VERSION } = require("../package.json") as { version: string
 
 // Print banner unless machine-readable output is requested (--json, --format, --output);
 // we need to check args before commander parses them.
-const isMachineOutput = process.argv.some(
-  (a) =>
-    a === "--json" ||
-    a === "-j" ||
-    a === "--format" ||
-    a.startsWith("--format=") ||
-    a === "--output" ||
-    a.startsWith("--output="),
-);
-if (!isMachineOutput) {
+if (shouldPrintBanner(process.argv)) {
   printBanner();
 }
 
@@ -42,7 +34,10 @@ program
   .option("--html", "Generate HTML report", false)
   .option("--open-report", "Automatically open the HTML report after scan", false)
   .option("-j, --json", "Output pure JSON without console formatting (alias of --format json)", false)
-  .option("--format <format>", "Machine-readable output format: json | sarif (pure output on stdout)")
+  .option(
+    "--format <format>",
+    "Machine-readable output format: json | sarif | markdown (PR-comment summary); pure output on stdout",
+  )
   .option("--output <file>", "Write the report to a file (defaults to json format)")
   .option("--deep", "Also scan git history for leaked secrets (slower)", false)
   .option("--include-tests", "Also scan test files and fixtures (excluded by default)", false)

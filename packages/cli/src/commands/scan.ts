@@ -120,7 +120,9 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
         for (const e of result.errors) console.error(`  - ${e.detectorName}: ${e.message}`);
       }
       for (const w of result.warnings ?? []) console.error(`Warning: ${w}`);
-      const rendered = renderOutput(format, result, { version: CLI_VERSION });
+      // Strip any trailing newline (markdown ends with one, JSON does not) so both stdout and the
+      // --output file end with exactly one.
+      const rendered = renderOutput(format, result, { version: CLI_VERSION }).replace(/\n+$/, "");
       if (options.output !== undefined) {
         const outPath = path.resolve(process.cwd(), options.output);
         try {

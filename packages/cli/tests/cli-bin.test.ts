@@ -53,6 +53,38 @@ describe("vibesafe CLI (built binary)", () => {
 });
 
 describe("vibesafe CLI --format / --output", () => {
+  it("scan --format markdown prints no banner and starts with the sticky marker", () => {
+    const res = spawnSync(process.execPath, [BIN, "scan", FIXTURE, "--format", "markdown"], {
+      encoding: "utf-8",
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    expect(res.status).toBe(1);
+    expect(res.stdout.startsWith("<!-- vibesafe-pr-comment -->")).toBe(true);
+    expect(res.stdout).toContain("<!-- vibesafe-status:");
+    expect(res.stdout.endsWith("</sub>\n")).toBe(true);
+  }, 30000);
+
+  it("scan --format markdown --output writes the comment to the file and keeps stdout empty", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vibesafe-md-"));
+    try {
+      const out = path.join(dir, "nested", "comment.md");
+      const res = spawnSync(
+        process.execPath,
+        [BIN, "scan", FIXTURE, "--format", "markdown", "--output", out],
+        { encoding: "utf-8", maxBuffer: 64 * 1024 * 1024 },
+      );
+      expect(res.status).toBe(1);
+      expect(res.stdout).toBe("");
+      expect(res.stderr).toContain("Wrote markdown report to");
+      const body = fs.readFileSync(out, "utf-8");
+      expect(body.startsWith("<!-- vibesafe-pr-comment -->")).toBe(true);
+      expect(body).toContain("<!-- vibesafe-status:");
+      expect(body.endsWith("</sub>\n")).toBe(true);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30000);
+
   it("scan --format sarif prints pure SARIF JSON on stdout", () => {
     const res = spawnSync(process.execPath, [BIN, "scan", FIXTURE, "--format", "sarif"], {
       encoding: "utf-8",
@@ -134,10 +166,17 @@ describe("vibesafe CLI --format / --output", () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   }, 30000);
+
+  it("--format markdown wins over --json", () => {
+    const res = run(["--json", "--format", "markdown"]);
+    expect(res.stdout.startsWith("<!-- vibesafe-pr-comment -->")).toBe(true);
+  }, 30000);
+
   it("rejects an unknown --format with exit code 2", () => {
     const res = spawnSync(process.execPath, [BIN, "scan", FIXTURE, "--format", "xml"], { encoding: "utf-8" });
     expect(res.status).toBe(2);
     expect(res.stdout).toBe("");
     expect(res.stderr).toContain("unknown --format");
+    expect(res.stderr).toContain("Supported formats: json, sarif, markdown.");
   }, 30000);
 });
