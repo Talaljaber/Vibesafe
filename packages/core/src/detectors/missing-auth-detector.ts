@@ -11,10 +11,23 @@ import {
   isExpressMutatingMethod,
   usesExpress,
   extractExpressRoutes,
-  hasExpressAuth,
+  chainHasExpressAuth,
+  displayRoutePath,
+  type ExpressRoute,
   isCoveredByExpressUse,
 } from "./utils/route-analyzer.js";
 import { RISKY_HTTP_METHODS, EXPRESS_PUBLIC_ROUTE_RE } from "./patterns/auth-patterns.js";
+
+/**
+ * `app.all("*", ...)` / `app.all("/*", ...)` catch-alls (CORS headers, 404 handlers,
+ * logging) are not data-modifying endpoints: skip them when the path is a bare wildcard
+ * or the handler only passes control on (`next()`) or answers 404.
+ */
+function isNonMutatingCatchAll(route: ExpressRoute): boolean {
+  if (route.method !== "ALL") return false;
+  if (/^\/?\*$/.test(route.path)) return true;
+  return /\bnext\s*\(/.test(route.chainCode) || /\b(?:status|sendStatus)\s*\(\s*404\s*\)/.test(route.chainCode);
+}
 
 export class MissingAuthDetector implements Detector {
   id = "missing-auth-detector";
@@ -90,9 +103,11 @@ export class MissingAuthDetector implements Detector {
     for (const route of extractExpressRoutes(content)) {
       if (!isExpressMutatingMethod(route.method)) continue;
       if (EXPRESS_PUBLIC_ROUTE_RE.test(route.path)) continue;
-      if (hasExpressAuth(route.handlerChain) || isCoveredByExpressUse(content, route)) continue;
+      if (isNonMutatingCatchAll(route)) continue;
+      if (chainHasExpressAuth(route) || isCoveredByExpressUse(content, route)) continue;
 
       const critical = isRiskyRoutePattern(route.path);
+      const shownPath = displayRoutePath(route.path);
       findings.push({
         id: createFindingId(CATEGORY_PREFIX.auth, "auth/missing-route-auth", filePath, route.line),
         ruleId: "auth/missing-route-auth",
@@ -103,7 +118,7 @@ export class MissingAuthDetector implements Detector {
         confidence: "medium",
         file: filePath,
         line: route.line,
-        plainEnglishProblem: `The Express route ${route.method} ${route.path} modifies data, but we couldn't find any middleware or code verifying who the user is.`,
+        plainEnglishProblem: `The Express route ${route.method} ${shownPath} modifies data, but we couldn't find any middleware or code verifying who the user is.`,
         whyItMatters:
           "Without an auth check, anyone on the internet can call this endpoint directly and modify your data.",
         fixSteps: [
@@ -111,7 +126,7 @@ export class MissingAuthDetector implements Detector {
           "Reject unauthenticated requests with a 401 response.",
         ],
         autoFixAvailable: false,
-        aiFixPrompt: `I need to secure this Express route (${route.method} ${route.path}). Please add an authentication middleware so unauthenticated users receive a 401 response.`,
+        aiFixPrompt: `I need to secure this Express route (${route.method} ${shownPath}). Please add an authentication middleware so unauthenticated users receive a 401 response.`,
       });
     }
     return findings;

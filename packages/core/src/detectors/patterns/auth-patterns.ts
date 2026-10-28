@@ -46,19 +46,21 @@ export const RISKY_ROUTE_PATTERNS = [
 ];
 
 /**
- * Express: signatures of an authentication middleware/check in a route's
- * handler chain or in an `app.use(...)` / `router.use(...)` call.
+ * Express: signatures of an authentication middleware in a route's middleware
+ * arguments (everything before the final handler) or in an `app.use(...)` /
+ * `router.use(...)` call. Matched against code with comments and strings blanked out.
+ * Identifier or call forms only: no `authenticate\w*` / `validateUser` style wildcards.
  */
 export const EXPRESS_AUTH_PATTERNS: RegExp[] = [
   /\bpassport\.authenticate\s*\(/,
-  /\b(?:require|ensure|check|verify|validate)(?:Auth\w*|Login\w*|LoggedIn|Jwt|Token|Session|User)\b/i,
-  /\bisAuth\w*\b/i,
+  /\b(?:require|ensure|check|verify)(?:Auth\w*|Login\w*|LoggedIn|Jwt|Token|Session|User)\b/,
+  /\bisAuth(?:enticated|orized|orised)?\b/,
   /\bjwt\s*\(/,
   /\bexpressjwt\s*\(/i,
   /\bjwt\.verify\s*\(/,
   /\bauth\s*\(/,
-  /\bauthenticate\w*\b/i,
-  /\bauth(?:Middleware|Guard|Required|Handler)\w*\b/i,
+  /\bauthenticate\b/,
+  /\bauth(?:Middleware|Guard|Required|Handler)\b/,
   /\bprotect\b/,
   /\bgetSession\s*\(/,
   /\bgetServerSession\s*\(/,
@@ -68,9 +70,22 @@ export const EXPRESS_AUTH_PATTERNS: RegExp[] = [
   /\breq\.isAuthenticated\s*\(/,
 ];
 
-/** Express route paths that are public by nature (login, signup, ...). */
+/** Strict call-form auth checks accepted inside a route's final handler body. */
+export const EXPRESS_HANDLER_AUTH_PATTERNS: RegExp[] = [
+  /\bpassport\.authenticate\s*\(/,
+  /\bjwt\.verify\s*\(/,
+  /\b(?:getSession|getServerSession|getAuth|verifyToken|verifyJwt|checkAuth|requireAuth)\s*\(/,
+  /\bsupabase\.auth\.getUser\s*\(/,
+  /\breq\.isAuthenticated\s*\(/,
+];
+
+/**
+ * Express route paths that are public by nature: specific leaf endpoints only
+ * (login, signup, password reset, health, oauth callback). A bare `/auth/` segment is
+ * deliberately NOT whitelisted, so `/auth/change-password` or `/auth/delete-account` are checked.
+ */
 export const EXPRESS_PUBLIC_ROUTE_RE =
-  /(?:^|\/)(?:log-?in|sign-?in|sign-?up|register|forgot-?password|reset-?password|auth|oauth|callback|health|healthz)(?:\/|$|:)/i;
+  /(?:^|\/)(?:(?:log-?in|sign-?in|sign-?up|register|forgot-?password|reset-?password|health|healthz)|(?:o?auth)\/(?:[^/]+\/)?callback)\/?$/i;
 
 /** Patterns that indicate a role / ownership / permission check. */
 export const AUTHZ_CHECK_PATTERNS: RegExp[] = [

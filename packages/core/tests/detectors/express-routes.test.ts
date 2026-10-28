@@ -144,10 +144,42 @@ describe("MissingValidationDetector (Express)", () => {
     expect(findings[0]!.line).toBe(2);
   });
 
-  it("flags req.query and req.params", async () => {
-    const src = `app.get("/a", (req, res) => res.send(req.query.q));\napp.get("/b/:id", (req, res) => res.send(req.params.id));`;
+  it("flags req.query/req.params only on mutating routes, as medium", async () => {
+    const src = `app.get("/a", (req, res) => res.send(req.query.q));
+app.get("/b/:id", (req, res) => res.send(req.params.id));
+app.delete("/c/:id", (req, res) => res.send(req.params.id));`;
     const findings = await detector.detect(ctx({ "server.js": src }));
-    expect(findings.map((f) => f.line)).toEqual([1, 2]);
+    expect(findings.map((f) => [f.line, f.severity])).toEqual([[3, "medium"]]);
+  });
+
+  it("keeps body reads high and sanitizes the route path in messages", async () => {
+    const src = "app.post(\"/x\u0001y\", (req, res) => res.send(req.body));";
+    const ctl = String.fromCharCode(1);
+    const findings = await detector.detect(ctx({ "server.js": src }));
+    expect(findings[0]!.severity).toBe("high");
+    expect(findings[0]!.plainEnglishProblem).not.toContain(ctl);
+  });
+
+  it("does not treat validated-looking variables in the handler body as validation", async () => {
+    const a = `app.post("/x", (req, res) => { const validated = false; console.log(validated); res.json(req.body); });`;
+    const b = `app.post("/x", (req, res) => { validatorSetup(); res.json(req.body); });`;
+    const c = `app.post("/x", validated, (req, res) => res.json(req.body));`;
+    expect(await detector.detect(ctx({ "a.js": a, "b.js": b, "c.js": c }))).toHaveLength(3);
+  });
+
+  it("accepts a bare validateBody middleware identifier", async () => {
+    const src = `app.post("/x", validateBody, (req, res) => res.json(req.body));`;
+    expect(await detector.detect(ctx({ "a.js": src }))).toHaveLength(0);
+  });
+
+  it("reports the right line when the chain starts on a later line", async () => {
+    const src = `app.post("/x",
+  mw,
+  (req, res) => {
+    res.json(req.body);
+  });`;
+    const findings = await detector.detect(ctx({ "a.js": src }));
+    expect(findings[0]!.line).toBe(4);
   });
 
   it("accepts zod parse / safeParse in the handler", async () => {
@@ -186,5 +218,120 @@ app.post("/x", body("email").isEmail(), (req, res) => {
     const findings = await detector.detect(ctx({ "a.js": src }));
     expect(findings).toHaveLength(1);
     expect(findings[0]!.line).toBe(2);
+  });
+});
+
+describe("Express review fixes", () => {
+  const auth = new MissingAuthDetector();
+  const validation = new MissingValidationDetector();
+
+  it("does not treat an axios instance named api/server as a route", async () => {
+    const src = `const api = axios.create({});
+api.post("/admin/users", payload);
+api.delete("/items/1", cfg);
+server.post("/x", body);`;
+    expect(extractExpressRoutes(src)).toHaveLength(0);
+    expect(await auth.detect(ctx({ "client.ts": src }))).toHaveLength(0);
+    expect(await validation.detect(ctx({ "client.ts": src }))).toHaveLength(0);
+  });
+
+  it("still accepts a receiver declared from express()/Router()", () => {
+    const src = `const api = express.Router();
+api.post("/x", h);`;
+    expect(extractExpressRoutes(src)).toHaveLength(1);
+  });
+
+  it("ignores routes in comments and strings", () => {
+    const src = `// app.post("/x", h);
+const s = 'app.post("/y", h)';`;
+    expect(extractExpressRoutes(src)).toHaveLength(0);
+  });
+
+  it("skips app.all catch-alls (CORS, 404) but flags real all routes", async () => {
+    const cors = `app.all("*", (req, res, next) => { res.header("Access-Control-Allow-Origin", "*"); next(); });`;
+    const nf = `app.all("/*", (req, res) => res.status(404).send("nope"));`;
+    const nf2 = `app.all("/anything", (req, res) => res.status(404).send("nope"));`;
+    expect(await auth.detect(ctx({ "a.js": cors, "b.js": nf, "c.js": nf2 }))).toHaveLength(0);
+    expect(await auth.detect(ctx({ "a.js": `app.all("/items", (req, res) => res.send("x"));` }))).toHaveLength(1);
+  });
+
+  it("handles regex literals in handlers without swallowing later routes", async () => {
+    const src = [
+      `app.post("/a", (req, res) => { const s = req.body.x.replace(/"/g, ""); res.send(s); });`,
+      `app.post("/b", (req, res) => { res.send(/['"]/.test("x")); });`,
+      `app.post("/c", requireAuth, (req, res) => res.send(1));`,
+      `app.post("/d", (req, res) => res.send(1));`,
+    ].join("\n");
+    const routes = extractExpressRoutes(src);
+    expect(routes.map((r) => r.path)).toEqual(["/a", "/b", "/c", "/d"]);
+    expect(routes[0]!.handlerChain).not.toContain("/b");
+    const findings = await auth.detect(ctx({ "a.js": src }));
+    expect(findings.map((f) => f.line)).toEqual([1, 2, 4]);
+  });
+
+  it("handles nested template literals", () => {
+    const src = 'app.post("/a", (req, res) => { res.send(`x ${`y ${req.body.a}`} )`); });\napp.get("/b", h);';
+    const routes = extractExpressRoutes(src);
+    expect(routes).toHaveLength(2);
+    expect(routes[0]!.handlerChain).not.toContain('"/b"');
+  });
+
+  it("truncates an unbalanced chain at the next route", () => {
+    const src = `app.post("/a", (req, res) => { res.send(1);
+app.post("/b", requireAuth, h);`;
+    const routes = extractExpressRoutes(src);
+    expect(routes[0]!.handlerChain).not.toContain("requireAuth");
+  });
+
+  it.each([
+    `app.post("/x", (req, res) => { const authenticated = false; res.json({ authenticated }); });`,
+    `app.post("/x", (req, res) => { const isAuthed = false; res.send(isAuthed); });`,
+    `app.post("/x", (req, res) => { // TODO add auth()
+ res.send("ok"); });`,
+    `app.post("/x", (req, res) => { validateUser(req.body); res.send("a requireAuth string"); });`,
+  ])("does not treat body text as auth: %s", async (src) => {
+    expect(await auth.detect(ctx({ "a.js": src }))).toHaveLength(1);
+  });
+
+  it("does not whitelist the whole /auth subtree", async () => {
+    const src = [`/auth/change-password`, `/api/auth/delete-account`, `/auth/2fa/enable`, `/auth/logout`]
+      .map((p) => `app.post("${p}", h);`)
+      .join("\n");
+    expect(await auth.detect(ctx({ "a.js": src }))).toHaveLength(4);
+    const pub = `app.post("/auth/login", h);
+app.post("/oauth/github/callback", h);
+app.post("/forgot-password", h);`;
+    expect(await auth.detect(ctx({ "a.js": pub }))).toHaveLength(0);
+  });
+
+  it("scopes use() on a segment boundary and on routers", async () => {
+    const apiary = `app.use("/api", requireAuth);
+app.post("/apiary/x", h);`;
+    const below = `app.use("/api", requireAuth);
+app.post("/api/x", h);`;
+    const router = `const router = express.Router();
+router.use("/admin", requireAuth);
+router.post("/public", h);`;
+    const routerOk = `const router = express.Router();
+router.use("/admin", requireAuth);
+router.post("/admin/x", h);`;
+    expect(await auth.detect(ctx({ "a.js": apiary }))).toHaveLength(1);
+    expect(await auth.detect(ctx({ "a.js": below }))).toHaveLength(0);
+    expect(await auth.detect(ctx({ "a.js": router }))).toHaveLength(1);
+    expect(await auth.detect(ctx({ "a.js": routerOk }))).toHaveLength(0);
+  });
+
+  it("accepts template-literal paths", async () => {
+    const src = "app.post(`/items`, (req, res) => res.send(1));";
+    expect(await auth.detect(ctx({ "a.js": src }))).toHaveLength(1);
+  });
+
+  it("leaves Next.js API route files on the non-Express branch", async () => {
+    const src = `export async function POST() { return Response.json({}); }
+const app = express();
+app.post("/x", h);`;
+    const findings = await auth.detect(ctx({ "app/api/users/route.ts": src }));
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.title).toBe("Missing authentication in API Route");
   });
 });

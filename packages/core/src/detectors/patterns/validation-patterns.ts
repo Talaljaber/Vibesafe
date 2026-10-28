@@ -23,11 +23,21 @@ export const EXPRESS_VALIDATOR_IMPORT_REGEX =
 export const EXPRESS_VALIDATOR_CALL_REGEX =
   /\b(?:body|check|query|param|cookie|header|oneOf|checkSchema|matchedData|validationResult|celebrate)\s*\(/;
 
-/** Generic validation middleware, e.g. `validate(schema)`, `validateBody(schema)`, `validateRequest`. */
-export const EXPRESS_VALIDATE_MIDDLEWARE_REGEX = /\bvalidat\w*\s*\(|\bvalidat(?:e|ion)\w*\s*(?=[,\])])/i;
+/**
+ * Generic validation middleware in a middleware position of the chain: a call
+ * `validate(...)` / `validateBody(...)` or a bare identifier that is a whole argument.
+ * Case-sensitive; matched per top-level argument, never against the handler body.
+ */
+export const EXPRESS_VALIDATE_MIDDLEWARE_CALL_REGEX =
+  /^\s*validate(?:Body|Request|Query|Params|Schema|Input)?\s*\(/;
+export const EXPRESS_VALIDATE_MIDDLEWARE_IDENT_REGEX =
+  /^\s*validate(?:Body|Request|Query|Params|Schema|Input)?\s*$/;
 
-/** Reads of untrusted request input inside an Express handler. */
-export const EXPRESS_INPUT_READ_REGEX = /\b(?:req|request)\.(?:body|query|params)\b/;
+/** Reads of the request body inside an Express handler. */
+export const EXPRESS_BODY_READ_REGEX = /\b(?:req|request)\.body\b/;
+
+/** Reads of query string / route params (only checked on mutating routes). */
+export const EXPRESS_QUERY_READ_REGEX = /\b(?:req|request)\.(?:query|params)\b/;
 
 /** Reads of untrusted request input (body, text, form data, query string). */
 export const INPUT_READ_REGEXES: RegExp[] = [
