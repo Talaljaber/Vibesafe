@@ -23,6 +23,7 @@ export const DEFAULT_CONFIG: Omit<ScanConfig, "rootPath"> = {
   maxFiles: DEFAULT_MAX_FILES,
   timeoutMs: DEFAULT_SCAN_TIMEOUT_MS,
   deep: false,
+  includeTests: false,
 };
 
 /**
@@ -37,5 +38,7 @@ export function mergeConfig(rootPath: string, userConfig?: Partial<ScanConfig>):
     maxFiles: userConfig?.maxFiles ?? DEFAULT_CONFIG.maxFiles,
     timeoutMs: userConfig?.timeoutMs ?? DEFAULT_CONFIG.timeoutMs,
     deep: userConfig?.deep ?? DEFAULT_CONFIG.deep,
+    includeTests: userConfig?.includeTests ?? DEFAULT_CONFIG.includeTests,
+    ...(userConfig?.targetFiles !== undefined ? { targetFiles: userConfig.targetFiles } : {}),
   };
 }

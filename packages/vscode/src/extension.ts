@@ -171,6 +171,10 @@ export function activate(context: vscode.ExtensionContext): void {
           hoverProvider.update(result);
           updateDashboardIfOpen(result);
           
+          if (result.warnings && result.warnings.length > 0) {
+            vscode.window.showWarningMessage(`VibeSafe: ${result.warnings.join(" ")}`);
+          }
+
           if (result.findings.length > 0) {
             vscode.window.showWarningMessage(`VibeSafe found ${result.findings.length} issues. Check the Problems panel!`);
             vscode.commands.executeCommand("workbench.action.problems.focus");
@@ -229,7 +233,9 @@ async function runScannerOnDocument(document: vscode.TextDocument) {
       targetFiles: [docRelativePath]
     });
 
-    const newDocumentFindings = targetedResult.findings;
+    // Project-level (file-less) findings belong to the full scan; keep only this file's findings
+    // so counts do not drift when the same project-level finding is re-appended.
+    const newDocumentFindings = targetedResult.findings.filter((f) => f.file === docRelativePath);
 
     // Update squiggles immediately for the file
     updateDiagnostics(document, diagnosticCollection, newDocumentFindings);
