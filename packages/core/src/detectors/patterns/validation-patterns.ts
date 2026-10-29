@@ -39,6 +39,23 @@ export const EXPRESS_BODY_READ_REGEX = /\b(?:req|request)\.body\b/;
 /** Reads of query string / route params (only checked on mutating routes). */
 export const EXPRESS_QUERY_READ_REGEX = /\b(?:req|request)\.(?:query|params)\b/;
 
+/** `request.formData()` read (multipart upload). */
+export const FORM_DATA_READ_REGEX = /\b(?:req|request)\.formData\s*\(/;
+
+/** Request input other than form data: JSON/text bodies, query strings, search params. */
+export const OTHER_INPUT_READ_REGEX =
+  /\b(?:req|request)\.(?:json|text|arrayBuffer)\s*\(|\breq\.(?:body|query)\b|\bsearchParams\b/;
+
+/** The uploaded value is checked to be a file: `x instanceof File` / `Blob`. */
+export const FILE_INSTANCE_CHECK_REGEX = /\binstanceof\s+(?:File|Blob)\b/;
+
+/** The upload's size is compared against a limit (`file.size > MAX`). */
+export const FILE_SIZE_CHECK_REGEX = /\.size\s*[<>]=?|[<>]=?\s*[\w$.]*\.size\b/;
+
+/** The upload's MIME type is checked (`file.type` compared or looked up in an allowlist). */
+export const FILE_TYPE_CHECK_REGEX =
+  /\.type\s*(?:[!=]==?|\))|\[\s*[\w$]+\.type\s*\]|\.(?:includes|has)\s*\(\s*[\w$]+\.type\s*\)/;
+
 /** Reads of untrusted request input (body, text, form data, query string). */
 export const INPUT_READ_REGEXES: RegExp[] = [
   /\b(?:req|request)\.(?:json|text|formData|arrayBuffer)\s*\(/,
