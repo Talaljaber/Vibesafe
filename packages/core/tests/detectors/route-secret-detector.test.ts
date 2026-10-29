@@ -196,3 +196,39 @@ describe("RouteSecretDetector: review round 2", () => {
     expect(hits.map((x) => x.confidence)).toEqual(["high", "medium"]);
   });
 });
+
+describe("RouteSecretDetector: review round 3", () => {
+  it("does not treat a non-secret early return on mismatch as a denial", async () => {
+    const f = await run({
+      "app/api/items/route.ts": [
+        "export async function GET(request: Request) {",
+        "  const session = await getServerSession();",
+        "  const { searchParams } = new URL(request.url);",
+        '  if (searchParams.get("key") !== "createdAt") {',
+        '    return NextResponse.json({ items: [], sort: "default" });',
+        "  }",
+        "}",
+      ].join("\n"),
+      "app/api/login/route.ts": [
+        "export async function GET(request: Request) {",
+        "  const session = await getServerSession();",
+        "  const { searchParams } = new URL(request.url);",
+        '  if (searchParams.get("auth") !== "google")',
+        '    return NextResponse.json({ error: "unsupported provider" }, { status: 400 });',
+        "}",
+      ].join("\n"),
+    });
+    expect(f.filter((x) => x.confidence === "high")).toEqual([]);
+  });
+
+  it("keeps x-api-key !== literal with a 404 return as high", async () => {
+    const f = await run({
+      "app/api/hook/route.ts": [
+        "export async function POST(request: Request) {",
+        '  if (request.headers.get("x-api-key") !== "sk_live_abc") return new Response(null, { status: 404 });',
+        "}",
+      ].join("\n"),
+    });
+    expect(f.map((x) => x.confidence)).toEqual(["high"]);
+  });
+});

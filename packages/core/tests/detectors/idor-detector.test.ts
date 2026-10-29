@@ -186,3 +186,17 @@ describe("IdorDetector: review round 2", () => {
     expect(f).toHaveLength(1);
   });
 });
+
+describe("IdorDetector: review round 3", () => {
+  it("does not treat a plan or title comparison as an ownership check", async () => {
+    const f = await run({
+      "app/api/orders/[id]/route.ts": route(
+        "  const note = await prisma.note.findUnique({ where: { id: params.id } });\n  if (session.user.plan !== Plan.PRO) return upgrade();\n  return Response.json(note);",
+      ),
+      "app/api/notes/[id]/route.ts": route(
+        "  const note = await prisma.note.findUnique({ where: { id: params.id } });\n  const same = note?.title === session.user.name;\n  return Response.json(note);",
+      ),
+    });
+    expect(f).toHaveLength(2);
+  });
+});

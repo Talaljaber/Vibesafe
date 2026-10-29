@@ -11,14 +11,12 @@ import { makeFinding } from "./utils/finding.js";
 import { classifyFile, isJsLike, isServerScope } from "./utils/file-kind.js";
 import { getJsSource, type JsSource } from "./utils/js-source.js";
 import { findSecretComparisons, type SecretComparison } from "./utils/route-analyzer.js";
-import { SECRET_PARAM_ANCHORED_RE } from "./patterns/auth-patterns.js";
+import { SECRET_PARAM_ANCHORED_RE, UNAMBIGUOUS_SECRET_NAME_RE } from "./patterns/auth-patterns.js";
 
 const PREFILTER_RE = /[!=]==?/;
 const REQUEST_HINT_RE = /\b(?:searchParams|query|headers?|cookies)\b/;
 const CONSTANT_TIME_RE =
   /\b(?:timingSafeEqual|safeCompare|safeEqual|constantTimeEqual|constantTimeCompare|timingSafeCompare|secureCompare|tsscmp)\b/;
-const UNAMBIGUOUS_SECRET_NAME_RE =
-  /^(?:secret|token|password|passwd|apikey|api[-_]key|x-[\w-]*-(?:key|token))$|[-_]token$|[-_](?:secret|password)$|[a-z](?:Secret|Token|Password)$|secret|password|api[-_]?key/i;
 const MAX_PER_FILE = 25;
 
 /** The comparison line with the compared literal blanked out (never echo the secret). */

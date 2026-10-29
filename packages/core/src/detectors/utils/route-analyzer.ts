@@ -11,6 +11,7 @@ import {
   SIGNATURE_VERIFY_PATTERNS,
   PUBLIC_HANDLER_PATTERNS,
   SECRET_PARAM_ANCHORED_RE,
+  UNAMBIGUOUS_SECRET_NAME_RE,
 } from "../patterns/auth-patterns.js";
 import { maskCode } from "./js-source.js";
 import type { JsSource } from "./js-source.js";
@@ -601,7 +602,7 @@ export function findSecretComparisons(src: JsSource, from: number, to: number): 
         against = "env";
       }
       if (against === undefined) continue;
-      const denies = rejectsRequest(src, lineStart, op, m[0], name);
+      const denies = rejectsRequest(src, lineStart, op, m[0], name, against);
       out.push({
         offset: op,
         line: src.lineAt(op),
@@ -656,10 +657,13 @@ function rejectsRequest(
   op: number,
   operator: string,
   name: string,
+  against: "env" | "literal",
 ): boolean {
   const code = src.code;
   const prefix = code.slice(lineStart, op);
-  const secretName = SECRET_PARAM_ANCHORED_RE.test(name);
+  const secretName =
+    SECRET_PARAM_ANCHORED_RE.test(name) &&
+    (against === "env" || UNAMBIGUOUS_SECRET_NAME_RE.test(name));
   const neq = operator.startsWith("!");
   const check = (open: number, mismatchRejects: boolean): boolean => {
     const blk = blockAfterCondition(code, open);

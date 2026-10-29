@@ -54,7 +54,8 @@ function firstDetail(code: string, args: string, base: number): Hit | undefined 
   const validateCall = String.raw`\.\s*(?:validate|validateAsync|validateSync)\s*\(`;
   for (const m of args.matchAll(DB_DETAIL_RE)) {
     const recv = m[1] ?? "";
-    if (recv !== "") {
+    // Joi/Yup/Zod expose `details` but no `hint`: only `details` can be a validation error
+    if (recv !== "" && m[0].endsWith("details")) {
       const esc = recv.replace(/\$/g, "\\$&");
       const bound = new RegExp(
         String.raw`\b(?:const|let|var)\s+(?:\{[^}]*\b${esc}\b[^}]*\}|${esc})\s*(?::[^=;\n]+)?=[^;]*?${validateCall}`,

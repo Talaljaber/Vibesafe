@@ -187,3 +187,21 @@ describe("ErrorLeakDetector: review round 2", () => {
     expect(f).toHaveLength(1);
   });
 });
+
+describe("ErrorLeakDetector: review round 3", () => {
+  it("flags a Postgres hint leak even when a validation call is in the same try", async () => {
+    const f = await run({
+      "app/api/c/route.ts": [
+        "export async function POST(req: Request, res: Response) {",
+        "  try {",
+        "    await schema.validateAsync(body);",
+        "    await pool.query(sql);",
+        "  } catch (err) {",
+        "    res.status(500).json({ hint: err.hint });",
+        "  }",
+        "}",
+      ].join("\n"),
+    });
+    expect(f).toHaveLength(1);
+  });
+});
