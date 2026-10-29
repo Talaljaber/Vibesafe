@@ -56,11 +56,12 @@ runs:
       working-directory: ${{ github.action_path }}
       run: |
         set -euo pipefail
-        hash="$(node -e 'process.stdout.write(require("crypto").createHash("sha256").update(require("fs").readFileSync("pnpm-lock.yaml")).digest("hex"))')"
+        hash="$(node -e 'process.stdout.write(require("crypto").createHash("sha256").update(require("fs").readFileSync("pnpm-lock.yaml")).update(String(require("./package.json").packageManager)).digest("hex"))')"
         echo "key=vibesafe-pnpm-store-${RUNNER_OS}-${RUNNER_ARCH}-${hash}" >> "$GITHUB_OUTPUT"
 
     # Cache the private pnpm store used by the build below. The key only depends on the
-    # action's own lockfile, never on the scanned repository. GitHub scopes caches by
+    # action's own lockfile and pnpm version, never on the scanned repository. The store is
+    # only saved when the job succeeds. GitHub scopes caches by
     # branch: a pull request can read its base branch's cache but only writes its own.
     - name: Cache the VibeSafe pnpm store
       uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
