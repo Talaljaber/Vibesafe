@@ -170,8 +170,16 @@ function publicNameKey(name: string): string {
     .replace(/(?:_api)?_(?:view_?set|view|api)$/, "");
 }
 
+/**
+ * Management or privileged actions that are never public, even when the name also mentions a
+ * public flow: create_webhook, SSOSettingsView, login_as_user, register_device, registration_approve.
+ */
+const MANAGEMENT_NAME_RE =
+  /(?:^|_)(?:create|add|update|edit|delete|remove|manage|settings?|config|configure|admin|impersonate|approve|invite|device)(?:_|$)|(?:^|_)as_user(?:_|$)/;
+
 function isPublicViewName(name: string): boolean {
   const key = publicNameKey(name);
+  if (MANAGEMENT_NAME_RE.test(key)) return false;
   return PUBLIC_VIEW_NAME_RES.some((re) => re.test(key));
 }
 

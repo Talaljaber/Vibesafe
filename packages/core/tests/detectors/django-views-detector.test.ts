@@ -201,6 +201,43 @@ describe("DjangoViewsDetector: function views", () => {
       "SubscriptionCancelView",
     ]);
   });
+
+  it("checks management and privileged views that mention webhooks, SSO or login", async () => {
+    const names = [
+      "create_webhook",
+      "delete_webhook",
+      "webhook_settings",
+      "update_sso_settings",
+      "saml_config",
+      "login_as_user",
+      "register_device",
+      "registration_approve",
+    ];
+    const f = await run({
+      "a/views.py":
+        DJ +
+        names.map((n) => `@require_POST\ndef ${n}(request):\n    pass\n`).join("") +
+        "class WebhookCreateView(View):\n    def post(self, request):\n        pass\n" +
+        "class LoginAsUserView(View):\n    def post(self, request):\n        pass\n",
+    });
+    expect(f.map((x) => x.title.split(" ")[2])).toEqual([
+      ...names,
+      "WebhookCreateView",
+      "LoginAsUserView",
+    ]);
+  });
+
+  it("still skips webhook receivers and auth callbacks", async () => {
+    const f = await run({
+      "a/views.py":
+        DJ +
+        "@require_POST\ndef github_webhook_handler(request):\n    pass\n" +
+        "@require_POST\ndef stripe_webhook(request):\n    pass\n" +
+        "@require_POST\ndef google_callback(request):\n    pass\n" +
+        "@require_POST\ndef user_login(request):\n    pass\n",
+    });
+    expect(f).toHaveLength(0);
+  });
 });
 
 describe("DjangoViewsDetector: class-based views", () => {
