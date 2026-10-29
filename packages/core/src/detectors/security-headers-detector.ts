@@ -1,5 +1,5 @@
 import type { Detector, Finding, ScanContext, Severity } from "@talaljaber/vibesafe-shared";
-import { CATEGORY_PREFIX, createFindingId } from "@talaljaber/vibesafe-shared";
+import { CATEGORY_PREFIX, createFindingId, isInfraFile } from "@talaljaber/vibesafe-shared";
 import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
 
 const EXPRESS_SOURCE_RE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
@@ -123,7 +123,11 @@ export class SecurityHeadersDetector implements Detector {
     const helmetRoots = new Set<string>();
 
     for (const filePath of context.files) {
-      if (!EXPRESS_SOURCE_RE.test(filePath) || isTestFile(filePath)) continue;
+      // next.config.mts is admitted as an infra file and matches the extension regex,
+      // but it is build config, never an Express app.
+      if (!EXPRESS_SOURCE_RE.test(filePath) || isTestFile(filePath) || isInfraFile(filePath)) {
+        continue;
+      }
       const raw = await context.readFile(filePath);
       if (!raw) continue;
       const hasHelmet = raw.includes("helmet");

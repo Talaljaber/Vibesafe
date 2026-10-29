@@ -20,6 +20,27 @@ import { SecurityHeadersDetector } from "../detectors/security-headers-detector.
 import { CorsDetector } from "../detectors/cors-detector.js";
 import { StripeWebhookDetector } from "../detectors/stripe-webhook-detector.js";
 import { RateLimitDetector } from "../detectors/rate-limit-detector.js";
+import { infraDetectors, infraPrecedence } from "../detectors/groups/infra.js";
+import { injectionDetectors, injectionPrecedence } from "../detectors/groups/injection.js";
+import { clientDetectors, clientPrecedence } from "../detectors/groups/client.js";
+import { authzDetectors, authzPrecedence } from "../detectors/groups/authz.js";
+import { cryptoDetectors, cryptoPrecedence } from "../detectors/groups/crypto.js";
+import { supabaseDetectors, supabasePrecedence } from "../detectors/groups/supabase.js";
+import { depsDetectors, depsPrecedence } from "../detectors/groups/deps.js";
+import { toolingDetectors, toolingPrecedence } from "../detectors/groups/tooling.js";
+import type { PrecedenceRule } from "./precedence.js";
+
+/** Detector groups in registration order (after the built-in detectors). */
+const GROUPS: readonly { detectors: () => Detector[]; precedence: readonly PrecedenceRule[] }[] = [
+  { detectors: infraDetectors, precedence: infraPrecedence },
+  { detectors: injectionDetectors, precedence: injectionPrecedence },
+  { detectors: clientDetectors, precedence: clientPrecedence },
+  { detectors: authzDetectors, precedence: authzPrecedence },
+  { detectors: cryptoDetectors, precedence: cryptoPrecedence },
+  { detectors: supabaseDetectors, precedence: supabasePrecedence },
+  { detectors: depsDetectors, precedence: depsPrecedence },
+  { detectors: toolingDetectors, precedence: toolingPrecedence },
+];
 
 export function createDefaultRegistry(): DetectorRegistry {
   const registry = new DetectorRegistry();
@@ -43,10 +64,15 @@ export function createDefaultRegistry(): DetectorRegistry {
   registry.register(new CorsDetector());
   registry.register(new StripeWebhookDetector());
   registry.register(new RateLimitDetector());
+  for (const group of GROUPS) {
+    for (const detector of group.detectors()) registry.register(detector);
+    registry.registerPrecedence(group.precedence);
+  }
   return registry;
 }
 export class DetectorRegistry {
   private detectors: Detector[] = [];
+  private precedence: PrecedenceRule[] = [];
 
   /**
    * Registers a new detector.
@@ -60,6 +86,19 @@ export class DetectorRegistry {
    */
   getDetectors(): Detector[] {
     return this.detectors;
+  }
+
+  /**
+   * Adds precedence rules (specific findings hiding generic ones), applied by the
+   * pipeline after rule overrides. See scanner/precedence.ts.
+   */
+  registerPrecedence(rules: readonly PrecedenceRule[]): void {
+    this.precedence.push(...rules);
+  }
+
+  /** All registered precedence rules, in registration order. */
+  getPrecedence(): readonly PrecedenceRule[] {
+    return this.precedence;
   }
 
   /**

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { type Detector, type Finding, type ScanContext } from "@talaljaber/vibesafe-shared";
-import { CATEGORY_PREFIX, createFindingId } from "@talaljaber/vibesafe-shared";
+import { CATEGORY_PREFIX, classifyEnvFileName, createFindingId } from "@talaljaber/vibesafe-shared";
 import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
 import {
   hasUseServerDirective,
@@ -114,10 +114,11 @@ export class FrontendExposureDetector implements Detector {
 
     for (const filePath of context.files) {
       const base = path.basename(filePath);
-      if (base === ".env.example" || base === ".env.sample") continue;
-
-      // .env files: public-prefixed names that look like secrets
-      if (base.startsWith(".env")) {
+      // .env files: public-prefixed names that look like secrets. Templates
+      // (.env.example/.sample/.template/.dist) and .env.vault ciphertext are skipped.
+      const envKind = classifyEnvFileName(base);
+      if (envKind !== null && envKind !== "env") continue;
+      if (envKind === "env") {
         const lines = (await context.readFile(filePath)).split("\n");
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i] ?? "";

@@ -7,6 +7,7 @@ import {
   SCANNABLE_FILENAMES,
   TEST_PATH_GLOBS,
   buildExcludedDirGlobs,
+  isInfraFile,
   isPythonRequirementsFile,
 } from "@talaljaber/vibesafe-shared";
 
@@ -73,7 +74,8 @@ export class FileDiscovery {
       if (
         (SCANNABLE_FILENAMES as readonly string[]).includes(basename) ||
         (SCANNABLE_EXTENSIONS as readonly string[]).includes(ext) ||
-        isPythonRequirementsFile(file)
+        isPythonRequirementsFile(file) ||
+        isInfraFile(file)
       ) {
         files.push(file);
       }

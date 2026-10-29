@@ -1,5 +1,5 @@
 import { type Detector, type Finding, type ScanContext } from "@talaljaber/vibesafe-shared";
-import { CATEGORY_PREFIX, createFindingId } from "@talaljaber/vibesafe-shared";
+import { CATEGORY_PREFIX, classifyEnvFileName, createFindingId } from "@talaljaber/vibesafe-shared";
 import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
 import { SECRET_PATTERNS, matchSecretPattern } from "./patterns/secret-patterns.js";
 import path from "path";
@@ -120,10 +120,7 @@ export class SecretDetector implements Detector {
   }
 }
 
-const ENV_TEMPLATE_SUFFIXES = [".example", ".sample", ".template"];
-
+/** A real env file (not a template or a dotenv-vault file), which must be gitignored. */
 function isEnvFile(file: string): boolean {
-  const base = path.basename(file.replace(/\\/g, "/"));
-  if (base !== ".env" && !base.startsWith(".env.")) return false;
-  return !ENV_TEMPLATE_SUFFIXES.some((suffix) => base.endsWith(suffix));
+  return classifyEnvFileName(path.posix.basename(file.replace(/\\/g, "/"))) === "env";
 }

@@ -40,6 +40,7 @@ export const SCANNABLE_FILENAMES = [
   ".env.production",
   ".env.staging",
   ".gitignore",
+  ".dockerignore",
   "package.json",
   "package-lock.json",
   "pnpm-lock.yaml",
@@ -57,6 +58,87 @@ export const SCANNABLE_FILENAMES = [
 export function isPythonRequirementsFile(relativePath: string): boolean {
   const p = relativePath.replace(/\\/g, "/");
   return /(^|\/)requirements[\w.-]*\.txt$/i.test(p) || /(^|\/)requirements\/[^/]+\.txt$/i.test(p);
+}
+
+/** Kinds of `.env`-style files, see {@link classifyEnvFileName}. */
+export type EnvFileKind = "env" | "env-example" | "env-vault";
+
+const ENV_TEMPLATE_SUFFIXES = [".example", ".sample", ".template", ".dist"] as const;
+
+/**
+ * Classifies a file NAME (basename, not a path) as an env file. The single source of
+ * truth for env naming across the scanner:
+ * - `"env"`: `.env` or `.env.<anything>` holding real values (`.env.local`, `.env.staging2`);
+ * - `"env-example"`: a committed template ending in `.example`, `.sample`, `.template` or `.dist`;
+ * - `"env-vault"`: `.env.vault` (dotenv-vault ciphertext, meant to be committed);
+ * - `null`: anything else, including `.envrc` (direnv shell script) and `.env.` with no suffix.
+ */
+export function classifyEnvFileName(name: string): EnvFileKind | null {
+  if (name === ".env") return "env";
+  if (!name.startsWith(".env.") || name.length === ".env.".length) return null;
+  if (name === ".env.vault") return "env-vault";
+  const lower = name.toLowerCase();
+  if (ENV_TEMPLATE_SUFFIXES.some((suffix) => lower.endsWith(suffix))) return "env-example";
+  return "env";
+}
+
+const DOCKERFILE_RE =
+  /^(?:dockerfile|containerfile)(?:\.[\w.-]+)?$|^[\w.-]+\.(?:dockerfile|containerfile)$/i;
+/** `Dockerfile.ts` or `dockerfile.json` are source/data files, not Dockerfiles. */
+const NOT_DOCKERFILE_EXT_RE = /\.(?:[cm]?[jt]sx?|json|py|md|txt|ya?ml|toml|lock)$/i;
+const COMPOSE_RE = /^(?:docker-)?compose(?:\.[\w-]+)*\.ya?ml$/i;
+const WORKFLOW_RE = /(?:^|\/)\.github\/workflows\/[^/]+\.ya?ml$/;
+const ACTION_RE = /^action\.ya?ml$/;
+const SHELL_RE = /\.(?:sh|bash|zsh)$/;
+
+/** Kinds of infrastructure file, see {@link classifyInfraFile}. */
+export type InfraFileKind =
+  | "dockerfile"
+  | "dockerignore"
+  | "compose"
+  | "workflow"
+  | "gh-action"
+  | "shell"
+  | EnvFileKind
+  | "next-config-mts";
+
+/**
+ * Classifies infrastructure and deployment files that are scanned even though their
+ * extension is not in SCANNABLE_EXTENSIONS: Dockerfile/Containerfile forms
+ * (`Dockerfile`, `Dockerfile.prod`, `api.Dockerfile`), `.dockerignore`, compose files
+ * (`docker-compose*.yml`, `compose*.yaml`), GitHub workflow files (directly under
+ * `.github/workflows/`), composite `action.yml`, shell scripts (`.sh .bash .zsh`), env
+ * files of every kind (see classifyEnvFileName) and `next.config.mts`. Returns null
+ * for everything else (e.g. `pnpm-lock.yaml`, `.github/ISSUE_TEMPLATE/bug.yml`,
+ * `config.yml`, `.envrc`). Accepts `/` or `\` separators.
+ */
+export function classifyInfraFile(relativePath: string): InfraFileKind | null {
+  const p = relativePath.replace(/\\/g, "/");
+  const base = p.slice(p.lastIndexOf("/") + 1);
+  const env = classifyEnvFileName(base);
+  if (env !== null) return env;
+  if (base === ".dockerignore") return "dockerignore";
+  if (WORKFLOW_RE.test(p)) return "workflow";
+  if (ACTION_RE.test(base)) return "gh-action";
+  if (COMPOSE_RE.test(base)) return "compose";
+  if (DOCKERFILE_RE.test(base) && !NOT_DOCKERFILE_EXT_RE.test(base)) return "dockerfile";
+  if (SHELL_RE.test(base)) return "shell";
+  if (base === "next.config.mts") return "next-config-mts";
+  return null;
+}
+
+/** True when {@link classifyInfraFile} recognises the path. File discovery admits these. */
+export function isInfraFile(relativePath: string): boolean {
+  return classifyInfraFile(relativePath) !== null;
+}
+
+/** Lockfile names read with the larger {@link MAX_LOCKFILE_SIZE_BYTES} limit. */
+export const LOCKFILE_NAMES = ["package-lock.json", "pnpm-lock.yaml", "yarn.lock"] as const;
+
+/** True when the path's basename is one of {@link LOCKFILE_NAMES}. */
+export function isLockfileName(relativePath: string): boolean {
+  const p = relativePath.replace(/\\/g, "/");
+  return (LOCKFILE_NAMES as readonly string[]).includes(p.slice(p.lastIndexOf("/") + 1));
 }
 
 /**
@@ -151,6 +233,9 @@ export const TEST_PATH_GLOBS = [
 
 /** Files larger than this are skipped by the scanner (with a warning). */
 export const MAX_FILE_SIZE_BYTES = 1_000_000;
+
+/** Lockfiles (see LOCKFILE_NAMES) are read up to this size; larger ones read as empty. */
+export const MAX_LOCKFILE_SIZE_BYTES = 8_000_000;
 
 // ─── Finding ID Prefixes ──────────────────────────────────────────────────────
 

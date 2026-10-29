@@ -1,0 +1,11 @@
+{
+  "name": "corpus-next-app",
+  "private": true,
+  "dependencies": {
+    "next": "13.4.0",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "stripe": "^14.0.0",
+    "openai": "^4.0.0"
+  }
+}
