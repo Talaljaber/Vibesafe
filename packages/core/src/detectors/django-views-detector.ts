@@ -16,8 +16,10 @@
 //  - Auth applied outside the view (custom middleware, URL include() wrappers,
 //    API gateways) is not seen, except Django's LoginRequiredMiddleware, the DRF
 //    DEFAULT_PERMISSION_CLASSES setting and login_required(...) wrappers in urls.py.
-//  - Views named like public auth flows (login, signup, token, password reset,
-//    webhook, health, contact, ...) are skipped.
+//  - Views named like public auth flows (login, signup, password reset, token
+//    obtain/refresh, email verification, webhooks, OAuth callbacks, health checks,
+//    contact forms) are skipped; the names are anchored, so confirm_order or
+//    update_password are still checked.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared";
@@ -137,9 +139,41 @@ const VIEWSET_WRITE_ACTION_RE =
 const HTTP_HANDLER_RE =
   /^\s*(?:async\s+)?def\s+(?:get|post|put|patch|delete|head|options)\s*\(\s*self\s*,\s*request\b/;
 
-/** Views that are public by nature (auth flows, webhooks, health checks, contact forms). */
-const PUBLIC_VIEW_NAME_RE =
-  /login|logout|sign_?in|sign_?up|register|registration|token|password|reset|forgot|verify|activat|confirm|webhook|health|contact|subscribe|newsletter|callback|oauth/i;
+/**
+ * Views that are public by nature, matched on the snake_case name without a trailing
+ * `_view` / `_api_view` / `_viewset`. Anchored so that ordinary write views such as
+ * confirm_order, reset_project, update_password or delete_token are still checked.
+ */
+const PUBLIC_VIEW_NAME_RES = [
+  // Login, logout, sign-up and registration flows.
+  /^(?:(?:user|account|api|custom)_)?(?:log_?in|log_?out|sign_?in|sign_?out|sign_?up|register|registration)(?:_|$)/,
+  // Forgotten-password reset (not changing or updating a password while logged in).
+  /^(?:(?:user|account|api)_)?(?:password_reset|reset_password|forgot_password|password_forgot)(?:_|$)/,
+  // JWT / token login endpoints.
+  /^(?:jwt_)?token_(?:obtain|refresh|verify|blacklist)(?:_|$)|^(?:obtain|refresh)_(?:jwt_|auth_)?token$/,
+  // Email verification and account activation links.
+  /^(?:verify|confirm|resend)_(?:email|verification)|^email_(?:verify|verification|confirm)|^activate(?:_(?:account|user|email))?$|^account_activation/,
+  // Webhooks, OAuth / SSO callbacks and health checks.
+  /(?:^|_)webhooks?(?:_|$)|(?:^|_)(?:oauth2?|sso|saml)(?:_|$)|(?:^|_)callback$|^health(?:_?check)?$/,
+  // Public contact and newsletter forms, by exact name only.
+  /^(?:contact(?:_us|_form)?|(?:newsletter_)?(?:un)?subscribe|newsletter(?:_sign_?up)?)$/,
+];
+
+/** CamelCase or snake_case view name to snake_case, minus a trailing view suffix. */
+function publicNameKey(name: string): string {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
+    .toLowerCase()
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "")
+    .replace(/(?:_api)?_(?:view_?set|view|api)$/, "");
+}
+
+function isPublicViewName(name: string): boolean {
+  const key = publicNameKey(name);
+  return PUBLIC_VIEW_NAME_RES.some((re) => re.test(key));
+}
 
 type PermissionKind = "auth" | "allowAny" | "none";
 
@@ -173,7 +207,8 @@ function isViewFile(filePath: string): boolean {
 
 /** Classifies a permission_classes value: `[AllowAny]`, `[]` or anything else. */
 function permissionKind(value: string): PermissionKind {
-  const list = /[[(]([^\])]*)[\])]/.exec(value);
+  // Only a literal list/tuple; `get_perms()` or `base.perms + [X]` is a call or expression.
+  const list = /^\s*[[(]([^\])]*)[\])]/.exec(value);
   if (!list) return "auth"; // a variable or call: assume it enforces something
   const entries = (list[1] ?? "")
     .split(",")
@@ -438,7 +473,7 @@ export class DjangoViewsDetector implements Detector {
 
   private judge(view: ViewInfo, project: ProjectAuth, filePath: string): Finding | null {
     if (!view.isView || !view.writes || view.auth) return null;
-    if (PUBLIC_VIEW_NAME_RE.test(view.name)) return null;
+    if (isPublicViewName(view.name)) return null;
 
     if (view.permission === "allowAny") {
       return this.finding(ALLOW_ANY_RULE, view, filePath);

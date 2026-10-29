@@ -159,9 +159,47 @@ describe("DjangoViewsDetector: function views", () => {
         "@require_POST\n" +
         "def stripe_webhook(request):\n    pass\n" +
         "@require_POST\n" +
-        "def password_reset_request(request):\n    pass\n",
+        "def password_reset_request(request):\n    pass\n" +
+        "@require_POST\n" +
+        "def login(request):\n    pass\n" +
+        "@require_POST\n" +
+        "def verify_email(request):\n    pass\n" +
+        "@require_POST\n" +
+        "def contact(request):\n    pass\n" +
+        "class PasswordResetView(View):\n    def post(self, request):\n        pass\n" +
+        "class UserRegistrationView(View):\n    def post(self, request):\n        pass\n",
+      "a/api.py":
+        DRF +
+        "class TokenObtainPairView(generics.CreateAPIView):\n    pass\n" +
+        "class LoginAPIView(APIView):\n    def post(self, request):\n        pass\n",
     });
     expect(f).toHaveLength(0);
+  });
+
+  it("still checks ordinary write views whose names contain auth-flow words", async () => {
+    const f = await run({
+      "a/views.py":
+        DJ +
+        "@require_POST\n" +
+        "def confirm_order(request):\n    pass\n" +
+        "@require_POST\n" +
+        "def reset_project(request):\n    pass\n" +
+        "@require_POST\n" +
+        "def update_password(request):\n    pass\n" +
+        "@require_POST\n" +
+        "def delete_token(request):\n    pass\n" +
+        "@require_POST\n" +
+        "def update_contact(request):\n    pass\n" +
+        "class SubscriptionCancelView(View):\n    def post(self, request):\n        pass\n",
+    });
+    expect(f.map((x) => x.title.split(" ")[2])).toEqual([
+      "confirm_order",
+      "reset_project",
+      "update_password",
+      "delete_token",
+      "update_contact",
+      "SubscriptionCancelView",
+    ]);
   });
 });
 
@@ -347,6 +385,18 @@ describe("DjangoViewsDetector: Django REST Framework", () => {
         'REST_FRAMEWORK = {"DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"]}\n',
     });
     expect(ruleIds(f)).toEqual([ALLOW_ANY, MISSING]);
+  });
+
+  it("treats a permission_classes call or expression as a permission, not an empty list", async () => {
+    const f = await run({
+      "api/views.py":
+        DRF +
+        "class A(viewsets.ModelViewSet):\n    permission_classes = get_perms()\n" +
+        "class B(viewsets.ModelViewSet):\n    permission_classes = perms.for_role('editor')\n" +
+        "class C(viewsets.ModelViewSet):\n    permission_classes = ()\n" +
+        "class D(viewsets.ModelViewSet):\n    permission_classes = ( AllowAny, )\n",
+    });
+    expect(f.map((x) => `${x.line}:${x.ruleId}`)).toEqual([`6:${MISSING}`, `8:${ALLOW_ANY}`]);
   });
 
   it("does not let the DRF default hide plain Django views", async () => {
