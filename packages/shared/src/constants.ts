@@ -169,6 +169,8 @@ export const CATEGORY_PREFIX: Record<FindingCategory, string> = {
   structure: "STRUCT",
   xss: "XSS",
   security_config: "CFG",
+  injection: "INJ",
+  crypto: "CRYPTO",
 };
 
 /** Every finding category (single source of truth; derived from CATEGORY_PREFIX). */

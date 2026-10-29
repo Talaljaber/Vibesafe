@@ -22,7 +22,11 @@ export type FindingCategory =
   | "structure"
   | "xss"
   /** Web/framework security configuration: CORS, security headers, rate limiting, framework settings. */
-  | "security_config";
+  | "security_config"
+  /** Untrusted input reaching an interpreter or sink: SQL, shell, code eval, SSRF, path traversal, open redirect. */
+  | "injection"
+  /** Weak randomness, weak hashing, hardcoded secret fallbacks and plaintext credential storage. */
+  | "crypto";
 
 /** How confident is the detector in this finding? */
 export type Confidence = "high" | "medium" | "low";

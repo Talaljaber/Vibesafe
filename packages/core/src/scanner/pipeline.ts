@@ -251,6 +251,8 @@ export class ScannerPipeline {
         structure: 0,
         xss: 0,
         security_config: 0,
+        injection: 0,
+        crypto: 0,
       },
       filesScanned,
       linesScanned,
