@@ -31,6 +31,7 @@
         "$TURBO_ROOT$/*.md",
         "$TURBO_ROOT$/*.yml",
         "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/pnpm-lock.yaml",
         "$TURBO_ROOT$/.gitattributes",
         "$TURBO_ROOT$/.github/workflows/*.yml",
         "$TURBO_ROOT$/examples/**",
