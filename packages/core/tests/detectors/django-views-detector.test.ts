@@ -227,6 +227,16 @@ describe("DjangoViewsDetector: function views", () => {
     ]);
   });
 
+  it("checks ViewSets even when their name matches a public flow", async () => {
+    const f = await run({
+      "a/api.py":
+        DRF +
+        "class WebhookViewSet(viewsets.ModelViewSet):\n    queryset = Webhook.objects.all()\n",
+    });
+    expect(f).toHaveLength(1);
+    expect(f[0]!.title).toContain("WebhookViewSet");
+  });
+
   it("still skips webhook receivers and auth callbacks", async () => {
     const f = await run({
       "a/views.py":

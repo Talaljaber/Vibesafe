@@ -178,6 +178,8 @@ const MANAGEMENT_NAME_RE =
   /(?:^|_)(?:create|add|update|edit|delete|remove|manage|settings?|config|configure|admin|impersonate|approve|invite|device)(?:_|$)|(?:^|_)as_user(?:_|$)/;
 
 function isPublicViewName(name: string): boolean {
+  // A ViewSet is a CRUD resource (WebhookViewSet manages webhooks), never a public flow.
+  if (/view_?set$/i.test(name)) return false;
   const key = publicNameKey(name);
   if (MANAGEMENT_NAME_RE.test(key)) return false;
   return PUBLIC_VIEW_NAME_RES.some((re) => re.test(key));
