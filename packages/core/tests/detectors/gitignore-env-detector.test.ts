@@ -5,10 +5,7 @@ import { expectRubric } from "../helpers/rubric.js";
 
 const detector = new GitignoreEnvDetector();
 
-async function run(
-  gitignore: string | null,
-  opts: { deps?: string[]; extra?: string[] } = {},
-) {
+async function run(gitignore: string | null, opts: { deps?: string[]; extra?: string[] } = {}) {
   const files: Record<string, string> = {};
   if (gitignore !== null) files[".gitignore"] = gitignore;
   for (const e of opts.extra ?? []) files[e] = "A=1\n";

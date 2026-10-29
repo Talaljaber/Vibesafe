@@ -11,13 +11,21 @@ import { PlaceholderTestsDetector } from "../placeholder-tests-detector.js";
 import { ClientTrustedPriceDetector } from "../client-trusted-price-detector.js";
 import { CheckThenActDetector } from "../check-then-act-detector.js";
 
-export { PlaceholderTestsDetector, ClientTrustedPriceDetector, CheckThenActDetector };
+import { ServerDataExposureDetector } from "../server-data-exposure-detector.js";
+
+export {
+  PlaceholderTestsDetector,
+  ClientTrustedPriceDetector,
+  CheckThenActDetector,
+  ServerDataExposureDetector,
+};
 
 /** Fresh instances of this group's detectors, registered after the built-in ones. */
 export const toolingDetectors = (): Detector[] => [
   new PlaceholderTestsDetector(),
   new ClientTrustedPriceDetector(),
   new CheckThenActDetector(),
+  new ServerDataExposureDetector(),
 ];
 
 /** Cross-owner precedence rules declared by this group (see scanner/precedence.ts). */

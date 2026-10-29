@@ -208,7 +208,9 @@ describe("PlaceholderTestsDetector with context.testFiles (default mode)", () =>
   });
 
   it("flags a constant-assertion-only test file", async () => {
-    const f = await run2({ "package.json": pkg("vitest run"), "a.spec.ts": TRIVIAL }, ["a.spec.ts"]);
+    const f = await run2({ "package.json": pkg("vitest run"), "a.spec.ts": TRIVIAL }, [
+      "a.spec.ts",
+    ]);
     expect(f).toHaveLength(1);
     expect(f[0]?.file).toBe("a.spec.ts");
   });

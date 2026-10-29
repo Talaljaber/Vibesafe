@@ -4,7 +4,12 @@
 
 import path from "node:path";
 import ignore from "ignore";
-import { classifyEnvFileName, type Detector, type Finding, type ScanContext } from "@talaljaber/vibesafe-shared";
+import {
+  classifyEnvFileName,
+  type Detector,
+  type Finding,
+  type ScanContext,
+} from "@talaljaber/vibesafe-shared";
 import { makeFinding } from "./utils/finding.js";
 
 const PROBES = [".env.local", ".env.development.local", ".env.production.local", ".env.test.local"];
