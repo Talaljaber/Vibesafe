@@ -36,6 +36,9 @@ export class CodebaseMessDetector implements Detector {
 
       const content = await context.readFile(filePath);
       const lines = content.split("\n");
+      // CLI scripts (scripts/, bin/, or a #! shebang) print to the console on purpose.
+      const isCliScript =
+        /(?:^|\/)(?:scripts|bin)\//.test(filePath.replace(/\\/g, "/")) || content.startsWith("#!");
 
       // 1. File size checks
       if (lines.length > MAX_FILE_LINES) {
@@ -136,7 +139,7 @@ export class CodebaseMessDetector implements Detector {
 
         // 3. console.log leftovers
         // Lines already commented out (the console-log auto-fix writes `// console.log(...)`) are not flagged.
-        if (!isCommentedOut && code.includes("console.log(")) {
+        if (!isCliScript && !isCommentedOut && code.includes("console.log(")) {
           findings.push({
             id: createFindingId(
               CATEGORY_PREFIX.code_quality,
