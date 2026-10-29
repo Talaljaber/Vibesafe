@@ -13,6 +13,20 @@ import {
 
 type Ignore = ReturnType<typeof ignore>;
 
+/** Why a discovered file was not scanned (see {@link DiscoverOptions.onSkipped}). */
+export type SkipReason = "gitignored" | "unscannable-type";
+
+export interface DiscoverOptions {
+  includeTests?: boolean | undefined;
+  /**
+   * Called for each file that exists outside the excluded directories but is not
+   * scanned: ignored by a .gitignore, or of a type the scanner does not read.
+   * Files dropped by `additionalExcludes`, default exclusions or test exclusions are
+   * not reported (the caller asked for those).
+   */
+  onSkipped?: ((relativePath: string, reason: SkipReason) => void) | undefined;
+}
+
 function createIgnore(): Ignore {
   // The ignore package's default export might need to be called directly
   // @ts-ignore - ignore package typings can be weird with esm
@@ -33,7 +47,7 @@ export class FileDiscovery {
    */
   async discoverFiles(
     additionalExcludes: string[] = [],
-    options: { includeTests?: boolean | undefined } = {},
+    options: DiscoverOptions = {},
   ): Promise<string[]> {
     const defaultExcludes = buildExcludedDirGlobs();
     // Test/fixture paths are excluded unless the caller opts in. Patterns are
@@ -66,7 +80,10 @@ export class FileDiscovery {
       const file = entry.path;
       if (entry.dirent.isSymbolicLink()) continue;
       if (rootIg.ignores(file)) continue;
-      if (this.isIgnoredByGitignore(file, scopedIgnores)) continue;
+      if (this.isIgnoredByGitignore(file, scopedIgnores)) {
+        options.onSkipped?.(file, "gitignored");
+        continue;
+      }
 
       const basename = path.basename(file);
       const ext = path.extname(file);
@@ -78,6 +95,8 @@ export class FileDiscovery {
         isInfraFile(file)
       ) {
         files.push(file);
+      } else {
+        options.onSkipped?.(file, "unscannable-type");
       }
     }
     return files;

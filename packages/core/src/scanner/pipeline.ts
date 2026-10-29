@@ -9,6 +9,7 @@ import type {
   RepairPlan,
 } from "@talaljaber/vibesafe-shared";
 import {
+  classifyEnvFileName,
   getDeployStatus,
   isDeployBlocker,
   isLockfileName,
@@ -79,13 +80,46 @@ export class ScannerPipeline {
 
     // 1. Discover files
     const fileDiscovery = new FileDiscovery(config.rootPath);
+    // Present-but-unscanned files worth mentioning, so a clean result is not misread:
+    // gitignored env files and root-level docs/config/html files.
+    const skippedEnv: string[] = [];
+    const skippedRoot: string[] = [];
     let files =
       config.targetFiles && config.targetFiles.length > 0
         ? config.targetFiles
         : await fileDiscovery.discoverFiles(config.excludePatterns, {
             // Not in mergeConfig's defaults; undefined/false = exclude tests.
             includeTests: config.includeTests,
+            onSkipped: (file, reason) => {
+              const rel = file.replace(/\\/g, "/");
+              const base = rel.slice(rel.lastIndexOf("/") + 1);
+              if (reason === "gitignored" && classifyEnvFileName(base) !== null) {
+                skippedEnv.push(rel);
+              } else if (
+                reason === "unscannable-type" &&
+                !rel.includes("/") &&
+                /\.(?:md|toml|html?)$/i.test(base)
+              ) {
+                skippedRoot.push(rel);
+              }
+            },
           });
+    if (skippedEnv.length > 0 || skippedRoot.length > 0) {
+      const list = (xs: string[]): string =>
+        `${xs.slice(0, 5).join(", ")}${xs.length > 5 ? ", ..." : ""}`;
+      const parts: string[] = [];
+      if (skippedEnv.length > 0) {
+        parts.push(`${skippedEnv.length} gitignored env file(s) (${list(skippedEnv)})`);
+      }
+      if (skippedRoot.length > 0) {
+        parts.push(
+          `${skippedRoot.length} root file(s) of unsupported types (${list(skippedRoot)})`,
+        );
+      }
+      warnings.push(
+        `Not scanned: ${parts.join("; ")}. Review them by hand if they may contain secrets or deployment settings.`,
+      );
+    }
 
     if (config.maxFiles && files.length > config.maxFiles) {
       // Trim to maxFiles if we exceed the limit to prevent out-of-memory or hanging
