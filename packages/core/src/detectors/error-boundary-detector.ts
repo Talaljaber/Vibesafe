@@ -74,6 +74,16 @@ export class ErrorBoundaryDetector implements Detector {
     }
 
     if (!hasErrorBoundary) {
+      // Next.js App Router: boundaries are file conventions (app/error.tsx, app/global-error.tsx),
+      // not a component wrapped around the root.
+      const posix = (f: string): string => f.replace(/\\/g, "/");
+      const appLayout = reactFiles.find((f) =>
+        /(^|\/)(src\/)?app\/layout\.(tsx|jsx|js)$/.test(posix(f)),
+      );
+      const appRouter =
+        appLayout !== undefined ||
+        reactFiles.some((f) => /(^|\/)(src\/)?app\/(.*\/)?page\.(tsx|jsx|js)$/.test(posix(f)));
+      const appDir = appLayout ? posix(appLayout).replace(/layout\.(tsx|jsx|js)$/, "") : "app/";
       findings.push({
         id: createFindingId(CATEGORY_PREFIX.structure, "structure/missing-error-boundary"),
         ruleId: "structure/missing-error-boundary",
@@ -82,18 +92,27 @@ export class ErrorBoundaryDetector implements Detector {
         category: "structure",
         deployBlocking: false,
         confidence: "medium",
-        file: reactFiles.length > 0 ? reactFiles[0] : "package.json",
-        plainEnglishProblem: "Your React application does not appear to use an Error Boundary.",
+        file: appLayout ?? (reactFiles.length > 0 ? reactFiles[0] : "package.json"),
+        plainEnglishProblem: appRouter
+          ? "Your Next.js App Router app has no `error.tsx` or `global-error.tsx` error boundary."
+          : "Your React application does not appear to use an Error Boundary.",
         whyItMatters:
           "Without an Error Boundary, a runtime error can crash the entire React application and show users a blank screen.",
-        fixSteps: [
-          "Create an ErrorBoundary component.",
-          "Wrap your application's root component with the ErrorBoundary.",
-          "Display a fallback UI when an unexpected error occurs.",
-        ],
+        fixSteps: appRouter
+          ? [
+              `Create \`${appDir}error.tsx\`: a \`"use client"\` component that receives \`{ error, reset }\`, shows a friendly message and a "Try again" button calling \`reset()\`.`,
+              `Create \`${appDir}global-error.tsx\` for errors thrown in the root layout; it replaces the layout, so it must render its own \`<html>\` and \`<body>\`.`,
+              "Add nested `error.tsx` files in route segments that need their own fallback, and log the error (for example to your monitoring service) instead of showing its message to users.",
+            ]
+          : [
+              "Create an ErrorBoundary component.",
+              "Wrap your application's root component with the ErrorBoundary.",
+              "Display a fallback UI when an unexpected error occurs.",
+            ],
         autoFixAvailable: false,
-        aiFixPrompt:
-          "Generate a reusable React ErrorBoundary component and wrap the application's root component.",
+        aiFixPrompt: appRouter
+          ? 'This Next.js App Router project has no error boundary. Create app/error.tsx as a "use client" component that receives { error, reset }, logs the error, shows a friendly message (not the error text) and a "Try again" button that calls reset(). Also create app/global-error.tsx, which must render its own <html> and <body> because it replaces the root layout. Match the styling already used in the app.'
+          : "Generate a reusable React ErrorBoundary component and wrap the application's root component.",
       });
     }
     return findings;

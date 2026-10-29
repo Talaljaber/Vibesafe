@@ -3,7 +3,8 @@
 //
 // Scans package.json for risky patterns: suspicious install scripts,
 // and abnormally high dependency counts in the root package.json.
-// (No typosquatting detection is implemented.)
+// Known-vulnerable versions and typosquats are handled by npm-advisory-detector and
+// typosquat-detector.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared";

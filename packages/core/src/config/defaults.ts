@@ -41,5 +41,7 @@ export function mergeConfig(rootPath: string, userConfig?: Partial<ScanConfig>):
       ? { trustConfigScripts: userConfig.trustConfigScripts }
       : {}),
     ...(userConfig?.targetFiles !== undefined ? { targetFiles: userConfig.targetFiles } : {}),
+    // Network egress is opt-in per call: only an explicit `true` from the caller enables it.
+    ...(userConfig?.online === true ? { online: true } : {}),
   };
 }
