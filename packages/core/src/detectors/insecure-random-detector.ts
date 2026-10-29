@@ -77,6 +77,8 @@ const NEGATIVE_WORDS = new Set([
   "shuffled",
   "color",
   "colour",
+  "colors",
+  "colours",
   "hue",
   "delay",
   "backoff",
@@ -197,17 +199,39 @@ const ASSIGN_RE = /([A-Za-z_$][\w$]*)\s*(?:\+|-|\|\||\?\?)?=(?![=>])/g;
 const PROPERTY_RE = /([A-Za-z_$][\w$]*)\s*:(?!:)/g;
 
 /**
+ * Start offsets of the bracket groups (`(...)`, `[...]`, `{...}`) that open and close
+ * inside `stmt`, mapped to their closing offset. A name inside such a group (the
+ * `length:` of `Array.from({ length: 32 }, () => Math.random())`) is a sibling of the
+ * random value, not something the value feeds.
+ */
+function closedGroups(stmt: string): Array<[number, number]> {
+  const groups: Array<[number, number]> = [];
+  const stack: number[] = [];
+  for (let i = 0; i < stmt.length; i++) {
+    const c = stmt[i];
+    if (c === "(" || c === "[" || c === "{") stack.push(i);
+    else if ((c === ")" || c === "]" || c === "}") && stack.length > 0) {
+      groups.push([stack.pop()!, i]);
+    }
+  }
+  return groups;
+}
+
+/**
  * What the value at the end of `prefix` (masked code of the current line up to the
- * random call) feeds: the nearest assignment or property name, a `return`, or nothing.
+ * random call) feeds: the nearest enclosing assignment or property name, a `return`,
+ * or nothing. Names inside bracket groups already closed before the call are ignored.
  */
 function targetOf(prefix: string): Target {
   const stmt = prefix.slice(prefix.lastIndexOf(";") + 1);
+  const closed = closedGroups(stmt);
+  const isClosed = (index: number) => closed.some(([open, close]) => index > open && index < close);
   let best: { index: number; name: string } | undefined;
   for (const re of [ASSIGN_RE, PROPERTY_RE]) {
     re.lastIndex = 0;
     for (const m of stmt.matchAll(re)) {
       const name = m[1]!;
-      if (TYPE_WORDS.has(name)) continue;
+      if (TYPE_WORDS.has(name) || isClosed(m.index ?? 0)) continue;
       if (best === undefined || (m.index ?? 0) > best.index) best = { index: m.index ?? 0, name };
     }
   }

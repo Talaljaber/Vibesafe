@@ -191,6 +191,37 @@ describe("InsecureRandomDetector", () => {
     expect(findings).toEqual([]);
   });
 
+  it("flags Array.from({ length }) generators whose result is a key or password", async () => {
+    const findings = await run({
+      "lib/server/keys.ts": [
+        'const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";',
+        "export function generateApiKey() {",
+        '  const apiKey = Array.from({ length: 32 }, () => CHARS[Math.floor(Math.random() * CHARS.length)]).join("");',
+        "  return `sk_${apiKey}`;",
+        "}",
+        'export const temporaryPassword = Array.from({ length: 12 }, () => CHARS[Math.floor(Math.random() * 36)]).join("");',
+      ].join("\n"),
+    });
+    expect(findings.map((f) => [f.line, f.confidence])).toEqual([
+      [3, "high"],
+      [6, "high"],
+    ]);
+  });
+
+  it("does not flag Array.from({ length }) feeding shuffles, colors or jittered delays", async () => {
+    const findings = await run({
+      "lib/ui.ts": [
+        "export function generateToken() {",
+        "  const shuffled = Array.from({ length: 10 }, () => Math.random()).sort();",
+        "  const colors = Array.from({ length: 5 }, () => `hsl(${Math.random() * 360}, 50%, 50%)`);",
+        "  const backoff = { jitter: Math.random() * 100, length: 3 };",
+        "  return crypto.randomBytes(32).toString('hex');",
+        "}",
+      ].join("\n"),
+    });
+    expect(findings).toEqual([]);
+  });
+
   it("does not flag when a CSPRNG is on the same line", async () => {
     const findings = await run({
       "lib/t.ts": "const token = crypto.randomUUID() + Math.random().toString(36);",

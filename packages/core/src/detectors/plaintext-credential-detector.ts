@@ -1,11 +1,6 @@
-import {
-  redactSecret,
-  type Confidence,
-  type Detector,
-  type Finding,
-  type ScanContext,
-} from "@talaljaber/vibesafe-shared";
+import type { Confidence, Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared";
 import { makeFinding } from "./utils/finding.js";
+import { redactSpan } from "./utils/sanitize-evidence.js";
 import {
   classifyFile,
   isGenerated,
@@ -105,10 +100,6 @@ function escapeRe(s: string): string {
 function isTrivialPassword(value: string): boolean {
   const v = value.trim();
   return v === "" || TRIVIAL_PASSWORD_RE.test(v) || /^<[^>]*>$|^\$\{|^\{\{/.test(v);
-}
-
-function redactIn(line: string, value: string): string {
-  return value.length > 0 ? line.split(value).join(redactSecret(value)) : line;
 }
 
 /**
@@ -242,13 +233,14 @@ export class PlaintextCredentialDetector implements Detector {
     const starts = lineStartsOf(sql);
     const lines = content.split("\n");
     const hits = new Map<number, Hit>();
+    /** `offset` is where the password literal's text starts (after the opening quote). */
     const add = (offset: number, value: string): void => {
       const idx = lineIndexAt(starts, offset);
       if (hits.has(idx + 1)) return;
       hits.set(idx + 1, {
         ruleId: "crypto/plaintext-seed-password",
         line: idx + 1,
-        evidence: redactIn(lines[idx] ?? "", value),
+        evidence: redactSpan(lines[idx] ?? "", offset - starts[idx]!, value),
         confidence: "high",
       });
     };
@@ -256,7 +248,7 @@ export class PlaintextCredentialDetector implements Detector {
     // crypt('literal', gen_salt('bf')): the plaintext is in the file even though the DB stores a hash.
     for (const m of sql.matchAll(/\bcrypt\s*\(\s*'((?:[^']|'')*)'\s*,\s*gen_salt\s*\(/gi)) {
       const value = m[1]!.replace(/''/g, "'");
-      if (!isTrivialPassword(value)) add(m.index ?? 0, m[1]!);
+      if (!isTrivialPassword(value)) add((m.index ?? 0) + m[0].indexOf("'") + 1, m[1]!);
     }
 
     // INSERT INTO t (..., password, ...) VALUES (..., 'literal', ...)
@@ -279,7 +271,7 @@ export class PlaintextCredentialDetector implements Detector {
           if (lit) {
             const value = lit[1]!.replace(/''/g, "'");
             if (!PASSWORD_HASH_RE.test(value) && !isTrivialPassword(value)) {
-              add(span[0] + raw.indexOf("'"), lit[1]!);
+              add(span[0] + raw.indexOf("'") + 1, lit[1]!);
             }
           }
         }
@@ -387,7 +379,7 @@ export class PlaintextCredentialDetector implements Detector {
       hits.push({
         ruleId: "crypto/plaintext-seed-password",
         line,
-        evidence: redactIn(lines[line - 1] ?? "", value),
+        evidence: redactSpan(lines[line - 1] ?? "", open - content.lastIndexOf("\n", open), value),
         confidence: "high",
       });
     }

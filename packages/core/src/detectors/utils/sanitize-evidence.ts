@@ -62,3 +62,17 @@ export function sanitizeEvidence(line: string, maxLength: number = MAX_EVIDENCE_
   }
   return out;
 }
+
+/**
+ * Redacts `value` at its known position (`column`, 0-based) in `line`, leaving every other
+ * occurrence of the same text (an identifier that happens to contain a short literal) intact.
+ * When the span does not hold `value` (offset drift), every occurrence is redacted instead so
+ * the secret can never leak.
+ */
+export function redactSpan(line: string, column: number, value: string): string {
+  if (value.length === 0) return line;
+  if (column >= 0 && line.startsWith(value, column)) {
+    return line.slice(0, column) + redactSecret(value) + line.slice(column + value.length);
+  }
+  return line.split(value).join(redactSecret(value));
+}

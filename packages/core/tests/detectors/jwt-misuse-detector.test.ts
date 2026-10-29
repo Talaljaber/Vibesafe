@@ -36,6 +36,15 @@ describe("JwtMisuseDetector: literal secrets", () => {
     expect(findings[0]!.evidence).not.toContain("super-secret-value");
   });
 
+  it("redacts only the secret literal, not the call that contains the same text", async () => {
+    const findings = await run({
+      "lib/auth.ts": 'export const token = (p: object) => jwt.sign(p, "sign");',
+    });
+    expect(rules(findings)).toEqual(["crypto/jwt-literal-secret@1"]);
+    expect(findings[0]!.evidence).toContain("jwt.sign(p,");
+    expect(findings[0]!.evidence).not.toContain('"sign"');
+  });
+
   it("flags a const literal secret once, at its declaration, and jose keys", async () => {
     const findings = await run({
       "lib/token.js": [

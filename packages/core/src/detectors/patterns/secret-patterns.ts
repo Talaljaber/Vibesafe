@@ -99,6 +99,15 @@ const DATABASE_URL_RE =
 const DEFAULT_DB_PASSWORD_RE =
   /^(?:postgres|postgresql|password|passw(?:or)?d|pass|pwd|root|changeme|change_me|example|secret|admin|test|guest|mysql|redis|user|dbpass|db_?password|mypassword|my_password|your[-_]?password.*|\*+|x+|\.{3}|…)$/i;
 
+/**
+ * Dashboard and docs placeholders that are not anchored to the whole password:
+ * `[YOUR-PASSWORD]` (Supabase), `your-redis-password`, `YOUR_DB_PASSWORD`.
+ */
+function isPlaceholderDbPassword(pass: string): boolean {
+  if (/[[\]]/.test(pass)) return true;
+  return /^your[-_.]|your[-_\w]*pass|^replace[-_]?me|^todo$|^none$|^null$/i.test(pass);
+}
+
 /** Hosts that never point at a shared or production database. */
 function isLocalOrPlaceholderHost(host: string): boolean {
   const h = host.toLowerCase().replace(/\.$/, "");
@@ -124,6 +133,7 @@ export function isLikelyDatabaseUrl(match: string): boolean {
   if (/\$[{A-Za-z_]|\{\{|%[s(]|[<>]/.test(all)) return false;
   if (pass.length < 4 || pass === user) return false;
   if (DEFAULT_DB_PASSWORD_RE.test(pass) || isPlaceholderValue(pass)) return false;
+  if (isPlaceholderDbPassword(pass)) return false;
   return !isLocalOrPlaceholderHost(host);
 }
 

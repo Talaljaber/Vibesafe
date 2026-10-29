@@ -1,10 +1,6 @@
-import {
-  redactSecret,
-  type Detector,
-  type Finding,
-  type ScanContext,
-} from "@talaljaber/vibesafe-shared";
+import type { Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared";
 import { makeFinding } from "./utils/finding.js";
+import { redactSpan } from "./utils/sanitize-evidence.js";
 import { isGenerated, isJsLike, isTestOrFixturePath } from "./utils/file-kind.js";
 import { maskCode } from "./utils/route-analyzer.js";
 import { SECRET_PATTERNS, matchSecretPattern } from "./patterns/secret-patterns.js";
@@ -104,6 +100,24 @@ const NON_SECRET_WORDS = new Set([
   "TIMEOUT",
   "COUNT",
 ]);
+/**
+ * Words that, after the secret word, make the name a label for where a secret is kept or
+ * sent (a cookie, storage key, claim, form field, query parameter or OAuth scope).
+ * `COOKIE_SECRET` stays a secret; `AUTH_TOKEN_COOKIE` does not.
+ */
+const HOLDER_WORDS = new Set([
+  "COOKIE",
+  "COOKIES",
+  "STORAGE",
+  "CLAIM",
+  "CLAIMS",
+  "FIELD",
+  "FIELDS",
+  "PARAM",
+  "PARAMS",
+  "SCOPE",
+  "SCOPES",
+]);
 const PUBLIC_PREFIX_RE = /^(?:NEXT_PUBLIC|VITE|PUBLIC|REACT_APP|EXPO_PUBLIC|NUXT_PUBLIC|GATSBY)_/;
 /** Fallback values that are switches or numbers, not secrets. */
 const NON_SECRET_VALUE_RE =
@@ -120,15 +134,18 @@ export function isSecretEnvName(name: string): boolean {
   if (PUBLIC_PREFIX_RE.test(upper)) return false;
   const words = upper.split(/_+/).filter((w) => w.length > 0);
   if (words.some((w) => NON_SECRET_WORDS.has(w))) return false;
+  let lastSecret = -1;
   for (let i = 0; i < words.length; i++) {
     const w = words[i]!;
-    if (SECRET_WORDS.has(w)) return true;
-    if (w === "KEY" || w === "KEYS") {
+    if (SECRET_WORDS.has(w)) lastSecret = i;
+    else if (w === "KEY" || w === "KEYS") {
       const prev = words[i - 1];
-      if (prev !== undefined && !NON_SECRET_KEY_QUALIFIERS.has(prev)) return true;
+      if (prev !== undefined && !NON_SECRET_KEY_QUALIFIERS.has(prev)) lastSecret = i;
     }
   }
-  return false;
+  if (lastSecret < 0) return false;
+  // `AUTH_TOKEN_COOKIE`, `TOKEN_STORAGE_KEY`, `JWT_CLAIM`: the name of a place a secret goes.
+  return !words.slice(lastSecret + 1).some((w) => HOLDER_WORDS.has(w));
 }
 
 /** `(jwt|jsonwebtoken).sign|verify`, jose and session/cookie signers given `name` as the secret. */
@@ -233,6 +250,15 @@ export class SecretFallbackDetector implements Detector {
     const fallbacks = this.collect(code);
     const out: Finding[] = [];
     const seen = new Set<string>();
+    const signerCache = new Map<string, boolean>();
+    const signerUses = (binding: string): boolean => {
+      let used = signerCache.get(binding);
+      if (used === undefined) {
+        used = signerUsesRe(binding).test(code);
+        signerCache.set(binding, used);
+      }
+      return used;
+    };
     let extra = 0;
     let extraLine = 0;
     for (const fb of fallbacks) {
@@ -246,14 +272,14 @@ export class SecretFallbackDetector implements Detector {
       const key = `${fb.envName}:${lastLine}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      const signed =
-        fb.inlineSigner || (fb.binding !== undefined && signerUsesRe(fb.binding).test(code));
       if (out.length >= MAX_PER_FILE) {
         if (extra++ === 0) extraLine = lastLine + 1;
         continue;
       }
+      // Only for findings that are emitted, and once per binding: a whole-file search.
+      const signed = fb.inlineSigner || (fb.binding !== undefined && signerUses(fb.binding));
       const raw = lines[lastLine] ?? "";
-      const evidence = raw.split(literal).join(redactSecret(literal));
+      const evidence = redactSpan(raw, fb.open + 1 - starts[lastLine]!, literal);
       out.push(this.finding(file, lastLine + 1, fb.envName, signed, evidence));
     }
     if (extra > 0) {

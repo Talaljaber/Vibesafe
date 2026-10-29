@@ -1,11 +1,6 @@
-import {
-  redactSecret,
-  type Confidence,
-  type Detector,
-  type Finding,
-  type ScanContext,
-} from "@talaljaber/vibesafe-shared";
+import type { Confidence, Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared";
 import { makeFinding } from "./utils/finding.js";
+import { redactSpan } from "./utils/sanitize-evidence.js";
 import {
   classifyFile,
   isGenerated,
@@ -215,7 +210,7 @@ export class JwtMisuseDetector implements Detector {
           continue;
         const evidence =
           literal.value.length > 0
-            ? raw.split(literal.value).join(redactSecret(literal.value))
+            ? redactSpan(raw, literal.offset - starts[literal.line - 1]!, literal.value)
             : raw;
         push(this.literalSecretFinding(file, literal.line, evidence));
       }
@@ -345,14 +340,14 @@ export class JwtMisuseDetector implements Detector {
     code: string,
     arg: [number, number],
     starts: readonly number[],
-  ): { value: string; line: number } | undefined {
+  ): { value: string; line: number; offset: number } | undefined {
     const raw = content.slice(arg[0], arg[1]);
     const unwrapped = unwrapKey(raw);
     const direct = stringLiteral(unwrapped);
     if (direct !== undefined) {
       if (direct.trim() === "") return undefined;
       const at = arg[0] + raw.indexOf(unwrapped.trim().slice(0, 1));
-      return { value: direct, line: lineIndexAt(starts, at) + 1 };
+      return { value: direct, line: lineIndexAt(starts, at) + 1, offset: at + 1 };
     }
     const ident = /^([A-Za-z_$][\w$]*)$/.exec(unwrapped.trim());
     if (!ident) return undefined;
@@ -370,7 +365,7 @@ export class JwtMisuseDetector implements Detector {
       if (!/^\s*;?\s*$/.test(rest)) continue; // `"a" || x`, `"a" + x`: not a plain literal
       const value = content.slice(open + 1, close);
       if (value.trim() === "" || (quote === "`" && value.includes("${"))) continue;
-      return { value, line: lineIndexAt(starts, open) + 1 };
+      return { value, line: lineIndexAt(starts, open) + 1, offset: open + 1 };
     }
     return undefined;
   }

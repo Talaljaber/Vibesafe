@@ -37,6 +37,8 @@ describe("isSecretEnvName", () => {
     "COOKIE_SECRET",
     "PASSWORD_SALT",
     "jwtSecret",
+    "SESSION_COOKIE_SECRET",
+    "COOKIE_SIGNING_KEY",
   ])("treats %s as a secret", (name) => {
     expect(isSecretEnvName(name)).toBe(true);
   });
@@ -58,6 +60,13 @@ describe("isSecretEnvName", () => {
     "CACHE_KEY",
     "SESSION_COOKIE_NAME",
     "LOG_LEVEL",
+    "AUTH_TOKEN_COOKIE",
+    "TOKEN_STORAGE_KEY",
+    "JWT_COOKIE",
+    "JWT_CLAIM",
+    "CSRF_TOKEN_FIELD",
+    "TOKEN_PARAM",
+    "GITHUB_TOKEN_SCOPES",
   ])("does not treat %s as a secret", (name) => {
     expect(isSecretEnvName(name)).toBe(false);
   });
@@ -146,6 +155,41 @@ describe("SecretFallbackDetector", () => {
       ].join("\n"),
     });
     expect(findings).toEqual([]);
+  });
+
+  it("does not flag cookie, storage-key or claim names that fall back to a label", async () => {
+    const findings = await run({
+      "lib/auth-cookies.ts": [
+        'export const tokenCookie = process.env.AUTH_TOKEN_COOKIE || "auth_token";',
+        'export const storageKey = process.env.TOKEN_STORAGE_KEY || "app.token";',
+        'export const jwtCookie = process.env.JWT_COOKIE || "jwt";',
+        'const cookieSecret = process.env.COOKIE_SECRET || "dev-cookie-secret";',
+      ].join("\n"),
+    });
+    expect(findings.map((f) => f.line)).toEqual([4]);
+  });
+
+  it("redacts only the fallback literal, not identifiers containing the same text", async () => {
+    const findings = await run({
+      "lib/auth.ts": 'export const jwtSecretValue = process.env.JWT_SECRET || "jwt";',
+    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.evidence).toContain("jwtSecretValue = process.env.JWT_SECRET");
+    expect(findings[0]!.evidence).not.toContain('"jwt"');
+  });
+
+  it("checks signer use once per binding, not per fallback", async () => {
+    const lines = Array.from(
+      { length: 3000 },
+      (_, i) => `const s${i} = process.env.SECRET_${i} || "fallback-value-${i}";`,
+    );
+    lines.push("jwt.sign(payload, s0);");
+    const started = Date.now();
+    const findings = await run({ "lib/huge.ts": lines.join("\n") });
+    expect(Date.now() - started).toBeLessThan(3000);
+    expect(findings).toHaveLength(26);
+    expect(findings[0]!.severity).toBe("critical");
+    expect(findings[1]!.severity).toBe("high");
   });
 
   it("leaves lines with a recognised live key to the secret detector", async () => {

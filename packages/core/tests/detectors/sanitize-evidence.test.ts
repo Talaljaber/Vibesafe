@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { sanitizeEvidence } from "../../src/detectors/utils/sanitize-evidence";
+import { redactSpan, sanitizeEvidence } from "../../src/detectors/utils/sanitize-evidence";
 import { FrontendExposureDetector } from "../../src/detectors/frontend-exposure-detector";
 import { HardcodedLocalhostDetector } from "../../src/detectors/hardcoded-localhost-detector";
 import { CodebaseMessDetector } from "../../src/detectors/codebase-mess-detector";
@@ -72,5 +72,22 @@ describe("sanitizeEvidence", () => {
     const json = JSON.stringify(findings);
     expect(json).not.toContain(STRIPE);
     expect(json).not.toContain("hunter2");
+  });
+});
+
+describe("redactSpan", () => {
+  it("redacts only the literal at its column", () => {
+    const line = 'export const jwtCookie = process.env.X || "jwt";';
+    expect(redactSpan(line, line.lastIndexOf("jwt"), "jwt")).toBe(
+      'export const jwtCookie = process.env.X || "***";',
+    );
+  });
+
+  it("falls back to redacting every occurrence when the column does not hold the value", () => {
+    expect(redactSpan('a = "hunter2" // hunter2', 0, "hunter2")).not.toContain("hunter2");
+  });
+
+  it("leaves the line untouched for an empty value", () => {
+    expect(redactSpan("x = ''", 5, "")).toBe("x = ''");
   });
 });

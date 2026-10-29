@@ -173,6 +173,18 @@ describe("SecretDetector", () => {
       ["password equals user", dbUrl("appuser", DB_HOST, "postgres", "appuser")],
       ["no password", `postgres://postgres@${DB_HOST}:5432/postgres`],
       ["https URL", `https://user:${PW}@${DB_HOST}/`],
+      [
+        "Supabase pooler placeholder",
+        dbUrl(
+          "[YOUR-PASSWORD]",
+          "aws-0-us-east-1.pooler.supabase.com",
+          "postgresql",
+          "postgres.kq7wpzt3hxv",
+        ),
+      ],
+      ["Supabase direct placeholder", dbUrl("[YOUR-PASSWORD]", DB_HOST, "postgresql")],
+      ["Upstash placeholder", "redis://default:your-redis-password@redis.upstash.io:6379"],
+      ["upper-case placeholder", dbUrl("YOUR_DB_PASSWORD")],
     ])("does not flag %s", async (_name, url) => {
       expect(
         await urlFindings({ "a.ts": `const u = "${url}";`, ".env.example": `X=${url}` }),
