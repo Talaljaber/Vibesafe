@@ -31,7 +31,7 @@ inputs:
     required: false
     deprecationMessage: "The 'version' input is ignored. The action runs VibeSafe built from its own source at the ref pinned in 'uses:'. Remove the input and pin a release tag or commit SHA instead."
   node-version:
-    description: "Node.js version used to build and run VibeSafe (20 to 24; it must ship corepack)."
+    description: "Node.js version used to build and run VibeSafe (20.19+, 22.14+ or 24; it must ship a corepack that can verify pnpm)."
     required: false
     default: "20"
 
@@ -59,7 +59,7 @@ runs:
       run: |
         set -euo pipefail
         if ! command -v corepack >/dev/null 2>&1; then
-          echo "::error::corepack was not found. Use a node-version that ships corepack (Node 20 to 24)."
+          echo "::error::corepack was not found. Use a node-version that ships corepack (Node 20.19+, 22.14+ or 24)."
           exit 2
         fi
 

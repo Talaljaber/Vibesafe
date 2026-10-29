@@ -222,7 +222,7 @@ jobs:
           fail-on: danger
 ```
 
-The action does not download VibeSafe from npm. It builds the CLI from the action's own source at the ref you pinned in `uses:` (a frozen-lockfile `pnpm install` from the repository's own lockfile, then a build of the CLI and its workspace packages) and runs that build, so the pinned ref is also the VibeSafe version you get. The build runs in the action's directory, ignores the scanned repository's npm config and skips dependency install scripts. It needs a `node-version` that ships corepack (Node 20 to 24).
+The action does not download VibeSafe from npm. It builds the CLI from the action's own source at the ref you pinned in `uses:` (a frozen-lockfile `pnpm install` from the repository's own lockfile, then a build of the CLI and its workspace packages) and runs that build, so the pinned ref is also the VibeSafe version you get. The build runs in the action's directory, ignores the scanned repository's npm config and skips dependency install scripts. It needs a `node-version` that ships corepack (Node 20.19+, 22.14+ or 24; older bundled corepack versions cannot verify pnpm downloads).
 
 Pin the action to a release tag or commit SHA so a moved branch cannot change what runs in your CI. Inputs: `path`, `fail-on`, `comment`, `github-token`, `deep` (needs `fetch-depth: 0` on checkout) and `node-version`. The old `version` input is deprecated and ignored; choose the version with the `uses:` ref instead. Output: `status` (the deploy status). Use the plain `pull_request` trigger, not `pull_request_target`. See [`examples/github-action.yml`](examples/github-action.yml).
 
