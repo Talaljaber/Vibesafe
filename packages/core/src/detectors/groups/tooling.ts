@@ -7,12 +7,17 @@
 import type { Detector } from "@talaljaber/vibesafe-shared";
 import type { PrecedenceRule } from "../../scanner/precedence.js";
 import type { FileKind } from "../utils/file-kind.js";
+import { PlaceholderTestsDetector } from "../placeholder-tests-detector.js";
+
+export { PlaceholderTestsDetector };
 
 /** Fresh instances of this group's detectors, registered after the built-in ones. */
-export const toolingDetectors = (): Detector[] => [];
+export const toolingDetectors = (): Detector[] => [new PlaceholderTestsDetector()];
 
 /** Cross-owner precedence rules declared by this group (see scanner/precedence.ts). */
 export const toolingPrecedence: readonly PrecedenceRule[] = [];
 
 /** Detector id -> non-JS file kinds it legitimately reports on (used by non-js-files.test.ts). */
-export const toolingNonJsExempt: Readonly<Record<string, readonly FileKind[]>> = {};
+export const toolingNonJsExempt: Readonly<Record<string, readonly FileKind[]>> = {
+  "placeholder-tests-detector": ["package-manifest"],
+};
