@@ -893,7 +893,7 @@ export class SinkAnalyzer {
     if (this.safeMapExpr(st, r, at)) return [];
     const t = topLevelTernary(src, r);
     if (t === undefined) return st.exprTaints(r.start, r.end);
-    const cond = this.resolveCond(st, t.cond, at);
+    const cond = this.resolveCond(st, t.cond);
     const a = this.rangeHits(st, t.whenTrue, at).filter(
       (h) => !this.condGuards(cond, this.hitName(h), "enter", st),
     );
@@ -901,7 +901,7 @@ export class SinkAnalyzer {
   }
 
   /** A ternary condition that is a lone boolean binding (`safe ? v : "/"`) stands for its initializer. */
-  private resolveCond(st: TaintState, cond: Range, at: number): Range {
+  private resolveCond(st: TaintState, cond: Range): Range {
     const r = trimRange(this.f.src, cond);
     if (!/^[A-Za-z_$][\w$]*$/.test(this.f.src.code.slice(r.start, r.end))) return cond;
     const name = this.f.src.code.slice(r.start, r.end);
@@ -1556,7 +1556,7 @@ export class SinkAnalyzer {
     const t = topLevelTernary(src, r);
     if (t !== undefined) {
       const a = this.condGuards(
-        this.resolveCond(st, t.cond, at),
+        this.resolveCond(st, t.cond),
         this.firstName(t.whenTrue),
         "enter",
         st,
