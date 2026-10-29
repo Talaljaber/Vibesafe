@@ -1,4 +1,4 @@
-import type { Finding, ScanResult } from "@vibesafe/shared";
+import type { Finding, ScanResult } from "@talaljaber/vibesafe-shared";
 
 /**
  * In-memory cache of the most recent scan.

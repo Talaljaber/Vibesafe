@@ -1,6 +1,10 @@
 import chalk from "chalk";
-import type { ScanResult, DeployStatus, Severity } from "@vibesafe/shared";
-import { DEPLOY_STATUS_LABEL, DEPLOY_STATUS_MESSAGE, SEVERITY_LEVELS } from "@vibesafe/shared";
+import type { ScanResult, DeployStatus, Severity } from "@talaljaber/vibesafe-shared";
+import {
+  DEPLOY_STATUS_LABEL,
+  DEPLOY_STATUS_MESSAGE,
+  SEVERITY_LEVELS,
+} from "@talaljaber/vibesafe-shared";
 import { setTimeout as sleep } from "timers/promises";
 
 function getColorForDeployStatus(status: DeployStatus) {

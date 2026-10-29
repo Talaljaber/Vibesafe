@@ -5,8 +5,8 @@ import path from "node:path";
 import { ScannerPipeline } from "../../src/scanner/pipeline.js";
 import { DetectorRegistry } from "../../src/scanner/detector-registry.js";
 import { FileDiscovery } from "../../src/scanner/file-discovery.js";
-import { isDeployBlocker, MAX_FILE_SIZE_BYTES } from "@vibesafe/shared";
-import type { Detector, Finding, Severity } from "@vibesafe/shared";
+import { isDeployBlocker, MAX_FILE_SIZE_BYTES } from "@talaljaber/vibesafe-shared";
+import type { Detector, Finding, Severity } from "@talaljaber/vibesafe-shared";
 
 function makeFinding(overrides: Partial<Finding> = {}): Finding {
   return {

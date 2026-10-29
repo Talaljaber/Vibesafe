@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { StripeWebhookDetector } from "../../src/detectors/stripe-webhook-detector.js";
 import { MissingAuthDetector } from "../../src/detectors/missing-auth-detector.js";
 import { stripComments } from "../../src/detectors/utils/strip-comments.js";
-import type { ScanContext } from "@vibesafe/shared";
+import type { ScanContext } from "@talaljaber/vibesafe-shared";
 
 describe("StripeWebhookDetector", () => {
   const detector = new StripeWebhookDetector();

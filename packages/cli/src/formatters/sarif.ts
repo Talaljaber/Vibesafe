@@ -1,4 +1,4 @@
-import type { Finding, ScanResult, Severity } from "@vibesafe/shared";
+import type { Finding, ScanResult, Severity } from "@talaljaber/vibesafe-shared";
 
 /**
  * Pure SARIF 2.1.0 formatter. No I/O, no console output: it only turns a

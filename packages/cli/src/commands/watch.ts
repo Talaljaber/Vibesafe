@@ -1,15 +1,15 @@
 import path from "node:path";
 import chalk from "chalk";
 import chokidar from "chokidar";
-import { ScannerPipeline, createDefaultRegistry } from "@vibesafe/core";
+import { ScannerPipeline, createDefaultRegistry } from "@talaljaber/vibesafe-core";
 import {
   ALWAYS_EXCLUDED_ANYWHERE_DIRS,
   ROOT_ANCHORED_EXCLUDED_DIRS,
   SCANNABLE_EXTENSIONS,
   SCANNABLE_FILENAMES,
   WORKSPACE_PACKAGE_CONTAINERS,
-} from "@vibesafe/shared";
-import type { Finding } from "@vibesafe/shared";
+} from "@talaljaber/vibesafe-shared";
+import type { Finding } from "@talaljaber/vibesafe-shared";
 import { createBatcher } from "../watch/batcher.js";
 import { computeDelta, type ResultDelta, type Snapshot } from "../watch/delta.js";
 import { buildScanOptions } from "./scan-options.js";

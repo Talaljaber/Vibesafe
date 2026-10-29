@@ -1,4 +1,4 @@
-import type { Finding, Severity } from "@vibesafe/shared";
+import type { Finding, Severity } from "@talaljaber/vibesafe-shared";
 
 type Override = "off" | Severity;
 

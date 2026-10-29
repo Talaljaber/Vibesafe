@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { Finding, ScanResult, Severity } from "@vibesafe/shared";
+import type { Finding, ScanResult, Severity } from "@talaljaber/vibesafe-shared";
 import { formatSarif, toSarifUri, FINGERPRINT_KEY } from "../src/formatters/sarif.js";
 import { isOutputFormat, renderOutput } from "../src/formatters/index.js";
 

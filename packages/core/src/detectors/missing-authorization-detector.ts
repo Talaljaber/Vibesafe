@@ -5,8 +5,8 @@
 // i.e., "You're logged in, but are you *allowed* to do this?"
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
-import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
+import type { Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared";
+import { CATEGORY_PREFIX, createFindingId } from "@talaljaber/vibesafe-shared";
 import {
   isApiRoute,
   hasAuthCheck,

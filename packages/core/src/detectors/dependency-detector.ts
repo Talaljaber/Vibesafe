@@ -6,8 +6,8 @@
 // (No typosquatting detection is implemented.)
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
-import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
+import type { Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared";
+import { CATEGORY_PREFIX, createFindingId } from "@talaljaber/vibesafe-shared";
 import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
 
 /** Scripts that run automatically during npm install — a common supply-chain attack vector. */

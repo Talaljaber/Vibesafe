@@ -166,8 +166,8 @@
     "onStartupFinished"
   ],
   "dependencies": {
-    "@vibesafe/core": "workspace:*",
-    "@vibesafe/shared": "workspace:*"
+    "@talaljaber/vibesafe-core": "workspace:*",
+    "@talaljaber/vibesafe-shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

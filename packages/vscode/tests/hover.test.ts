@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { VibeSafeHoverProvider } from "../src/providers/hoverProvider.js";
 import { buildCsp, getNonce } from "../src/util/csp.js";
-import type { ScanResult } from "@vibesafe/shared";
+import type { ScanResult } from "@talaljaber/vibesafe-shared";
 
 const evil = "[click](command:workbench.action.terminal.sendSequence) <img src=x onerror=alert(1)>";
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { ScanContext } from "@vibesafe/shared";
+import type { ScanContext } from "@talaljaber/vibesafe-shared";
 import { ErrorBoundaryDetector } from "../../src/detectors/error-boundary-detector.js";
 import { HardcodedLocalhostDetector } from "../../src/detectors/hardcoded-localhost-detector.js";
 import { DangerousHtmlDetector } from "../../src/detectors/dangerous-html-detector.js";

@@ -8,15 +8,15 @@ importers:
 
   .:
     devDependencies:
+      '@talaljaber/vibesafe-cli':
+        specifier: workspace:*
+        version: link:packages/cli
       '@typescript-eslint/eslint-plugin':
         specifier: ^8.0.0
         version: 8.62.0(@typescript-eslint/parser@8.62.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3)
       '@typescript-eslint/parser':
         specifier: ^8.0.0
         version: 8.62.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3)
-      '@vibesafe/cli':
-        specifier: workspace:*
-        version: link:packages/cli
       eslint:
         specifier: ^9.0.0
         version: 9.39.4(jiti@2.7.0)
@@ -38,10 +38,10 @@ importers:
       '@inquirer/prompts':
         specifier: ^8.5.2
         version: 8.5.2(@types/node@20.19.43)
-      '@vibesafe/core':
+      '@talaljaber/vibesafe-core':
         specifier: workspace:*
         version: link:../core
-      '@vibesafe/shared':
+      '@talaljaber/vibesafe-shared':
         specifier: workspace:*
         version: link:../shared
       boxen:
@@ -87,7 +87,7 @@ importers:
 
   packages/core:
     dependencies:
-      '@vibesafe/shared':
+      '@talaljaber/vibesafe-shared':
         specifier: workspace:*
         version: link:../shared
       fast-glob:
@@ -118,10 +118,10 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.0.0
         version: 1.30.0(zod@3.25.76)
-      '@vibesafe/core':
+      '@talaljaber/vibesafe-core':
         specifier: workspace:*
         version: link:../core
-      '@vibesafe/shared':
+      '@talaljaber/vibesafe-shared':
         specifier: workspace:*
         version: link:../shared
       zod:
@@ -158,10 +158,10 @@ importers:
 
   packages/vscode:
     dependencies:
-      '@vibesafe/core':
+      '@talaljaber/vibesafe-core':
         specifier: workspace:*
         version: link:../core
-      '@vibesafe/shared':
+      '@talaljaber/vibesafe-shared':
         specifier: workspace:*
         version: link:../shared
     devDependencies:

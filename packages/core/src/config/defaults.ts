@@ -1,10 +1,10 @@
-import type { ScanConfig } from "@vibesafe/shared";
+import type { ScanConfig } from "@talaljaber/vibesafe-shared";
 import {
   ALL_CATEGORIES,
   DEFAULT_MAX_FILES,
   DEFAULT_MIN_SEVERITY,
   DEFAULT_SCAN_TIMEOUT_MS,
-} from "@vibesafe/shared";
+} from "@talaljaber/vibesafe-shared";
 
 /**
  * Default configuration for VibeSafe scanner.

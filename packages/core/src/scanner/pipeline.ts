@@ -7,7 +7,7 @@ import type {
   Finding,
   ScanSummary,
   RepairPlan,
-} from "@vibesafe/shared";
+} from "@talaljaber/vibesafe-shared";
 import {
   getDeployStatus,
   isDeployBlocker,
@@ -15,7 +15,7 @@ import {
   MAX_FILE_SIZE_BYTES,
   SEVERITY_WEIGHTS,
   CATEGORY_MULTIPLIERS,
-} from "@vibesafe/shared";
+} from "@talaljaber/vibesafe-shared";
 import { FileDiscovery } from "./file-discovery.js";
 import { applyInlineIgnores } from "./inline-ignores.js";
 import { ProjectContextBuilder } from "./project-context.js";

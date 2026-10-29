@@ -1,4 +1,4 @@
-import { redactSecret } from "@vibesafe/shared";
+import { redactSecret } from "@talaljaber/vibesafe-shared";
 import { SECRET_PATTERNS } from "../patterns/secret-patterns.js";
 
 /** Default maximum length of an `evidence` string. */

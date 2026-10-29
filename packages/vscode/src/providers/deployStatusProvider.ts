@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import type { ScanResult } from "@vibesafe/shared";
+import type { ScanResult } from "@talaljaber/vibesafe-shared";
 import { cspMeta } from "../util/csp.js";
 
 export class VibeSafeDeployStatusProvider implements vscode.WebviewViewProvider {

@@ -1,8 +1,8 @@
 import path from "node:path";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { ScannerPipeline, createDefaultRegistry } from "@vibesafe/core";
-import { ALL_CATEGORIES, type FindingCategory, type Severity } from "@vibesafe/shared";
+import { ScannerPipeline, createDefaultRegistry } from "@talaljaber/vibesafe-core";
+import { ALL_CATEGORIES, type FindingCategory, type Severity } from "@talaljaber/vibesafe-shared";
 import type { ScanState } from "../state.js";
 import { isPathAllowed, type ServerPolicy } from "../policy.js";
 import { setScanResult } from "../state.js";

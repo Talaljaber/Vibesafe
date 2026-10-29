@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { ErrorBoundaryDetector } from "../../src/detectors/error-boundary-detector.js";
-import type { ScanContext } from "@vibesafe/shared";
+import type { ScanContext } from "@talaljaber/vibesafe-shared";
 
 describe("ErrorBoundaryDetector", () => {
   const detector = new ErrorBoundaryDetector();

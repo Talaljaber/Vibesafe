@@ -1,4 +1,4 @@
-import type { Finding, ScanResult, Severity } from "@vibesafe/shared";
+import type { Finding, ScanResult, Severity } from "@talaljaber/vibesafe-shared";
 
 /** Hidden marker the GitHub Action uses to find and update its sticky PR comment. */
 export const PR_COMMENT_MARKER = "<!-- vibesafe-pr-comment -->";

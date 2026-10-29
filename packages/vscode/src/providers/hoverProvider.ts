@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import path from "path";
-import type { ScanResult } from "@vibesafe/shared";
+import type { ScanResult } from "@talaljaber/vibesafe-shared";
 import { isInsideRoot } from "../util/findings.js";
 import { escapeMarkdown, findingCommandUri, TRUSTED_COMMANDS } from "../util/markdown.js";
 

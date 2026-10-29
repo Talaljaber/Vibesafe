@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { Detector, Finding, ScanContext, Severity } from "@vibesafe/shared";
+import type { Detector, Finding, ScanContext, Severity } from "@talaljaber/vibesafe-shared";
 import {
   loadUserConfig,
   findScriptConfig,

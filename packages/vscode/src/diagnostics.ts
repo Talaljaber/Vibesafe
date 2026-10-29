@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import type { Finding, Severity } from "@vibesafe/shared";
+import type { Finding, Severity } from "@talaljaber/vibesafe-shared";
 
 /** A VS Code diagnostic carrying the originating VibeSafe finding. */
 export type DiagnosticWithFinding = vscode.Diagnostic & { vibesafeFinding?: Finding };

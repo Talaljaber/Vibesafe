@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { HardcodedLocalhostDetector } from "../../src/detectors/hardcoded-localhost-detector";
-import type { ScanContext } from "@vibesafe/shared";
+import type { ScanContext } from "@talaljaber/vibesafe-shared";
 
 describe("HardcodedLocalhostDetector", () => {
   const detector = new HardcodedLocalhostDetector();

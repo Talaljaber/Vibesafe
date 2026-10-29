@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { Finding } from "@vibesafe/shared";
+import type { Finding } from "@talaljaber/vibesafe-shared";
 import {
   formatDelta,
   isExcludedPath,

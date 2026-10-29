@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import type { Finding, ScanResult } from "@vibesafe/shared";
+import type { Finding, ScanResult } from "@talaljaber/vibesafe-shared";
 
 const scanMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@vibesafe/core", () => ({
+vi.mock("@talaljaber/vibesafe-core", () => ({
   createDefaultRegistry: () => ({}),
   ScannerPipeline: class {
     scan = scanMock;
@@ -269,7 +269,8 @@ describe("action.yml", () => {
     }
     expect(action).toContain('using: "composite"');
     // The CLI comes from the action's own source, never from an npm package.
-    expect(action).not.toContain("@vibesafe/cli@");
+    expect(action).not.toContain("@talaljaber/vibesafe-cli@");
+    expect(action).not.toMatch(/@vibesafe\/cli/);
     expect(action).not.toMatch(/\bnpx\b/);
     expect(action).not.toMatch(/default: "latest"/);
   });

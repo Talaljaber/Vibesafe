@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { MissingAuthDetector } from "../../src/detectors/missing-auth-detector";
 import { MissingAuthorizationDetector } from "../../src/detectors/missing-authorization-detector";
-import type { ScanContext } from "@vibesafe/shared";
+import type { ScanContext } from "@talaljaber/vibesafe-shared";
 
 const ctx = (files: Record<string, string>): ScanContext => ({
   rootPath: "/fake",

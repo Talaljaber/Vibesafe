@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { mergeConfig } from "../../src/config/defaults.js";
 import { ScannerPipeline } from "../../src/scanner/pipeline.js";
 import { DetectorRegistry } from "../../src/scanner/detector-registry.js";
-import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
+import type { Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared";
 
 class FilesSeenDetector implements Detector {
   id = "files-seen";

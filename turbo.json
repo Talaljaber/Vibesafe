@@ -23,7 +23,7 @@
       "outputs": ["coverage/**"],
       "cache": true
     },
-    "@vibesafe/shared#test": {
+    "@talaljaber/vibesafe-shared#test": {
       "dependsOn": ["^build", "build"],
       "outputs": ["coverage/**"],
       "inputs": [
@@ -32,13 +32,17 @@
         "$TURBO_ROOT$/*.yml",
         "$TURBO_ROOT$/package.json",
         "$TURBO_ROOT$/pnpm-lock.yaml",
+        "$TURBO_ROOT$/LICENSE",
         "$TURBO_ROOT$/.gitattributes",
-        "$TURBO_ROOT$/.github/workflows/*.yml",
+        "$TURBO_ROOT$/.mcp.json",
+        "$TURBO_ROOT$/.github/**",
+        "$TURBO_ROOT$/docs/**",
         "$TURBO_ROOT$/examples/**",
+        "$TURBO_ROOT$/fixtures/**",
         "$TURBO_ROOT$/scripts/**",
-        "$TURBO_ROOT$/packages/*/package.json",
-        "$TURBO_ROOT$/packages/*/README.md",
-        "$TURBO_ROOT$/packages/*/src/**"
+        "$TURBO_ROOT$/packages/*/*",
+        "$TURBO_ROOT$/packages/*/src/**",
+        "$TURBO_ROOT$/packages/*/tests/**"
       ]
     },
     "test:watch": {

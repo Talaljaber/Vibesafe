@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { DangerousHtmlDetector } from "../../src/detectors/dangerous-html-detector";
-import type { ScanContext } from "@vibesafe/shared";
+import type { ScanContext } from "@talaljaber/vibesafe-shared";
 
 describe("DangerousHtmlDetector", () => {
   const detector = new DangerousHtmlDetector();

@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import type { ScanConfig } from "@vibesafe/shared";
+import type { ScanConfig } from "@talaljaber/vibesafe-shared";
 import { validateUserConfig } from "./schema.js";
 import type { VibeSafeConfig } from "./user-config.js";
 
