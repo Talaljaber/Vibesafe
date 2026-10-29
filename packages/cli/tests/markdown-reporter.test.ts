@@ -268,7 +268,9 @@ describe("action.yml", () => {
       expect(action).toMatch(new RegExp(`^  ${input}:`, "m"));
     }
     expect(action).toContain('using: "composite"');
-    expect(action).toContain("@vibesafe/cli@");
+    // The CLI comes from the action's own source, never from an npm package.
+    expect(action).not.toContain("@vibesafe/cli@");
+    expect(action).not.toMatch(/\bnpx\b/);
     expect(action).not.toMatch(/default: "latest"/);
   });
 
@@ -279,14 +281,17 @@ describe("action.yml", () => {
       .split(/\n\s+run: \|/)
       .slice(1)
       .map((block) => block.split(/\n    - name:/)[0] ?? "");
-    expect(scripts.length).toBe(3);
+    expect(scripts.length).toBe(4);
     for (const script of scripts) expect(script).not.toContain("${{");
   });
 
-  it("runs npx outside the repo with its npm config ignored and ends options with --", () => {
-    expect(action).toContain('cd "$cleandir"');
+  it("builds in the action directory with npm config ignored and scans from outside the repo", () => {
+    expect(action).toContain("working-directory: ${{ github.action_path }}");
     expect(action).toContain("NPM_CONFIG_USERCONFIG");
     expect(action).toContain("NPM_CONFIG_REGISTRY");
+    expect(action).toContain("--frozen-lockfile --ignore-scripts");
+    expect(action).toContain('cd "$rundir"');
+    expect(action).toContain('node "$cli" "${args[@]}"');
     expect(action).toContain('-- "$GITHUB_WORKSPACE/$VS_PATH"');
   });
 

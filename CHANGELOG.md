@@ -29,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `fix -i` interactive fix wizard; `scan -i` offers it after a scan (#93).
   - `watch` re-scans on file changes and prints what got better or worse, with `--json` NDJSON events (#88).
   - `--deep` / `--no-deep`, `--include-tests` / `--no-include-tests`, `--no-config`, `--trust-config`, real scan progress and scan warnings.
-- **GitHub Action** (#91): composite `action.yml` that posts or updates one sticky PR comment and the job summary, and fails the job by `fail-on`; usage example in `examples/github-action.yml`.
+- **GitHub Action** (#91): composite `action.yml` that posts or updates one sticky PR comment and the job summary, and fails the job by `fail-on`; usage example in `examples/github-action.yml`. The action builds the CLI from its own source at the pinned ref and runs that build; the `version` input is deprecated and ignored.
 - **Inline ignores**: `vibesafe-disable-line`, `-next-line` and `-file` directives accept comma-separated rule ids.
 - **MCP server (`@vibesafe/mcp`)**: `vibesafe_scan`, `vibesafe_explain`, `vibesafe_repair_plan`, `vibesafe_fix`; `deep` and `includeTests` scan options; `--root` / `VIBESAFE_MCP_ROOTS` and `--allow-fix` / `VIBESAFE_MCP_ALLOW_FIX` server settings.
 - **Dashboard**: redesigned HTML report (`--html`) and VS Code dashboard, with screenshots in the README.
@@ -61,6 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Trusted commands in VS Code hover markdown are restricted.
 - MCP scans are limited to allowed roots and file writes are opt-in.
 - Git is run with a hardened configuration during history scans.
+- The GitHub Action runs the CLI from the action's own source rather than an npm package the project does not publish (`@vibesafe/cli` on npm belongs to an unrelated package). Its build ignores the scanned repository's npm config, uses the action's lockfile and skips dependency install scripts.
 - Detector evidence is redacted so secrets are not echoed in reports.
 - Script config files are not executed unless explicitly trusted; the MCP server and VS Code extension never execute them.
 

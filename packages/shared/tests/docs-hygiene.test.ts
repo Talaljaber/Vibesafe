@@ -104,6 +104,44 @@ describe("docs hygiene", () => {
     }
   });
 
+  it("the GitHub Action builds the CLI from its own source instead of an npm package", () => {
+    const action = read("action.yml");
+    // The npm name @vibesafe/cli belongs to an unrelated package; never fetch or run it.
+    expect(action).not.toMatch(/\bnpx\b/);
+    expect(action).not.toMatch(/\bnpm (exec|install|i)\b/);
+    expect(action).not.toContain("@vibesafe/cli@");
+    expect(action).toContain("working-directory: ${{ github.action_path }}");
+    expect(action).toContain("corepack pnpm install --frozen-lockfile --ignore-scripts");
+    expect(action).toContain('--filter "@vibesafe/cli..."');
+    expect(action).toContain('"$GITHUB_ACTION_PATH/packages/cli/dist/bin.js"');
+    expect(action).toContain("NPM_CONFIG_USERCONFIG=");
+    expect(action).toContain("scan --format markdown");
+    // The filter and the corepack pnpm version must match the workspace.
+    const cli = JSON.parse(read("packages/cli/package.json")) as { name: string };
+    expect(cli.name).toBe("@vibesafe/cli");
+    const root = JSON.parse(read("package.json")) as { packageManager: string };
+    expect(root.packageManager).toMatch(/^pnpm@9\./);
+    // Third-party actions are pinned by full commit SHA.
+    const uses = [...action.matchAll(/^\s*uses:\s*(\S+)/gm)].map((m) => m[1]!);
+    expect(uses.length).toBeGreaterThan(0);
+    for (const u of uses) expect(u, u).toMatch(/@[0-9a-f]{40}$/);
+    // The old npm version input is accepted but ignored.
+    const version = /^ {2}version:\n((?: {4}.*\n)+)/m.exec(action)?.[1] ?? "";
+    expect(version).toContain("deprecationMessage:");
+    expect(version).not.toContain("default:");
+  });
+
+  it("docs describe the source-built Action and keep the npm name warning", () => {
+    const readme = read("README.md");
+    expect(readme).not.toMatch(/npx @vibesafe\/cli@/);
+    expect(readme).not.toMatch(/Do not use it until/);
+    expect(readme).toContain("builds the CLI from the action's own source");
+    expect(readme).toMatch(/`@vibesafe\/cli` name on npm currently belongs to a different/);
+    const example = read("examples/github-action.yml");
+    expect(example).not.toMatch(/^\s*version:/m);
+    expect(example).not.toContain("npx");
+  });
+
   it("every CLI and MCP flag in the README exists in the source", () => {
     const sources = ["packages/cli/src", "packages/mcp/src"]
       .flatMap((dir) =>
