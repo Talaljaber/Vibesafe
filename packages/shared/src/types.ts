@@ -370,6 +370,13 @@ export interface ScanContext {
   config: ScanConfig;
 
   /**
+   * Test files (JS-like *.test.* / *.spec.* / __tests__) excluded from `files` because
+   * includeTests is off. Only for detectors that judge the test suite itself; never scan
+   * them for app issues.
+   */
+  testFiles?: readonly string[] | undefined;
+
+  /**
    * Report a non-fatal notice about the scan (for example a file that could not be
    * fully analysed). Messages end up in `ScanResult.warnings`, de-duplicated. Optional:
    * contexts built outside the pipeline (tests, editors) may omit it, so call it as

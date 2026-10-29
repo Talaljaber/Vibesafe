@@ -84,12 +84,14 @@ export class ScannerPipeline {
     // gitignored env files and root-level docs/config/html files.
     const skippedEnv: string[] = [];
     const skippedRoot: string[] = [];
+    const testFiles: string[] = [];
     let files =
       config.targetFiles && config.targetFiles.length > 0
         ? config.targetFiles
         : await fileDiscovery.discoverFiles(config.excludePatterns, {
             // Not in mergeConfig's defaults; undefined/false = exclude tests.
             includeTests: config.includeTests,
+            onTestFile: (f) => testFiles.push(f.replace(/\\/g, "/")),
             onSkipped: (file, reason) => {
               const rel = file.replace(/\\/g, "/");
               const base = rel.slice(rel.lastIndexOf("/") + 1);
@@ -142,6 +144,10 @@ export class ScannerPipeline {
       projectContext,
       files,
       config,
+      testFiles:
+        config.includeTests === true || (config.targetFiles && config.targetFiles.length > 0)
+          ? undefined
+          : testFiles,
       readFile: async (relativePath: string) => {
         if (fileCache.has(relativePath)) {
           return fileCache.get(relativePath)!;

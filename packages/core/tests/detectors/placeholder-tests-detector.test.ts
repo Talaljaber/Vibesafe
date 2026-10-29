@@ -187,3 +187,78 @@ it.todo("overflow");`;
     expect(classifyTestFile(code)?.placeholderOnly).toBe(false);
   });
 });
+
+describe("PlaceholderTestsDetector with context.testFiles (default mode)", () => {
+  const ctx = (files: Record<string, string>, testFiles?: string[]): ScanContext => ({
+    ...createContext(files, false),
+    testFiles,
+  });
+  const run2 = async (files: Record<string, string>, testFiles?: string[]) => {
+    const findings = await detector.detect(ctx(files, testFiles));
+    expectRubric(findings);
+    return findings;
+  };
+
+  it("flags a todo-only test file", async () => {
+    const f = await run2({ "package.json": pkg("vitest run"), "tests/a.test.ts": TODO_ONLY }, [
+      "tests/a.test.ts",
+    ]);
+    expect(f.map((x) => x.file)).toEqual(["tests/a.test.ts"]);
+    expect(f[0]?.line).toBe(4);
+  });
+
+  it("flags a constant-assertion-only test file", async () => {
+    const f = await run2({ "package.json": pkg("vitest run"), "a.spec.ts": TRIVIAL }, ["a.spec.ts"]);
+    expect(f).toHaveLength(1);
+    expect(f[0]?.file).toBe("a.spec.ts");
+  });
+
+  it("is silent for a real test and suppresses --passWithNoTests", async () => {
+    const real = `import { it, expect } from "vitest";\nit("adds", () => { expect(sum(1, 2)).toBe(3); });\n`;
+    const f = await run2(
+      { "package.json": pkg("vitest run --passWithNoTests"), "a.test.ts": real },
+      ["a.test.ts"],
+    );
+    expect(f).toEqual([]);
+  });
+
+  it("keeps package.json findings only when testFiles is undefined", async () => {
+    const f = await run2(
+      { "package.json": pkg("vitest run --passWithNoTests"), "a.test.ts": TODO_ONLY },
+      undefined,
+    );
+    expect(f.map((x) => x.file)).toEqual(["package.json"]);
+  });
+
+  it("is silent for a comment-only todo", async () => {
+    const f = await run2({ "package.json": pkg("vitest run"), "a.test.ts": `// it.todo("x")\n` }, [
+      "a.test.ts",
+    ]);
+    expect(f).toEqual([]);
+  });
+
+  it("has stable ids across two runs", async () => {
+    const files = { "package.json": pkg("vitest run"), "a.test.ts": TODO_ONLY };
+    const a = await run2(files, ["a.test.ts"]);
+    const b = await run2(files, ["a.test.ts"]);
+    expect(a.map((x) => x.id)).toEqual(b.map((x) => x.id));
+  });
+
+  it("only this detector reads testFiles", async () => {
+    const fsm = await import("node:fs");
+    const pth = await import("node:path");
+    const dir = pth.resolve(__dirname, "../../src/detectors");
+    const hits: string[] = [];
+    const walk = (d: string): void => {
+      for (const e of fsm.readdirSync(d, { withFileTypes: true })) {
+        const p = pth.join(d, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (p.endsWith(".ts") && fsm.readFileSync(p, "utf8").includes("testFiles")) {
+          hits.push(e.name);
+        }
+      }
+    };
+    walk(dir);
+    expect(hits).toEqual(["placeholder-tests-detector.ts"]);
+  });
+});
