@@ -34,7 +34,7 @@ export function mayBeStripeWebhookFile(filePath: string, fileContent: string): b
 }
 
 /** Route-level evidence that an Express webhook route is the Stripe receiver of its file. */
-const ROUTE_STRIPE_EVIDENCE_RE = /stripe|constructEvent|express\s*\.\s*raw|rawBody/i;
+const ROUTE_STRIPE_EVIDENCE_RE = /stripe|constructEvent|(?:express|bodyParser)\s*\.\s*raw|rawBody/i;
 
 function isHandlerText(text: string, allowDefaultExport: boolean, headerCounts = true): boolean {
   return (
@@ -109,8 +109,8 @@ export function isStripeWebhookRoute(filePath: string, fileContent: string): boo
 }
 
 /**
- * True when an Express route path names a webhook endpoint. Paired with `isStripeWebhookRoute` (which
- * is file-level) so only the webhook routes of a Stripe webhook file are exempt from auth/validation.
+ * True when an Express route path names a webhook endpoint. Used by `isStripeWebhookExpressRoute`,
+ * which also needs route-level Stripe evidence, so only the Stripe receiver is exempt.
  */
 export function isWebhookPath(routePath: string): boolean {
   return /webhook/i.test(routePath);
@@ -119,7 +119,7 @@ export function isWebhookPath(routePath: string): boolean {
 /**
  * True when an Express route in a Stripe webhook file is itself the Stripe receiver: its path names
  * a webhook and its path or handler chain shows Stripe evidence (`stripe`, `constructEvent`,
- * `express.raw`, `rawBody`). `chainCode` has comments and string contents blanked, so only real
+ * `express.raw`, `bodyParser.raw`, `rawBody`). `chainCode` has comments and string contents blanked, so only real
  * code counts. Other webhook routes in the same file (e.g. `/webhooks/github`) stay covered.
  */
 export function isStripeWebhookExpressRoute(route: { path: string; chainCode: string }): boolean {
@@ -190,7 +190,7 @@ function findParsedBodyVerification(code: string): number | undefined {
   const re =
     /\bconstructEvent(?:Async)?\s*\(\s*(JSON\.stringify\s*\(|await\s+[\w.]+\.json\s*\(|[\w.]+\.body\b)/g;
   const hasRawHint =
-    /\bexpress\s*\.\s*raw\s*\(|bodyParser\s*:\s*false|\bgetRawBody\s*\(|(?<![.\w$])buffer\s*\(|\brawBody\b|\breq\.text\s*\(|\.arrayBuffer\s*\(/.test(
+    /\b(?:express|bodyParser)\s*\.\s*raw\s*\(|bodyParser\s*:\s*false|\bgetRawBody\s*\(|(?<![.\w$])buffer\s*\(|\brawBody\b|\breq\.text\s*\(|\.arrayBuffer\s*\(/.test(
       code,
     );
   for (const m of code.matchAll(re)) {

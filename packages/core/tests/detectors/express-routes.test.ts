@@ -476,6 +476,24 @@ function onEvent(req, res) {
 app.post("/webhook", express.raw({ type: "application/json" }), onEvent);`;
       expect(await auth.detect(ctx({ "server.js": src }))).toHaveLength(0);
     });
+
+    it("treats bodyParser.raw like express.raw for a generic webhook path", async () => {
+      const src = `const express = require("express");
+const bodyParser = require("body-parser");
+const Stripe = require("stripe");
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const app = express();
+
+function onEvent(req, res) {
+  const event = stripe.webhooks.constructEvent(req.body, req.headers["stripe-signature"], secret);
+  res.json({ received: event.type });
+}
+
+app.post("/webhook", bodyParser.raw({ type: "application/json" }), onEvent);`;
+      expect(await auth.detect(ctx({ "server.js": src }))).toHaveLength(0);
+      expect(await validation.detect(ctx({ "server.js": src }))).toHaveLength(0);
+      expect(await stripe.detect(ctx({ "server.js": src }))).toHaveLength(0);
+    });
   });
 
   describe("isStripeWebhookExpressRoute", () => {
