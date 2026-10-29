@@ -49,6 +49,32 @@ describe("CodebaseMessDetector", () => {
     expect(findings.some((f) => f.ruleId === "code_quality/console-log")).toBe(true);
   });
 
+  it("does not flag console.log in CLI scripts (scripts/, bin/, shebang files)", async () => {
+    const findings = await detector.detect(
+      createContext({
+        "scripts/seed.ts": `console.log("seeded");`,
+        "packages/tool/bin/run.js": `console.log("done");`,
+        "tools/migrate.js": `#!/usr/bin/env node\nconsole.log("migrated");`,
+        "app/page.tsx": `console.log(user);`,
+      }),
+    );
+    const logs = findings.filter((f) => f.ruleId === "code_quality/console-log");
+    expect(logs.map((f) => f.file)).toEqual(["app/page.tsx"]);
+  });
+
+  it("still flags other rules in scripts and console.log in look-alike paths", async () => {
+    const findings = await detector.detect(
+      createContext({
+        "scripts/a.ts": `try { x(); } catch {}`,
+        "src/transcripts/view.ts": `console.log(x);`,
+      }),
+    );
+    expect(findings.map((f) => `${f.ruleId}:${f.file}`).sort()).toEqual([
+      "code_quality/console-log:src/transcripts/view.ts",
+      "code_quality/empty-catch:scripts/a.ts",
+    ]);
+  });
+
   it("ignores console.log lines that are already commented out", async () => {
     const context = createContext({
       "app/page.tsx": `// console.log("a");\n  /* console.log("b"); */\n/**\n * console.log("c")\n */\nconst z = 1;`,

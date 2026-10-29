@@ -7,15 +7,16 @@ import { runFix } from "./commands/fix.js";
 import { runWatch } from "./commands/watch.js";
 import { runFixWizard } from "./commands/fix-wizard.js";
 import { runFixAllCommand } from "./commands/fix-all.js";
+import { runHookClaude } from "./commands/hook.js";
 import { createRequire } from "node:module";
 
 // Real CLI version; both dist/bin.js and src/bin.ts sit one level below package.json.
 const require = createRequire(import.meta.url);
 const { version: CLI_VERSION } = require("../package.json") as { version: string };
 
-// Print banner unless machine-readable output is requested (--json, --format, --output);
-// we need to check args before commander parses them.
-if (shouldPrintBanner(process.argv)) {
+// Print banner unless machine-readable output is requested (--json, --format, --output) or the
+// command prints a config snippet (`hook`); we need to check args before commander parses them.
+if (shouldPrintBanner(process.argv) && process.argv[2] !== "hook") {
   printBanner();
 }
 
@@ -55,6 +56,10 @@ program
   .option(
     "--trust-config",
     "Execute .ts/.js config files from the scanned directory (runs that code; trusted projects only)",
+  )
+  .option(
+    "--online",
+    "Also look up dependency versions in the OSV advisory database (sends package names and versions to api.osv.dev; off by default)",
   )
   .action(async (dir, options) => {
     await runScan(dir, options);
@@ -166,5 +171,31 @@ program
       signal: controller.signal,
     });
   });
+
+// Agent hooks and scan exit-code help.
+program
+  .command("hook")
+  .description("Print or install agent hooks that run VibeSafe automatically")
+  .command("claude")
+  .description(
+    "Print a Claude Code hook that re-scans after each edit; --write merges it into .claude/settings.json",
+  )
+  .option("--write", "Merge the hook into <dir>/.claude/settings.json (keeps existing settings)")
+  .option("--dir <dir>", "Project directory for --write", ".")
+  .action(async (options: { write?: boolean; dir?: string }) => {
+    await runHookClaude({ write: Boolean(options.write), dir: options.dir });
+  });
+program.commands
+  .find((c) => c.name() === "scan")
+  ?.addHelpText(
+    "after",
+    [
+      "",
+      "Exit codes:",
+      "  0  scan passed: deploy status safe or warning",
+      "  1  deploy status danger or blocker (a deploy-blocking finding, or score below 40)",
+      "  2  usage or runtime error (unknown --format, unwritable --output, scan failure)",
+    ].join("\n"),
+  );
 
 program.parse(process.argv);
