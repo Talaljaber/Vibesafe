@@ -8,13 +8,7 @@ import {
   type FunctionSpan,
 } from "./utils/js-functions.js";
 import type { JsSource } from "./utils/js-source.js";
-import {
-  calleeText,
-  escapeRegExp,
-  nextNonWs,
-  prevNonWs,
-  serverSources,
-} from "./utils/tooling-js.js";
+import { calleeText, escapeRegExp, nextNonWs, serverSources } from "./utils/tooling-js.js";
 
 /**
  * `validation/check-then-act-race`: server code reads a record, checks one of its

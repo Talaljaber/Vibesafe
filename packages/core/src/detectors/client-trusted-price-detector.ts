@@ -49,7 +49,6 @@ import {
  * before the sink, and donation / tip / top-up handlers where the payer picks the amount.
  */
 
-const RULE = "validation/client-trusted-price";
 const MAX_PER_FILE = 25;
 
 const PREFILTER = /unit_amount|purchase_units|\.\s*(?:create|sale)\s*\(/;
