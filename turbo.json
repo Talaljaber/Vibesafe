@@ -36,7 +36,6 @@
         "$TURBO_ROOT$/.gitattributes",
         "$TURBO_ROOT$/.mcp.json",
         "$TURBO_ROOT$/.github/**",
-        "$TURBO_ROOT$/docs/**",
         "$TURBO_ROOT$/examples/**",
         "$TURBO_ROOT$/fixtures/**",
         "$TURBO_ROOT$/scripts/**",

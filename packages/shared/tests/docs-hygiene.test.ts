@@ -282,11 +282,13 @@ describe("docs hygiene", () => {
 
   it("no file outside the CHANGELOG still uses the old @vibesafe npm scope", async () => {
     const { execFileSync } = await import("node:child_process");
-    const files = execFileSync(
-      "git",
-      ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-      { cwd: repoRoot, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
-    )
+    // Tracked files only: untracked local notes (an agent guide, scratch files) are not repo
+    // content and must not turn the local gate red.
+    const files = execFileSync("git", ["ls-files", "-z", "--cached"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+    })
       .split("\0")
       .filter((f) => f !== "" && f !== "CHANGELOG.md" && fs.existsSync(path.join(repoRoot, f)))
       .filter((f) => !/\.(png|jpe?g|gif|ico|vsix|tgz)$/i.test(f));
@@ -330,6 +332,8 @@ describe("docs hygiene", () => {
       expect(fs.existsSync(path.join(repoRoot, `packages/${dir}/README.md`)), dir).toBe(true);
       // Only the build output (plus README and LICENSE) goes into the tarball.
       expect(pkg.files, dir).toContain("dist");
+      // Source maps point at ../src, which is not shipped, so they stay out of the tarball.
+      expect(pkg.files, dir).toContain("!dist/**/*.map");
       for (const f of pkg.files ?? []) {
         expect(f, dir).toMatch(/^(!?dist(\/.*)?|README\.md|LICENSE)$/);
       }

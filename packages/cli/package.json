@@ -29,6 +29,7 @@
     "dist",
     "!dist/.tsbuildinfo",
     "!dist/**/*.tsbuildinfo",
+    "!dist/**/*.map",
     "README.md",
     "LICENSE"
   ],
