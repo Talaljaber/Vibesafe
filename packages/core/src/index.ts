@@ -37,6 +37,39 @@ export { CorsDetector } from "./detectors/cors-detector.js";
 export { StripeWebhookDetector } from "./detectors/stripe-webhook-detector.js";
 export { RateLimitDetector } from "./detectors/rate-limit-detector.js";
 
+// Detector groups (each exports only its *Detector classes, <group>Detectors,
+// <group>Precedence and <group>NonJsExempt).
+export * from "./detectors/groups/infra.js";
+export * from "./detectors/groups/injection.js";
+export * from "./detectors/groups/client.js";
+export * from "./detectors/groups/authz.js";
+export * from "./detectors/groups/crypto.js";
+export * from "./detectors/groups/supabase.js";
+export * from "./detectors/groups/deps.js";
+export * from "./detectors/groups/tooling.js";
+
+// Shared detector primitives
+export {
+  applyPrecedence,
+  matchesRulePattern,
+  patternsOverlap,
+  validatePrecedenceRules,
+} from "./scanner/precedence.js";
+export type { PrecedenceRule } from "./scanner/precedence.js";
+export { makeFinding, assertFindingRubric } from "./detectors/utils/finding.js";
+export type { FindingInput } from "./detectors/utils/finding.js";
+export {
+  classifyPath,
+  classifyFile,
+  runtimeOfKind,
+  isJsLike,
+  isTestOrFixturePath,
+  isGenerated,
+  isServerScope,
+  isClientScope,
+} from "./detectors/utils/file-kind.js";
+export type { FileKind, FileRuntime, FileClassification } from "./detectors/utils/file-kind.js";
+
 // Fixers
 export * from "./fixers/index.js";
 

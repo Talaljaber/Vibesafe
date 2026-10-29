@@ -11,8 +11,10 @@ import type {
 import {
   getDeployStatus,
   isDeployBlocker,
+  isLockfileName,
   isMoreSevere,
   MAX_FILE_SIZE_BYTES,
+  MAX_LOCKFILE_SIZE_BYTES,
   SEVERITY_WEIGHTS,
   CATEGORY_MULTIPLIERS,
 } from "@talaljaber/vibesafe-shared";
@@ -24,6 +26,7 @@ import { mergeConfig } from "../config/defaults.js";
 import { validateConfig } from "../config/schema.js";
 import { loadUserConfig, findScriptConfig } from "../config/load-config.js";
 import { applyRuleOverridesWithStats } from "./rule-overrides.js";
+import { applyPrecedence } from "./precedence.js";
 
 export class ScannerPipeline {
   private registry: DetectorRegistry;
@@ -99,6 +102,7 @@ export class ScannerPipeline {
     // 3. Create ScanContext with file caching
     const fileCache = new Map<string, string>();
     const skippedLarge = new Set<string>();
+    const detectorWarnings = new Set<string>();
     const scanContext: ScanContext = {
       rootPath: config.rootPath,
       projectContext,
@@ -113,7 +117,11 @@ export class ScannerPipeline {
           // Never read through symlinks, and skip oversized files.
           const stat = await fs.lstat(absolutePath);
           if (stat.isSymbolicLink()) return "";
-          if (stat.size > MAX_FILE_SIZE_BYTES) {
+          // Lockfiles get a larger budget so dependency checks can read real-world ones.
+          const limit = isLockfileName(relativePath)
+            ? MAX_LOCKFILE_SIZE_BYTES
+            : MAX_FILE_SIZE_BYTES;
+          if (stat.size > limit) {
             skippedLarge.add(relativePath);
             return "";
           }
@@ -124,6 +132,9 @@ export class ScannerPipeline {
           // If we fail to read a file, return empty string so detectors don't crash
           return "";
         }
+      },
+      addWarning: (message: string) => {
+        detectorWarnings.add(message);
       },
     };
 
@@ -155,6 +166,16 @@ export class ScannerPipeline {
       );
     }
 
+    // 4.7. Precedence: specific findings hide the generic ones they make redundant.
+    // After overrides, so a winner turned "off" lets its losers back.
+    const precedence = applyPrecedence(findings, this.registry.getPrecedence());
+    findings = precedence.findings;
+    if (precedence.suppressed > 0) {
+      warnings.push(
+        `Precedence hid ${precedence.suppressed} generic finding(s) in favour of specific ones.`,
+      );
+    }
+
     // 5. Score BEFORE the minSeverity filter. minSeverity only controls which
     // findings are displayed; filtering must not inflate the score or hide a
     // deploy blocker.
@@ -183,9 +204,10 @@ export class ScannerPipeline {
 
     const durationMs = Date.now() - startTime;
 
+    warnings.push(...detectorWarnings);
     if (skippedLarge.size > 0) {
       warnings.push(
-        `Skipped ${skippedLarge.size} file(s) larger than ${MAX_FILE_SIZE_BYTES} bytes: ${[...skippedLarge].slice(0, 5).join(", ")}${skippedLarge.size > 5 ? ", ..." : ""}`,
+        `Skipped ${skippedLarge.size} file(s) larger than ${MAX_FILE_SIZE_BYTES} bytes (lockfiles: ${MAX_LOCKFILE_SIZE_BYTES}): ${[...skippedLarge].slice(0, 5).join(", ")}${skippedLarge.size > 5 ? ", ..." : ""}`,
       );
     }
     if (detectorErrors.some((e) => e.detectorId === "scan-timeout")) {

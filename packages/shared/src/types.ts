@@ -254,6 +254,13 @@ export interface ScanConfig {
    * you trust.
    */
   trustConfigScripts?: boolean | undefined;
+
+  /**
+   * Allow detectors that query an online advisory service. Defaults to false and is
+   * currently inert. Only explicit caller options (CLI flag, MCP argument, API) may set
+   * it; config files can never enable network egress, so the config schema rejects it.
+   */
+  online?: boolean | undefined;
 }
 
 // ─── Repair Plan ─────────────────────────────────────────────────────────────
@@ -361,6 +368,14 @@ export interface ScanContext {
 
   /** The configuration this scan is running with. */
   config: ScanConfig;
+
+  /**
+   * Report a non-fatal notice about the scan (for example a file that could not be
+   * fully analysed). Messages end up in `ScanResult.warnings`, de-duplicated. Optional:
+   * contexts built outside the pipeline (tests, editors) may omit it, so call it as
+   * `context.addWarning?.(message)`. Detectors must use this instead of module state.
+   */
+  addWarning?: ((message: string) => void) | undefined;
 }
 
 // ─── Auto-Fixer Interface ────────────────────────────────────────────────────

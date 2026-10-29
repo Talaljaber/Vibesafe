@@ -1,0 +1,6 @@
+{
+  "name": "corpus-express-api",
+  "private": true,
+  "dependencies": { "express": "^4.18.2", "cors": "^2.8.5" },
+  "scripts": { "postinstall": "node scripts/setup.js", "start": "node server.js" }
+}
