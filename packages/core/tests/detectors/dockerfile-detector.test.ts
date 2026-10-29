@@ -59,7 +59,7 @@ describe("DockerfileDetector: docker-secret-in-env", () => {
         Dockerfile: [
           "FROM node:20",
           "ENV NODE_ENV=production \\",
-          "    DATABASE_URL=postgres://app:s3cretpass@db.internal:5432/app",
+          "    DATABASE_URL=postgres://app:s3cretpass@db:5432/app",
         ].join("\n"),
       }),
       "docker-secret-in-env",
@@ -67,6 +67,19 @@ describe("DockerfileDetector: docker-secret-in-env", () => {
     expect(findings).toHaveLength(1);
     expect(findings[0]!.line).toBe(3);
     expect(findings[0]!.evidence).not.toContain("s3cretpass");
+  });
+
+  it("leaves a connection string with a real host to the secret detector", async () => {
+    const findings = byRule(
+      await run({
+        Dockerfile: [
+          "FROM node:20",
+          "ENV DATABASE_URL=postgres://app:s3cretpass@db.internal:5432/app",
+        ].join("\n"),
+      }),
+      "docker-secret-in-env",
+    );
+    expect(findings).toHaveLength(0);
   });
 
   it("ignores safe look-alikes: references, placeholders, public and non-secret names", async () => {
