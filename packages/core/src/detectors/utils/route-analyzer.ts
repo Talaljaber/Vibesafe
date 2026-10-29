@@ -601,13 +601,7 @@ export function findSecretComparisons(src: JsSource, from: number, to: number): 
         against = "env";
       }
       if (against === undefined) continue;
-      // only an `if (...)` whose consequent (this line or the next) rejects the request
-      const nextEnd = code.indexOf("\n", lineEnd + 1);
-      const consequent = code.slice(op, nextEnd < 0 ? code.length : nextEnd);
-      const denies =
-        /\bif\s*\(/.test(code.slice(lineStart, op)) &&
-        /\b(?:return|throw)\b/.test(consequent) &&
-        DENY_RE.test(src.text.slice(op, op + consequent.length));
+      const denies = rejectsRequest(src, lineStart, op, m[0], name);
       out.push({
         offset: op,
         line: src.lineAt(op),
@@ -622,6 +616,73 @@ export function findSecretComparisons(src: JsSource, from: number, to: number): 
     }
   }
   return out;
+}
+
+/** The statement or `{ ... }` block following the condition whose `(` is at `open`. */
+function blockAfterCondition(
+  code: string,
+  open: number,
+): { start: number; end: number } | undefined {
+  let depth = 0;
+  let i = open;
+  for (; i < code.length && i < open + 600; i++) {
+    if (code[i] === "(") depth++;
+    else if (code[i] === ")" && --depth === 0) break;
+  }
+  if (depth !== 0) return undefined;
+  let s = i + 1;
+  while (s < code.length && /\s/.test(code[s] ?? "")) s++;
+  if (code[s] === "{") {
+    let d = 0;
+    for (let j = s; j < code.length && j < s + 1500; j++) {
+      if (code[j] === "{") d++;
+      else if (code[j] === "}" && --d === 0) return { start: s, end: j + 1 };
+    }
+    return undefined;
+  }
+  const semi = code.indexOf(";", s);
+  const e = semi < 0 || semi - s > 400 ? Math.min(code.length, s + 400) : semi + 1;
+  return { start: s, end: e };
+}
+
+/**
+ * True when the comparison at `op` sits in an `if` (directly, or through a boolean local) whose
+ * consequent rejects the request: a return/throw that answers 401/403/unauthorized, or, for a
+ * secret-named parameter, any return/throw taken when the values differ.
+ */
+function rejectsRequest(
+  src: JsSource,
+  lineStart: number,
+  op: number,
+  operator: string,
+  name: string,
+): boolean {
+  const code = src.code;
+  const prefix = code.slice(lineStart, op);
+  const secretName = SECRET_PARAM_ANCHORED_RE.test(name);
+  const neq = operator.startsWith("!");
+  const check = (open: number, mismatchRejects: boolean): boolean => {
+    const blk = blockAfterCondition(code, open);
+    if (!blk || !/\b(?:return|throw)\b/.test(code.slice(blk.start, blk.end))) return false;
+    if (DENY_RE.test(src.text.slice(blk.start, blk.end))) return true;
+    return secretName && mismatchRejects;
+  };
+  let ifMatch: RegExpExecArray | undefined;
+  for (const m of prefix.matchAll(/\bif\s*\(/g)) ifMatch = m;
+  if (ifMatch) {
+    const open = lineStart + ifMatch.index + ifMatch[0].length - 1;
+    return check(open, neq !== /!\s*\(/.test(code.slice(open, op)));
+  }
+  // `const ok = req.headers.get("x") === secret; if (!ok) return 401`
+  const bound = /\b(?:const|let|var)\s+([\w$]+)\s*(?::[^=;\n]+)?=[^=]*$/.exec(prefix);
+  if (!bound?.[1]) return false;
+  const id = bound[1].replace(/\$/g, "\\$&");
+  const use = new RegExp(String.raw`\bif\s*\(\s*(!?)\s*${id}\s*(===\s*false)?\s*\)`).exec(
+    code.slice(op, op + 2500),
+  );
+  if (!use) return false;
+  const negated = use[1] === "!" || use[2] !== undefined;
+  return check(op + use.index + use[0].indexOf("("), neq !== negated);
 }
 
 /** True when `[from, to)` has a secret comparison that rejects the request when it fails. */

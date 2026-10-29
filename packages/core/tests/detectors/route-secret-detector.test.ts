@@ -160,3 +160,39 @@ describe("RouteSecretDetector: review round 1", () => {
     expect(f).toEqual([]);
   });
 });
+
+describe("RouteSecretDetector: review round 2", () => {
+  const handler = (cond: string): string =>
+    [
+      "export async function GET(request: Request) {",
+      "  const session = await getSession();",
+      "  if (!session) return new Response(null, { status: 401 });",
+      "  const { searchParams } = new URL(request.url);",
+      cond,
+      "  return Response.json({});",
+      "}",
+    ].join("\n");
+
+  it("does not flag non-denying key/auth enum comparisons", async () => {
+    const f = await run({
+      "app/api/list/route.ts": handler(
+        '  const sort = searchParams.get("key") === "createdAt" ? "a" : "b";\n  const p = searchParams.get("auth") === "google" ? 1 : 2;',
+      ),
+    });
+    expect(f.filter((x) => x.ruleId === "auth/hardcoded-route-secret")).toEqual([]);
+  });
+
+  it("flags a denying key comparison at high and a non-denying secret name at medium", async () => {
+    const f = await run({
+      "app/api/job/route.ts": [
+        "export async function GET(request: Request) {",
+        "  const { searchParams } = new URL(request.url);",
+        '  if (searchParams.get("key") !== "nightly-job") return new Response(null, { status: 401 });',
+        '  const ok = searchParams.get("secret") === "abc123";',
+        "}",
+      ].join("\n"),
+    });
+    const hits = f.filter((x) => x.ruleId === "auth/hardcoded-route-secret");
+    expect(hits.map((x) => x.confidence)).toEqual(["high", "medium"]);
+  });
+});

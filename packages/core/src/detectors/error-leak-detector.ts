@@ -50,15 +50,35 @@ function firstStack(code: string, args: string, base: number): Hit | undefined {
 
 /** Validation libraries (Joi, Yup, Zod) put user-facing messages in `error.details`. */
 function firstDetail(code: string, args: string, base: number): Hit | undefined {
+  const before = code.slice(Math.max(0, base - 3000), base);
+  const validateCall = String.raw`\.\s*(?:validate|validateAsync|validateSync)\s*\(`;
   for (const m of args.matchAll(DB_DETAIL_RE)) {
     const recv = m[1] ?? "";
     if (recv !== "") {
-      const esc = recv.replace(/\$/g, "\$&");
-      const before = code.slice(Math.max(0, base - 3000), base);
+      const esc = recv.replace(/\$/g, "\\$&");
       const bound = new RegExp(
-        String.raw`\b(?:const|let|var)\s+(?:\{[^}]*\b${esc}\b[^}]*\}|${esc})\s*(?::[^=;\n]+)?=[^;]*?\.\s*(?:validate|validateAsync|validateSync)\s*\(`,
+        String.raw`\b(?:const|let|var)\s+(?:\{[^}]*\b${esc}\b[^}]*\}|${esc})\s*(?::[^=;\n]+)?=[^;]*?${validateCall}`,
       );
       if (bound.test(before)) continue;
+      // `result.error.details` where `result` came from `schema.validate(...)`
+      const owner = /([\w$]+)\s*\??\.\s*$/.exec(args.slice(0, m.index));
+      if (owner?.[1] && recv === "error") {
+        const o = owner[1].replace(/\$/g, "\\$&");
+        const ownerBound = new RegExp(
+          String.raw`\b(?:const|let|var)\s+${o}\s*(?::[^=;\n]+)?=[^;]*?${validateCall}`,
+        );
+        if (ownerBound.test(before)) continue;
+      }
+      // `catch (err) { ... err.details }` around a schema validation call
+      if (recv === catchParam(code, base)) {
+        let at = -1;
+        for (const c of before.matchAll(/\bcatch\s*\(\s*([\w$]+)/g)) at = c.index ?? at;
+        let tryAt = -1;
+        for (const t of before.slice(0, Math.max(at, 0)).matchAll(/\btry\s*\{/g))
+          tryAt = t.index ?? tryAt;
+        if (at > 0 && tryAt >= 0 && new RegExp(validateCall).test(before.slice(tryAt, at)))
+          continue;
+      }
     }
     return { index: m.index, 0: m[0], errorLike: false };
   }

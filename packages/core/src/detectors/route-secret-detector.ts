@@ -17,6 +17,8 @@ const PREFILTER_RE = /[!=]==?/;
 const REQUEST_HINT_RE = /\b(?:searchParams|query|headers?|cookies)\b/;
 const CONSTANT_TIME_RE =
   /\b(?:timingSafeEqual|safeCompare|safeEqual|constantTimeEqual|constantTimeCompare|timingSafeCompare|secureCompare|tsscmp)\b/;
+const UNAMBIGUOUS_SECRET_NAME_RE =
+  /^(?:secret|token|password|passwd|apikey|api[-_]key|x-[\w-]*-(?:key|token))$|[-_]token$|[-_](?:secret|password)$|[a-z](?:Secret|Token|Password)$|secret|password|api[-_]?key/i;
 const MAX_PER_FILE = 25;
 
 /** The comparison line with the compared literal blanked out (never echo the secret). */
@@ -55,13 +57,15 @@ export class RouteSecretDetector implements Detector {
           seen.add(c.line);
           const evidence = c.against === "literal" ? redactedLine(src, c) : src.lineText(c.line);
           if (c.against === "literal") {
+            // a literal comparison that does not deny is only a finding for unambiguous secret names
+            if (!c.denies && !UNAMBIGUOUS_SECRET_NAME_RE.test(c.name)) continue;
             findings.push(
               makeFinding({
                 category: "auth",
                 ruleId: "auth/hardcoded-route-secret",
                 title: "Route protected by a hardcoded secret in source",
                 severity: "high",
-                confidence: SECRET_PARAM_ANCHORED_RE.test(c.name) ? "high" : "medium",
+                confidence: c.denies && SECRET_PARAM_ANCHORED_RE.test(c.name) ? "high" : "medium",
                 file,
                 line: c.line,
                 evidence,

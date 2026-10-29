@@ -166,3 +166,23 @@ describe("IdorDetector: review round 1", () => {
     expect(f.filter((x) => x.title.includes("3 more"))).toHaveLength(1);
   });
 });
+
+describe("IdorDetector: review round 2", () => {
+  it("treats any <row>.<field> compared with the identity as an ownership check", async () => {
+    const f = await run({
+      "app/api/orders/[id]/route.ts": route(
+        '  const { data: order } = await adminDb.from("orders").select("*").eq("id", params.id).maybeSingle();\n  if (order.email !== session.user.email) return notFound();\n  if (order?.buyerId !== session.user.id) return notFound();\n  return Response.json(order);',
+      ),
+    });
+    expect(f).toEqual([]);
+  });
+
+  it("still flags an unrelated comparison", async () => {
+    const f = await run({
+      "app/api/orders/[id]/route.ts": route(
+        '  const { data: order } = await adminDb.from("orders").select("*").eq("id", params.id).maybeSingle();\n  if (order.status !== "paid") return notFound();\n  return Response.json(order);',
+      ),
+    });
+    expect(f).toHaveLength(1);
+  });
+});

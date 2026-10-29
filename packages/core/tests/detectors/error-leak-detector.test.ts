@@ -140,3 +140,50 @@ describe("ErrorLeakDetector: review round 1", () => {
     expect(f.map((x) => x.confidence)).toEqual(["high"]);
   });
 });
+
+describe("ErrorLeakDetector: review round 2", () => {
+  it("does not flag result.error.details from a validate() result", async () => {
+    const f = await run({
+      "app/api/a/route.ts": [
+        'import { NextResponse } from "next/server";',
+        "export async function POST(req: Request) {",
+        "  const result = schema.validate(await req.json());",
+        "  if (result.error) return NextResponse.json({ errors: result.error.details }, { status: 400 });",
+        "}",
+      ].join("\n"),
+    });
+    expect(f).toEqual([]);
+  });
+
+  it("does not flag err.details caught around validateAsync", async () => {
+    const f = await run({
+      "app/api/b/route.ts": [
+        'import { NextResponse } from "next/server";',
+        "export async function POST(req: Request) {",
+        "  try {",
+        "    await schema.validateAsync(await req.json());",
+        "  } catch (err) {",
+        "    return NextResponse.json({ details: err.details }, { status: 400 });",
+        "  }",
+        "}",
+      ].join("\n"),
+    });
+    expect(f).toEqual([]);
+  });
+
+  it("still flags db error details in a catch without validation", async () => {
+    const f = await run({
+      "app/api/c/route.ts": [
+        'import { NextResponse } from "next/server";',
+        "export async function POST(req: Request) {",
+        "  try {",
+        "    await db.insert(x);",
+        "  } catch (err) {",
+        "    return NextResponse.json({ details: err.details }, { status: 500 });",
+        "  }",
+        "}",
+      ].join("\n"),
+    });
+    expect(f).toHaveLength(1);
+  });
+});
