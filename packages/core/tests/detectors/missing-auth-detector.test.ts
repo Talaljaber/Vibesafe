@@ -54,3 +54,39 @@ describe("MissingAuthDetector", () => {
     expect(findings).toHaveLength(1);
   });
 });
+
+describe("MissingAuthDetector: cron secret checks (review round 2)", () => {
+  const detect = (body: string) =>
+    new MissingAuthDetector().detect({
+      rootPath: "/fake/path",
+      projectContext: {} as any,
+      files: ["app/api/cron/route.ts"],
+      config: {} as any,
+      readFile: async () =>
+        [
+          'import { createClient } from "@supabase/supabase-js";',
+          "export async function POST(request: Request) {",
+          body,
+          "  const db = createClient(process.env.URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);",
+          '  await db.from("jobs").delete().neq("id", 0);',
+          "  return Response.json({ ok: true });",
+          "}",
+        ].join("\n"),
+    });
+  const secretRule = (f: { ruleId: string }[]) =>
+    f.filter((x) => x.ruleId === "auth/missing-route-auth");
+
+  it("accepts a boolean local, a multi-line return, a 404 and a throw", async () => {
+    const bodies = [
+      '  const isAuthorized = request.headers.get("authorization") === `Bearer ${process.env.CRON_SECRET}`;\n  if (!isAuthorized) return new Response("no", { status: 401 });',
+      '  if (request.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {\n    return new Response(\n      "nope",\n      { status: 401 },\n    );\n  }',
+      '  if (request.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {\n    return new Response("Not found", { status: 404 });\n  }',
+      '  if (request.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {\n    throw new Error("Invalid cron secret");\n  }',
+    ];
+    for (const b of bodies) expect(secretRule(await detect(b))).toEqual([]);
+  });
+
+  it("still reports a cron route with no check", async () => {
+    expect(secretRule(await detect("  // run"))).toHaveLength(1);
+  });
+});

@@ -21,8 +21,55 @@ import {
   VALIDATION_CALL_REGEXES,
   VALIDATION_LIB_CALL_REGEX,
   INPUT_READ_REGEXES,
+  FORM_DATA_READ_REGEX,
+  OTHER_INPUT_READ_REGEX,
+  FILE_INSTANCE_CHECK_REGEX,
+  FILE_SIZE_CHECK_REGEX,
+  FILE_TYPE_CHECK_REGEX,
 } from "./patterns/validation-patterns.js";
 import { isStripeWebhookRoute, isStripeWebhookExpressRoute } from "./stripe-webhook-detector.js";
+import { classifyPath } from "./utils/file-kind.js";
+import { enclosingFunction, extractFunctions } from "./utils/js-functions.js";
+import { createJsSource, isJsxPath } from "./utils/js-source.js";
+
+const HANDLER_ROLES = new Set(["app-route-handler", "pages-api-handler", "express-handler"]);
+
+/**
+ * Last line of the request handler containing `offset`: the innermost enclosing App
+ * Router, Pages API or Express handler span, else the outermost enclosing function.
+ * Precedence rules with `enclosing` scope use it so a specific finding inside the same
+ * handler hides this generic one (and only that handler's).
+ */
+function handlerEndLine(filePath: string, content: string, offset: number): number | undefined {
+  try {
+    const src = createJsSource(content, { jsx: isJsxPath(filePath) });
+    const spans = extractFunctions(src, { kind: classifyPath(filePath) });
+    let span = enclosingFunction(spans, offset);
+    let outer = span;
+    while (span !== undefined && !HANDLER_ROLES.has(span.role)) {
+      outer = span;
+      span = span.parent;
+    }
+    return (span ?? outer)?.endLine;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * A multipart upload checked the way a schema would: the handler reads `formData()` (and
+ * no other request input), checks the value is a `File`/`Blob`, and checks its size and
+ * MIME type before using it.
+ */
+function isValidatedFileUpload(content: string): boolean {
+  return (
+    FORM_DATA_READ_REGEX.test(content) &&
+    !OTHER_INPUT_READ_REGEX.test(content) &&
+    FILE_INSTANCE_CHECK_REGEX.test(content) &&
+    FILE_SIZE_CHECK_REGEX.test(content) &&
+    FILE_TYPE_CHECK_REGEX.test(content)
+  );
+}
 
 export class MissingValidationDetector implements Detector {
   id = "missing-validation-detector";
@@ -60,9 +107,11 @@ export class MissingValidationDetector implements Detector {
         const hasImport = VALIDATION_LIB_IMPORT_REGEX.test(content);
         const validated =
           VALIDATION_CALL_REGEXES.some((re) => re.test(content)) ||
-          (hasImport && VALIDATION_LIB_CALL_REGEX.test(content));
+          (hasImport && VALIDATION_LIB_CALL_REGEX.test(content)) ||
+          isValidatedFileUpload(content);
 
         if (!validated) {
+          const endLine = handlerEndLine(filePath, content, inputIndex);
           findings.push({
             id: createFindingId(
               CATEGORY_PREFIX.validation,
@@ -78,6 +127,7 @@ export class MissingValidationDetector implements Detector {
             confidence: "medium",
             file: filePath,
             line,
+            ...(endLine !== undefined && endLine > line ? { endLine } : {}),
             plainEnglishProblem:
               "This API route reads data sent by the user, but doesn't validate if the data is correct before using it.",
             whyItMatters:
@@ -139,6 +189,12 @@ export class MissingValidationDetector implements Detector {
       if (validated) continue;
 
       const line = route.chainStartLine + lineOfIndex(chain, input.index) - 1;
+      const chainStart = content.indexOf(route.handlerChain, route.index);
+      const endLine =
+        chainStart < 0
+          ? undefined
+          : (handlerEndLine(filePath, content, chainStart + input.index) ??
+            lineOfIndex(content, chainStart + Math.max(0, route.handlerChain.length - 1)));
       const shownPath = displayRoutePath(route.path);
       // The rule id is reused deliberately for query/params reads (existing suppressions and
       // baselines keep working); they are "medium" and only reported on mutating routes.
@@ -157,6 +213,7 @@ export class MissingValidationDetector implements Detector {
         confidence: "medium",
         file: filePath,
         line,
+        ...(endLine !== undefined && endLine > line ? { endLine } : {}),
         plainEnglishProblem: `The Express route ${route.method} ${shownPath} reads data sent by the user (req.body, req.query or req.params), but doesn't validate it before using it.`,
         whyItMatters:
           "Malicious users can send unexpected data types (like an object instead of a string) to crash your server or bypass security checks.",
