@@ -48,7 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Evidence is sanitized and truncated in every detector.
 - The error-boundary rule was renamed and dead code and exports were cleaned up.
 - All packages share one version (0.3.0), kept in sync by `scripts/sync-versions.mjs`.
-- GitHub Action: the build installs only the CLI and its workspace dependencies (`--config.dedupe-peer-dependents=false`) and caches its private pnpm store with `actions/cache`, keyed on the action's lockfile, OS and architecture; `packageManager` pins pnpm with its sha512 hash; a `uses: ./` self-test workflow runs the action on Ubuntu, Windows and macOS; CI reads the pnpm version from `packageManager` (#97).
+- GitHub Action: the build installs only the CLI and its workspace dependencies (`--config.dedupe-peer-dependents=false`) and caches its private pnpm store with `actions/cache`, keyed on the action's lockfile, OS and architecture; `packageManager` pins pnpm with its sha512 hash; a `uses: ./` self-test workflow runs the action on Ubuntu, Windows and macOS; CI reads the pnpm version from `packageManager` (#100).
 
 ### Fixed
 
