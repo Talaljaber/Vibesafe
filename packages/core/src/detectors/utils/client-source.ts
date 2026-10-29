@@ -1,4 +1,4 @@
-import path from "node:path";
+﻿import path from "node:path";
 import type { Finding, ProjectContext, ScanContext } from "@talaljaber/vibesafe-shared";
 import { classifyFile, isClientScope, isJsLike, type FileClassification } from "./file-kind.js";
 import {
@@ -382,6 +382,52 @@ export interface Declaration {
  * within `scope` when given. The declaration backtrace used to tell local literals and
  * config objects from data. Undefined when the name is a parameter or not declared.
  */
+interface DeclIndex {
+  /** Plain `const|let|var name = ...` declarations by name, in source order. */
+  plain: Map<string, { index: number; nameOffset: number; initStart: number }[]>;
+  /** Destructuring declarations (`const { a } = ...`), in source order. */
+  destr: { index: number; open: number; close: number; eqLen: number }[];
+}
+
+const DECL_INDEX = new WeakMap<JsSource, DeclIndex>();
+
+/** One pass over the file; every later lookup is a map hit (no per-sink rescans). */
+function declIndex(src: JsSource): DeclIndex {
+  const cached = DECL_INDEX.get(src);
+  if (cached !== undefined) return cached;
+  const code = src.code;
+  const plain: DeclIndex["plain"] = new Map();
+  const re = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=;\n]{0,120})?=(?![=>])/g;
+  for (let m = re.exec(code); m !== null; m = re.exec(code)) {
+    const name = m[1]!;
+    const list = plain.get(name) ?? [];
+    list.push({
+      index: m.index,
+      nameOffset: m.index + /^(?:const|let|var)\s+/.exec(m[0])![0].length,
+      initStart: skipWs(code, m.index + m[0].length),
+    });
+    plain.set(name, list);
+  }
+  const destr: DeclIndex["destr"] = [];
+  const dre = /\b(?:const|let|var)\s*([{[])/g;
+  for (let m = dre.exec(code); m !== null; m = dre.exec(code)) {
+    const open = m.index + m[0].length - 1;
+    const close = src.matchOf(open);
+    if (close < 0) continue;
+    const eq = /^\s*(?::[^=;\n]{0,120})?=(?![=>])/.exec(code.slice(close + 1, close + 140));
+    if (eq === null) continue;
+    destr.push({ index: m.index, open, close, eqLen: eq[0].length });
+  }
+  const idx = { plain, destr };
+  DECL_INDEX.set(src, idx);
+  return idx;
+}
+
+/**
+ * Nearest `const|let|var` declaration of `name` before `before` (plain or destructuring),
+ * within `scope` when given. The declaration backtrace used to tell local literals and
+ * config objects from data. Undefined when the name is a parameter or not declared.
+ */
 export function findDeclaration(
   src: JsSource,
   name: string,
@@ -389,40 +435,38 @@ export function findDeclaration(
   scope?: { start: number; end: number } | undefined,
 ): Declaration | undefined {
   const code = src.code;
+  const idx = declIndex(src);
   const esc = name.replace(/\$/g, "\\$");
   const from = scope?.start ?? 0;
-  const plain = new RegExp(
-    String.raw`\b(?:const|let|var)\s+(${esc})\s*(?::[^=;\n]{0,120})?=(?![=>])`,
-    "g",
-  );
-  const destr = new RegExp(String.raw`\b(?:const|let|var)\s*([{[])`, "g");
   let best: Declaration | undefined;
-  plain.lastIndex = from;
-  for (let m = plain.exec(code); m !== null && m.index < before; m = plain.exec(code)) {
-    const initStart = skipWs(code, m.index + m[0].length);
+  for (const d of idx.plain.get(name) ?? []) {
+    if (d.index < from) continue;
+    if (d.index >= before) break;
     best = {
-      offset: m.index + /^(?:const|let|var)\s+/.exec(m[0])![0].length,
-      initStart,
-      initEnd: expressionEnd(src, initStart),
+      offset: d.nameOffset,
+      initStart: d.initStart,
+      initEnd: expressionEnd(src, d.initStart),
       destructured: false,
     };
   }
-  destr.lastIndex = from;
-  for (let m = destr.exec(code); m !== null && m.index < before; m = destr.exec(code)) {
-    const open = m.index + m[0].length - 1;
-    const close = src.matchOf(open);
-    if (close < 0 || close >= before) continue;
-    const pattern = code.slice(open, close + 1);
-    if (!new RegExp(String.raw`(?<![\w$.])${esc}(?![\w$]|\s*:)`).test(pattern)) continue;
-    const eq = /^\s*(?::[^=;\n]{0,120})?=(?![=>])/.exec(code.slice(close + 1, close + 140));
-    if (eq === null) continue;
-    if (best !== undefined && best.offset > m.index) continue;
-    const initStart = skipWs(code, close + 1 + eq[0].length);
-    best = { offset: open, initStart, initEnd: expressionEnd(src, initStart), destructured: true };
+  let patternRe: RegExp | undefined;
+  for (const d of idx.destr) {
+    if (d.index < from) continue;
+    if (d.index >= before) break;
+    if (d.close >= before) continue;
+    if (best !== undefined && best.offset > d.index) continue;
+    patternRe ??= new RegExp(String.raw`(?<![\w$.])${esc}(?![\w$]|\s*:)`);
+    if (!patternRe.test(code.slice(d.open, d.close + 1))) continue;
+    const initStart = skipWs(code, d.close + 1 + d.eqLen);
+    best = {
+      offset: d.open,
+      initStart,
+      initEnd: expressionEnd(src, initStart),
+      destructured: true,
+    };
   }
   return best;
 }
-
 function skipWs(code: string, i: number): number {
   while (i < code.length && /\s/.test(code[i]!)) i++;
   return i;
@@ -534,6 +578,26 @@ export async function resolveImport(
 // ---------------------------------------------------------------------------
 // Misc
 // ---------------------------------------------------------------------------
+
+/**
+ * True when the taint on a value comes only from the page's own address
+ * (`location.href|pathname`, `router.asPath`, `document.URL`) and not from a query,
+ * hash or parameter read. The page URL cannot be a `javascript:` URL and a link or
+ * redirect to it stays on the page, so such taint does not make a sink dangerous.
+ */
+export function isSelfUrlTaint(src: JsSource, lead: ArgRange, via: string | undefined): boolean {
+  let text = src.text.slice(lead.start, lead.end);
+  if (via !== undefined) {
+    const decl = findDeclaration(src, via, lead.start);
+    if (decl !== undefined) text += " " + src.text.slice(decl.initStart, decl.initEnd);
+  }
+  return SELF_URL_RE.test(text) && !URL_PARAM_READ_RE.test(text);
+}
+
+const SELF_URL_RE =
+  /\blocation\s*\.\s*(?:href|pathname|origin)\b|\brouter\s*\.\s*(?:asPath|pathname)\b|\bdocument\s*\.\s*(?:URL|documentURI|baseURI)\b/;
+const URL_PARAM_READ_RE =
+  /\.\s*(?:get|getAll)\s*\(|\brouter\s*\.\s*query\b|\buseParams\b|\buseSearchParams\b|\blocation\s*\.\s*(?:search|hash)\b|\breferrer\b|\bwindow\s*\.\s*name\b|\.\s*(?:search|hash)\b|\bquery\b/;
 
 /** Major version of `react` from the project's dependencies, or undefined when unknown. */
 export function reactMajor(

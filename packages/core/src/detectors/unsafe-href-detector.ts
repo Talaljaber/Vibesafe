@@ -5,6 +5,7 @@ import {
   clientTaint,
   findDeclaration,
   inServerOnlyFunction,
+  isSelfUrlTaint,
   leadingOperands,
   lineOf,
   loadClientFile,
@@ -37,6 +38,7 @@ import type { Confidence } from "@talaljaber/vibesafe-shared";
  */
 
 const MAX_PER_FILE = 25;
+const SCHEME_CACHE = new WeakMap<object, Map<string, boolean>>();
 const ATTR_RE = /(?<![\w$-])(href|src|data|action|formAction)\s*=\s*\{/g;
 const WINDOW_OPEN_RE = /\bwindow\s*\.\s*open\s*\(/g;
 const PREFILTER = /\b(?:href|src|data|action|formAction)\s*=\s*\{|\bwindow\s*\.\s*open\s*\(/;
@@ -117,6 +119,7 @@ export class UnsafeHrefDetector implements Detector {
     const out: Finding[] = [];
     const seenLines = new Set<number>();
     for (const sink of sinks) {
+      if (out.length > MAX_PER_FILE) break; // the cap keeps 25 plus a summary
       if (inServerOnlyFunction(cf, sink.at)) continue;
       const line = src.lineAt(sink.at);
       if (seenLines.has(line)) continue;
@@ -139,7 +142,11 @@ export class UnsafeHrefDetector implements Detector {
       // as an open redirect by the client code rule; here only taint into links/frames.
       if (cf.classification.runtime === "client" && !isOpen) {
         const hit = clientTaint(cf, lead.start, lead.end);
-        if (hit !== undefined && hit.source.id !== "message-data") {
+        if (
+          hit !== undefined &&
+          hit.source.id !== "message-data" &&
+          !isSelfUrlTaint(src, lead, hit.via)
+        ) {
           if (!this.schemeChecked(cf, lead, hit.via, sink.at)) {
             return { reason: hit.source.label, confidence: taintConfidence(hit) };
           }
@@ -210,15 +217,25 @@ export class UnsafeHrefDetector implements Detector {
     if (SCHEME_CHECK_RE.test(src.text.slice(lead.start, lead.end))) return true;
     if (name === undefined) return false;
     const outer = outermostSpan(cf, at);
+    const key = `${outer.start}:${name}`;
+    let perFile = SCHEME_CACHE.get(src);
+    if (perFile === undefined) {
+      perFile = new Map();
+      SCHEME_CACHE.set(src, perFile);
+    }
+    const cached = perFile.get(key);
+    if (cached !== undefined) return cached;
     const esc = name.replace(/\$/g, "\\$");
     const nameRe = new RegExp(String.raw`(?<![\w$])${esc}(?![\w$])`);
     const startLine = src.lineAt(outer.start);
     const endLine = src.lineAt(Math.max(outer.start, outer.end - 1));
-    for (let l = startLine; l <= endLine; l++) {
+    let found = false;
+    for (let l = startLine; l <= endLine && !found; l++) {
       const t = src.lineText(l);
-      if (SCHEME_CHECK_RE.test(t) && nameRe.test(t)) return true;
+      if (SCHEME_CHECK_RE.test(t) && nameRe.test(t)) found = true;
     }
-    return false;
+    perFile.set(key, found);
+    return found;
   }
 
   private finding(

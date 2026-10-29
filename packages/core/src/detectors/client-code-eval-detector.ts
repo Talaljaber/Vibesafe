@@ -3,6 +3,7 @@ import {
   callArgs,
   capPerFile,
   clientTaint,
+  isSelfUrlTaint,
   findDeclaration,
   inServerOnlyFunction,
   leadingOperands,
@@ -261,6 +262,7 @@ export class ClientCodeEvalDetector implements Detector {
         for (const lead of leadingOperands(src, range.start, range.end)) {
           const hit = clientTaint(cf, lead.start, lead.end);
           if (hit === undefined || hit.source.id === "message-data") continue;
+          if (isSelfUrlTaint(src, lead, hit.via)) continue;
           if (!this.isRedirectParam(cf, hit, lead)) continue;
           if (this.hasRelativeCheck(cf, hit, lead, sink.at)) continue;
           out.push(this.openRedirectFinding(cf, sink.at, hit, sink.label));

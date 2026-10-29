@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+﻿import { describe, it, expect } from "vitest";
 import type { ScanContext } from "@talaljaber/vibesafe-shared";
 import { BrowserStorageDetector } from "../../src/detectors/browser-storage-detector";
 import { CodebaseMessDetector } from "../../src/detectors/codebase-mess-detector";
@@ -157,5 +157,35 @@ export function Quiet({ user, session, tokenCount }: any) {
     const a = await run({ "app/login/page.tsx": LOGIN });
     const b = await run({ "app/login/page.tsx": LOGIN });
     expect(a.map((f) => f.id)).toEqual(b.map((f) => f.id));
+  });
+});
+
+describe("BrowserStorageDetector: precision", () => {
+  it("ignores boolean names and keys that only mention a credential", async () => {
+    const findings = await run({
+      "components/Ui.tsx": `"use client";
+export function Ui({ showPassword, hasToken, step }: any) {
+  console.log(showPassword);
+  console.log(hasToken);
+  localStorage.setItem("onboardingSessionStep", step);
+  localStorage.setItem("checkoutSession", step);
+  localStorage.setItem("showTokenBanner", step);
+  return null;
+}
+`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags a credential key and a logged token", async () => {
+    const findings = await run({
+      "components/Auth.tsx": `"use client";
+export function save(accessToken: string) {
+  localStorage.setItem("auth_token", accessToken);
+  console.log(accessToken);
+}
+`,
+    });
+    expect(findings.map((f) => f.ruleId).sort()).toEqual([STORAGE, LOG]);
   });
 });

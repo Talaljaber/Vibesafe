@@ -201,3 +201,44 @@ export async function GET(req: Request) {
     expect(findings).toEqual([]);
   });
 });
+
+describe("ClientCodeEvalDetector: own-address navigation", () => {
+  it("ignores updating the page's own query string", async () => {
+    const findings = await run({
+      "components/Pager.tsx": `"use client";
+import { useRouter } from "next/navigation";
+export function Pager() {
+  const router = useRouter();
+  function next() {
+    const url = new URL(window.location.href);
+    url.searchParams.set("page", "2");
+    router.push(url.toString());
+  }
+  function tab() {
+    const url = window.location.pathname + "?tab=2";
+    router.push(url);
+  }
+  return <button onClick={next}>Next</button>;
+}
+`,
+    });
+    expect(findings.filter((f) => f.ruleId === REDIRECT)).toHaveLength(0);
+  });
+
+  it("still flags a redirect read from the query string via location.href", async () => {
+    const findings = await run({
+      "components/Login.tsx": `"use client";
+import { useRouter } from "next/navigation";
+export function Login() {
+  const router = useRouter();
+  function done() {
+    const next = new URL(window.location.href).searchParams.get("next");
+    router.push(next);
+  }
+  return <button onClick={done}>Go</button>;
+}
+`,
+    });
+    expect(findings.filter((f) => f.ruleId === REDIRECT)).toHaveLength(1);
+  });
+});

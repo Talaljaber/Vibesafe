@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   Confidence,
   Detector,
   Finding,
@@ -132,12 +132,20 @@ export class PostMessageDetector implements Detector {
 }
 
 /** The handler function for the listener argument in `[start, end)`. */
-function resolveHandler(cf: ClientFile, start: number, end: number): FunctionSpan | undefined {
-  const inline = cf.spans.find((s) => s.start === start);
-  if (inline !== undefined) return inline;
-  const chain = memberChain(cf.src.code, start, end);
-  if (chain === undefined || chain.length !== 1) return undefined;
-  const name = chain[0]!;
+function resolveHandler(
+  cf: ClientFile,
+  start: number,
+  end: number,
+  byName?: string,
+): FunctionSpan | undefined {
+  let name = byName;
+  if (name === undefined) {
+    const inline = cf.spans.find((s) => s.start === start);
+    if (inline !== undefined) return inline;
+    const chain = memberChain(cf.src.code, start, end);
+    if (chain === undefined || chain.length !== 1) return undefined;
+    name = chain[0]!;
+  }
   const named = cf.spans.filter((s) => s.name === name);
   if (named.length > 0) {
     // Prefer the declaration nearest before the registration (same component).
@@ -157,13 +165,34 @@ function resolveHandler(cf: ClientFile, start: number, end: number): FunctionSpa
 function judgeHandler(
   cf: ClientFile,
   fn: FunctionSpan,
+  depth = 0,
 ): { severity: Severity; confidence: Confidence; action: string | undefined } | undefined {
   const body = cf.src.code.slice(fn.bodyStart, fn.bodyEnd);
   const params = cf.src.code.slice(fn.paramsStart, fn.paramsEnd);
-  if (/origin/i.test(body) || /origin/i.test(params)) return undefined;
-  if (/\.\s*source\s*[!=]==?|[!=]==?\s*[\w$.]*\.\s*source\b/.test(body)) return undefined;
   const p0 = fn.params[0];
   if (p0 === undefined) return undefined;
+  const simple = p0.names.length === 1 && p0.pattern === p0.names[0];
+  if (simple) {
+    // The sender's origin is read off the event itself (`e.origin`, `const { origin } = e`).
+    const esc = p0.names[0]!.replace(/\$/g, "\\$");
+    if (new RegExp(String.raw`(?<![\w$.])${esc}\s*\??\.\s*origin\b`).test(body)) return undefined;
+    if (new RegExp(String.raw`\{[^}]*\borigin\b[^}]*\}\s*=\s*${esc}(?![\w$])`).test(body))
+      return undefined;
+    // `(e) => handleMessage(e)`: judge the same-file function it delegates to.
+    if (depth === 0) {
+      const call = new RegExp(
+        String.raw`^\s*\{?\s*(?:return\s+)?([A-Za-z_$][\w$]*)\s*\(\s*${esc}\s*\)\s*;?\s*\}?\s*$`,
+      ).exec(body);
+      const target = call === null ? undefined : call[1];
+      if (target !== undefined && target !== fn.name) {
+        const callee = resolveHandler(cf, fn.start, fn.start, target);
+        if (callee !== undefined && callee !== fn) return judgeHandler(cf, callee, depth + 1);
+      }
+    }
+  } else if (p0.names.includes("origin") || /origin/i.test(params)) {
+    return undefined;
+  }
+  if (/\.\s*source\s*[!=]==?|[!=]==?\s*[\w$.]*\.\s*source\b/.test(body)) return undefined;
   let usesData: boolean;
   if (p0.names.length === 1 && p0.pattern === p0.names[0]) {
     const esc = p0.names[0]!.replace(/\$/g, "\\$");

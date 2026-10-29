@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   Confidence,
   Detector,
   Finding,
@@ -42,9 +42,6 @@ const PROP_WRITE_RE =
 const CONSOLE_RE = /\bconsole\s*\.\s*(?:log|info|debug|warn|error|trace|dir|table)\s*\(/g;
 const PREFILTER = /\b(?:localStorage|sessionStorage|console)\b/;
 
-/** Storage keys that name a credential (normalized: lower case, no separators). */
-const SECRET_KEY_RE =
-  /secret|token|apikey|password|passwd|privatekey|accesskey|credential|jwt|bearer|session/;
 /** Keys that mention a credential but hold metadata about it. */
 const NOT_SECRET_KEY_RE =
   /expir|time|date|count|dismiss|consent|seen|theme|lang|locale|cart|redirect|return|nonce|verifier|state|provider|method|type|name|email|ttl|url|id$|at$|flag|enabled/;
@@ -64,6 +61,40 @@ const LOG_PII_RE =
 const AUTH_ORIGIN_RE =
   /\bauth\b|getSession|useSession|getServerSession|getUser|useUser|currentUser|signIn\w*|onAuthStateChange|getToken|useAuth/;
 
+/** Boolean/flag-style names (`showPassword`, `hasToken`) hold no credential. */
+const BOOLEAN_NAME_RE = /^(?:show|hide|has|is|should|toggle|needs?|can|did|was)(?:[A-Z_]|$)/;
+
+function isSecretValueName(name: string): boolean {
+  return SECRET_VALUE_RE.test(norm(name)) && !BOOLEAN_NAME_RE.test(name);
+}
+
+/**
+ * A storage key names a credential when its final word does (`auth_token`, `apiKey`,
+ * `supabase.auth.token`); `onboardingSessionStep` or `showTokenBanner` only mention one.
+ * `session` counts alone or after an auth-style qualifier.
+ */
+function isSecretKey(key: string): boolean {
+  const tokens = key
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t !== "");
+  const last = tokens[tokens.length - 1];
+  if (last === undefined) return false;
+  const tail2 = tokens.slice(-2).join("");
+  if (/^(?:apikey|privatekey|accesskey|secretkey|apisecret)$/.test(tail2)) return true;
+  if (
+    /^(?:secret|secrets|token|tokens|password|passwd|credential|credentials|jwt|bearer|apikey|privatekey|accesskey)$/.test(
+      last,
+    )
+  )
+    return true;
+  if (last === "session") {
+    const prev = tokens[tokens.length - 2];
+    return prev === undefined || /^(?:auth|user|login|access|app|supabase|jwt)$/.test(prev);
+  }
+  return false;
+}
 interface Chain {
   segments: string[];
   start: number;
@@ -166,16 +197,16 @@ export class BrowserStorageDetector implements Detector {
     const out: Finding[] = [];
     const seen = new Set<number>();
     for (const w of writes) {
+      if (out.length > MAX_PER_RULE_PER_FILE) break;
       if (inServerOnlyFunction(cf, w.at)) continue;
       const valueCode = code.slice(w.value.start, w.value.end);
       if (GENERATED_VALUE_RE.test(valueCode)) continue;
       const chains = valueChains(src, w.value.start, w.value.end);
       if (chains.length === 0) continue; // literal-only value (e.g. clearing with "")
       const k = w.key === undefined ? "" : norm(w.key);
-      const keySecret = k !== "" && SECRET_KEY_RE.test(k) && !NOT_SECRET_KEY_RE.test(k);
-      const valueSecret = chains.some((c) =>
-        SECRET_VALUE_RE.test(norm(c.segments[c.segments.length - 1]!)),
-      );
+      const keySecret =
+        k !== "" && w.key !== undefined && isSecretKey(w.key) && !NOT_SECRET_KEY_RE.test(k);
+      const valueSecret = chains.some((c) => isSecretValueName(c.segments[c.segments.length - 1]!));
       if (!keySecret && !valueSecret) continue;
       const line = src.lineAt(w.at);
       if (seen.has(line)) continue;
@@ -242,6 +273,7 @@ export class BrowserStorageDetector implements Detector {
     const seen = new Set<number>();
     CONSOLE_RE.lastIndex = 0;
     for (let m = CONSOLE_RE.exec(code); m !== null; m = CONSOLE_RE.exec(code)) {
+      if (out.length > MAX_PER_RULE_PER_FILE) break;
       if (inServerOnlyFunction(cf, m.index)) continue;
       const open = m.index + m[0].length - 1;
       const close = src.matchOf(open);
@@ -266,7 +298,8 @@ export class BrowserStorageDetector implements Detector {
     c: Chain,
     at: number,
   ): { severity: Severity; confidence: Confidence; what: string } | undefined {
-    const last = norm(c.segments[c.segments.length - 1]!);
+    const lastRaw = c.segments[c.segments.length - 1]!;
+    const last = norm(lastRaw);
     const authTied = (): boolean => {
       if (c.segments.slice(0, -1).some((s) => /auth|session/i.test(s))) return true;
       const decl = findDeclaration(cf.src, c.segments[0]!, at);
@@ -274,7 +307,7 @@ export class BrowserStorageDetector implements Detector {
         decl !== undefined && AUTH_ORIGIN_RE.test(cf.src.code.slice(decl.initStart, decl.initEnd))
       );
     };
-    if (LOG_HIGH_RE.test(last)) {
+    if (LOG_HIGH_RE.test(last) && !BOOLEAN_NAME_RE.test(lastRaw)) {
       const what = /session/.test(last) ? "a session object" : "a token or secret";
       return { severity: "high", confidence: authTied() ? "high" : "medium", what };
     }

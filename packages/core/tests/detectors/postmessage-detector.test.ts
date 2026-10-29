@@ -117,3 +117,59 @@ window.addEventListener("resize", (e) => { document.title = e.data; });
     expect(a.map((f) => f.id)).toEqual(b.map((f) => f.id));
   });
 });
+
+describe("PostMessageDetector: origin matching and delegation", () => {
+  it("flags a handler whose only origin mention is window.location.origin", async () => {
+    const findings = await run({
+      "components/Frame.tsx": `"use client";
+import { useEffect } from "react";
+export function Frame() {
+  useEffect(() => {
+    window.addEventListener("message", (e) => {
+      window.location.href = window.location.origin + e.data.path;
+    });
+  }, []);
+  return null;
+}
+`,
+    });
+    expect(findings.filter((f) => f.ruleId === RULE)).toHaveLength(1);
+  });
+
+  it("follows a delegating handler into the named function", async () => {
+    const findings = await run({
+      "components/Frame.tsx": `"use client";
+import { useEffect } from "react";
+function handleMessage(e: MessageEvent) {
+  window.location.href = e.data.url;
+}
+export function Frame() {
+  useEffect(() => {
+    window.addEventListener("message", (e) => handleMessage(e));
+  }, []);
+  return null;
+}
+`,
+    });
+    expect(findings.filter((f) => f.ruleId === RULE)).toHaveLength(1);
+  });
+
+  it("accepts a delegated handler that checks e.origin", async () => {
+    const findings = await run({
+      "components/Frame.tsx": `"use client";
+import { useEffect } from "react";
+function handleMessage(e: MessageEvent) {
+  if (e.origin !== "https://pay.example.com") return;
+  window.location.href = e.data.url;
+}
+export function Frame() {
+  useEffect(() => {
+    window.addEventListener("message", (e) => handleMessage(e));
+  }, []);
+  return null;
+}
+`,
+    });
+    expect(findings.filter((f) => f.ruleId === RULE)).toHaveLength(0);
+  });
+});

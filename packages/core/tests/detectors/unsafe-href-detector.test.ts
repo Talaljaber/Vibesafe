@@ -119,3 +119,40 @@ export function Card() { return <p>{"<a href={user.website}>"}</p>; }
     expect(a.map((f) => f.id)).toEqual(b.map((f) => f.id));
   });
 });
+
+describe("UnsafeHrefDetector: the page's own address", () => {
+  it("ignores links to the page itself", async () => {
+    const findings = await run({
+      "components/Lang.tsx": `"use client";
+import Link from "next/link";
+import { useRouter } from "next/router";
+export function Lang() {
+  const router = useRouter();
+  const here = window.location.pathname;
+  return (
+    <div>
+      <Link href={router.asPath} locale="fr">FR</Link>
+      <a href={window.location.href}>permalink</a>
+      <a href={here}>top</a>
+    </div>
+  );
+}
+`,
+    });
+    expect(findings.filter((f) => f.ruleId === RULE)).toHaveLength(0);
+  });
+
+  it("still flags a search parameter used as href", async () => {
+    const findings = await run({
+      "components/Back.tsx": `"use client";
+import { useSearchParams } from "next/navigation";
+export function Back() {
+  const params = useSearchParams();
+  const back = params.get("back");
+  return <a href={back}>Back</a>;
+}
+`,
+    });
+    expect(findings.filter((f) => f.ruleId === RULE)).toHaveLength(1);
+  });
+});
