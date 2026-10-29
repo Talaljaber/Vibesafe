@@ -27,11 +27,11 @@ inputs:
     required: false
     default: "false"
   version:
-    description: "Version of @vibesafe/cli to run via npx. Needs 0.3.0 or later, the first release with --format markdown (not yet published to npm at the time of writing). Prefer a pinned version over latest."
+    description: "Deprecated and ignored. The action builds VibeSafe from its own source at the ref you pin in `uses:`; pick the version with that ref."
     required: false
-    default: "0.3.0"
+    deprecationMessage: "The 'version' input is ignored. The action runs VibeSafe built from its own source at the ref pinned in 'uses:'. Remove the input and pin a release tag or commit SHA instead."
   node-version:
-    description: "Node.js version to use."
+    description: "Node.js version used to build and run VibeSafe (20.19+, 22.14+ or 24; it must ship a corepack that can verify pnpm)."
     required: false
     default: "20"
 
@@ -44,16 +44,47 @@ runs:
   using: "composite"
   steps:
     - name: Set up Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
       with:
         node-version: ${{ inputs.node-version }}
+
+    # Build the CLI from this action's own source (the ref pinned in `uses:`) instead of
+    # running a package from npm. The project does not publish to npm, and the npm name
+    # @vibesafe/cli belongs to an unrelated package.
+    - name: Build VibeSafe from the action source
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      env:
+        COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+      run: |
+        set -euo pipefail
+        if ! command -v corepack >/dev/null 2>&1; then
+          echo "::error::corepack was not found. Use a node-version that ships corepack (Node 20.19+, 22.14+ or 24)."
+          exit 2
+        fi
+
+        # Run from the action directory only, with npm config from the runner and the
+        # (untrusted) scanned repository ignored, the public registry, the action's own
+        # lockfile as-is, a private store and no dependency install scripts.
+        builddir="$RUNNER_TEMP/vibesafe-build"
+        mkdir -p "$builddir"
+        : > "$builddir/empty.npmrc"
+        export NPM_CONFIG_USERCONFIG="$builddir/empty.npmrc"
+        export NPM_CONFIG_GLOBALCONFIG="$builddir/empty.npmrc"
+        export NPM_CONFIG_REGISTRY="https://registry.npmjs.org/"
+        export NPM_CONFIG_UPDATE_NOTIFIER="false"
+        export COREPACK_NPM_REGISTRY="https://registry.npmjs.org"
+
+        # corepack runs the pnpm version pinned by packageManager in the action's package.json.
+        corepack pnpm install --frozen-lockfile --ignore-scripts --filter "@vibesafe/cli..." --store-dir "$builddir/store"
+        corepack pnpm --filter "@vibesafe/cli..." run build
+        test -f packages/cli/dist/bin.js
 
     - name: Run VibeSafe scan
       id: scan
       shell: bash
       env:
         VS_PATH: ${{ inputs.path }}
-        VS_VERSION: ${{ inputs.version }}
         VS_DEEP: ${{ inputs.deep }}
         VS_FAIL_ON: ${{ inputs.fail-on }}
       run: |
@@ -73,19 +104,16 @@ runs:
         if [ "$VS_DEEP" = "true" ]; then args+=(--deep); fi
         args+=(-- "$GITHUB_WORKSPACE/$VS_PATH")
 
-        # Run npx from a clean directory with the repo's npm config ignored, so the
-        # (untrusted) scanned repo cannot redirect the registry and run its own code.
-        cleandir="$RUNNER_TEMP/vibesafe-npx"
-        mkdir -p "$cleandir"
-        : > "$cleandir/empty.npmrc"
-        cd "$cleandir"
-        export NPM_CONFIG_USERCONFIG="$cleandir/empty.npmrc"
-        export NPM_CONFIG_GLOBALCONFIG="$cleandir/empty.npmrc"
-        export NPM_CONFIG_REGISTRY="https://registry.npmjs.org/"
+        # Run the CLI built in the previous step from a clean directory outside the
+        # scanned repository; the repository is only passed as the path to scan.
+        cli="$GITHUB_ACTION_PATH/packages/cli/dist/bin.js"
+        rundir="$RUNNER_TEMP/vibesafe-run"
+        mkdir -p "$rundir"
+        cd "$rundir"
 
         # The CLI exits 1 on blocker/danger and 2 on a scan error; fail-on decides below.
         set +e
-        npx --yes "@vibesafe/cli@${VS_VERSION}" "${args[@]}" > "$report" 2> "$errlog"
+        node "$cli" "${args[@]}" > "$report" 2> "$errlog"
         code=$?
         set -e
 

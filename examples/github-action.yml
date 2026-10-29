@@ -24,11 +24,12 @@ jobs:
         #   fetch-depth: 0 # required when using deep: true
 
       # Pin a release tag or a full commit SHA; do not use a moving branch like @main.
+      # The action builds VibeSafe from its own source at this ref (nothing is fetched
+      # from npm under a VibeSafe name), so the ref is also the VibeSafe version you run.
       - uses: Talaljaber/Vibesafe@<release-tag-or-commit-sha>
         with:
           path: "."
           fail-on: blocker # blocker | danger | warning | none
           comment: "true"
           deep: "false"
-          version: 0.3.0 # @vibesafe/cli 0.3.0 or later (first release with --format markdown; not yet published to npm)
           github-token: ${{ github.token }}
