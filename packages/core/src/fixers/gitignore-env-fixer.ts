@@ -4,6 +4,8 @@ import { resolveInsideRoot } from "./safe-path.js";
 
 const NEW_GITIGNORE = "node_modules\n.env\n.env.*\n!.env.example\n";
 
+const asDiff = (lines: string[]): string => lines.map((l) => `+ ${l}`).join("\n") + "\n";
+
 export class GitignoreEnvFixer implements AutoFixer {
   // We can handle both missing gitignore and env not ignored
   ruleId = "secret/env-not-ignored";
@@ -17,17 +19,27 @@ export class GitignoreEnvFixer implements AutoFixer {
     );
   }
 
-  private plan(content: string): { hasEnv: boolean; append: string } {
-    const lines = content.split(/\r?\n/).map((l) => l.trim());
-    const hasEnv = lines.includes(".env");
-    const hasWildcard = lines.includes(".env.*");
-    const hasNegation = lines.includes("!.env.example");
+  /**
+   * Lines to append so that `.env` and every `.env.*` file are ignored while `.env.example`
+   * stays tracked. A `.gitignore` that lists only `.env` still lets `.env.local` be committed,
+   * so the wildcard is added too, and the negation always follows a wildcard we add.
+   */
+  private plan(content: string): { added: string[]; append: string } {
+    // Root-anchored forms (`/.env`, `!/.env.example`) count the same as the plain ones.
+    const lines = new Set(content.split(/\r?\n/).map((l) => l.trim().replace(/^(!?)\//, "$1")));
+    const hasStar = lines.has(".env*");
+    const hasEnv = hasStar || lines.has(".env");
+    const hasWildcard = hasStar || lines.has(".env.*");
+    const hasNegation = lines.has("!.env.example");
 
-    let append = "";
-    if (!hasEnv) append += ".env\n.env.*\n!.env.example\n";
-    else if (hasWildcard && !hasNegation) append += "!.env.example\n";
+    const added: string[] = [];
+    if (!hasEnv) added.push(".env");
+    if (!hasWildcard) added.push(".env.*");
+    if (!hasWildcard || !hasNegation) added.push("!.env.example");
+
+    let append = added.length > 0 ? added.join("\n") + "\n" : "";
     if (append && content.length > 0 && !content.endsWith("\n")) append = "\n" + append;
-    return { hasEnv, append };
+    return { added, append };
   }
 
   private async read(rootPath: string): Promise<{ path: string; content: string | null }> {
@@ -52,20 +64,28 @@ export class GitignoreEnvFixer implements AutoFixer {
         filesToCreate: [],
       };
     }
-    const exists = content !== null;
-    const added =
-      content !== null
-        ? this.plan(content)
-            .append.split("\n")
-            .filter(Boolean)
-            .map((l) => `+ ${l}`)
-            .join("\n") + "\n"
-        : "";
+    if (content === null) {
+      return {
+        description:
+          "Creates .gitignore ignoring node_modules, .env and .env.* (keeping .env.example tracked).",
+        filesToModify: [],
+        filesToCreate: [".gitignore"],
+        diff: asDiff(NEW_GITIGNORE.split("\n").filter(Boolean)),
+      };
+    }
+    const { added } = this.plan(content);
+    if (added.length === 0) {
+      return {
+        description: ".gitignore already ignores .env and .env.* files; nothing to change.",
+        filesToModify: [],
+        filesToCreate: [],
+      };
+    }
     return {
-      description: "Appends `.env`, `.env.*` and `!.env.example` to .gitignore to protect secrets.",
-      filesToModify: exists ? [".gitignore"] : [],
-      filesToCreate: exists ? [] : [".gitignore"],
-      diff: exists ? added : `Created .gitignore with:\n${NEW_GITIGNORE}`,
+      description: `Appends ${added.join(", ")} to .gitignore so env files holding secrets are never committed.`,
+      filesToModify: [".gitignore"],
+      filesToCreate: [],
+      diff: asDiff(added),
     };
   }
 
@@ -83,7 +103,7 @@ export class GitignoreEnvFixer implements AutoFixer {
         };
       }
 
-      const { hasEnv, append } = this.plan(content);
+      const { added, append } = this.plan(content);
       if (append) await fs.appendFile(gitignorePath, append, "utf-8");
 
       return {
@@ -91,10 +111,8 @@ export class GitignoreEnvFixer implements AutoFixer {
         filesModified: append ? [".gitignore"] : [],
         filesCreated: [],
         message: append
-          ? hasEnv
-            ? "Added !.env.example to .gitignore."
-            : "Added .env to .gitignore."
-          : ".env was already in .gitignore",
+          ? `Added ${added.join(", ")} to .gitignore.`
+          : ".env and .env.* were already in .gitignore",
       };
     } catch (error) {
       return {
