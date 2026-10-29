@@ -7,14 +7,14 @@ const NEW_GITIGNORE = "node_modules\n.env\n.env.*\n!.env.example\n";
 const asDiff = (lines: string[]): string => lines.map((l) => `+ ${l}`).join("\n") + "\n";
 
 export class GitignoreEnvFixer implements AutoFixer {
-  // We can handle both missing gitignore and env not ignored
-  ruleId = "secret/env-not-ignored";
+  constructor(readonly ruleId: string = "secret/env-not-ignored") {}
   description =
     "Safely adds .env and .env.* to .gitignore (keeping .env.example tracked) to prevent committing secrets.";
 
   canFix(finding: Finding): boolean {
     return (
       finding.ruleId === "secret/env-not-ignored" ||
+      finding.ruleId === "security_config/gitignore-env-variants" ||
       finding.ruleId === "structure/missing-gitignore"
     );
   }

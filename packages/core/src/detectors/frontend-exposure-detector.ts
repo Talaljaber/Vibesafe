@@ -1,6 +1,7 @@
 import path from "node:path";
 import { type Detector, type Finding, type ScanContext } from "@talaljaber/vibesafe-shared";
 import { CATEGORY_PREFIX, classifyEnvFileName, createFindingId } from "@talaljaber/vibesafe-shared";
+import { isServerOnlyPublicName } from "./patterns/public-env-names.js";
 import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
 import {
   hasUseServerDirective,
@@ -22,6 +23,10 @@ const PUBLIC_PREFIXES = [
 /** A public-prefixed variable whose name looks like a secret (not preceded by another name char). */
 const PUBLIC_SECRET_REGEX =
   /(?<![A-Z0-9_])(?:NEXT_PUBLIC|VITE|REACT_APP|EXPO_PUBLIC|NUXT_PUBLIC|PUBLIC)_[A-Z0-9_]*(?:SECRET|PRIVATE|PASSWORD|SERVICE_ROLE)[A-Z0-9_]*/i;
+
+/** Any public-prefixed identifier on a line (checked with isServerOnlyPublicName). */
+const PUBLIC_NAME_TOKEN =
+  /(?<![A-Za-z0-9_])(?:NEXT_PUBLIC|VITE|REACT_APP|EXPO_PUBLIC|NUXT_PUBLIC|PUBLIC)_[A-Za-z0-9_]+/g;
 
 /**
  * Inside a vite.config `define` block: `"process.env": process.env` (optionally wrapped in
@@ -137,7 +142,7 @@ export class FrontendExposureDetector implements Detector {
           const line = lines[i] ?? "";
           if (line.trim().startsWith("#")) continue;
           const name = /^\s*(?:export\s+)?([A-Za-z0-9_]+)\s*=/.exec(line)?.[1];
-          if (name && isPublicSecretName(name.toUpperCase())) {
+          if (name && (isPublicSecretName(name.toUpperCase()) || isServerOnlyPublicName(name))) {
             findings.push(this.publicSecretFinding(filePath, i + 1, name, name));
           }
         }
@@ -178,6 +183,16 @@ export class FrontendExposureDetector implements Detector {
         const match = PUBLIC_SECRET_REGEX.exec(line);
         if (match?.[0] && isPublicSecretName(match[0])) {
           findings.push(this.publicSecretFinding(filePath, i + 1, match[0], match[0]));
+        } else {
+          // Provider keys, DB URLs and admin keys under a public prefix (no "SECRET" in the name)
+          PUBLIC_NAME_TOKEN.lastIndex = 0;
+          let t: RegExpExecArray | null;
+          while ((t = PUBLIC_NAME_TOKEN.exec(line)) !== null) {
+            if (isServerOnlyPublicName(t[0])) {
+              findings.push(this.publicSecretFinding(filePath, i + 1, t[0], t[0]));
+              break;
+            }
+          }
         }
       }
 

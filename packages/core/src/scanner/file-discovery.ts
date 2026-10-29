@@ -25,7 +25,15 @@ export interface DiscoverOptions {
    * not reported (the caller asked for those).
    */
   onSkipped?: ((relativePath: string, reason: SkipReason) => void) | undefined;
+  /**
+   * Called (only when includeTests is off) for each JS-like test file kept out of the
+   * returned list: `*.test.*`, `*.spec.*`, `__tests__/`. Fixtures, gitignored and
+   * default-excluded paths are not reported. Capped at 500.
+   */
+  onTestFile?: ((relativePath: string) => void) | undefined;
 }
+
+const MAX_TEST_FILES = 500;
 
 function createIgnore(): Ignore {
   // The ignore package's default export might need to be called directly
@@ -98,6 +106,37 @@ export class FileDiscovery {
       } else {
         options.onSkipped?.(file, "unscannable-type");
       }
+    }
+
+    if (!options.includeTests && options.onTestFile) {
+      const testEntries = await fg(
+        [
+          "**/*.{test,spec}.{ts,tsx,js,jsx,mjs,cjs,mts,cts}",
+          "**/__tests__/**/*.{ts,tsx,js,jsx,mjs,cjs}",
+        ],
+        {
+          cwd: this.rootPath,
+          dot: true,
+          onlyFiles: true,
+          followSymbolicLinks: false,
+          objectMode: true,
+          ignore: [...defaultExcludes, "fixtures/**", "**/fixtures/**"],
+        },
+      );
+      const plainIg = createIgnore();
+      plainIg.add(additionalExcludes);
+      plainIg.add(defaultExcludes);
+      const tests = testEntries
+        .filter(
+          (e) =>
+            !e.dirent.isSymbolicLink() &&
+            !plainIg.ignores(e.path) &&
+            !this.isIgnoredByGitignore(e.path, scopedIgnores),
+        )
+        .map((e) => e.path)
+        .sort()
+        .slice(0, MAX_TEST_FILES);
+      for (const t of tests) options.onTestFile(t);
     }
     return files;
   }

@@ -1,4 +1,4 @@
-// Detector group "infra": Dockerfile, compose, GitHub workflow, shell script and next.config detectors.
+// Detector group "infra": Dockerfile, compose, GitHub workflow, shell script, next.config and .gitignore env-variant detectors.
 //
 // Owned by one stream. Export ONLY: the group's *Detector classes (re-exported from
 // their detector files), infraDetectors, infraPrecedence and infraNonJsExempt. Never
@@ -13,6 +13,7 @@ import { GithubWorkflowDetector } from "../github-workflow-detector.js";
 import { GhaScriptInjectionDetector } from "../gha-script-injection-detector.js";
 import { ShellScriptDetector } from "../shell-script-detector.js";
 import { NextjsConfigDetector } from "../nextjs-config-detector.js";
+import { GitignoreEnvDetector } from "../gitignore-env-detector.js";
 
 export {
   DockerfileDetector,
@@ -21,6 +22,7 @@ export {
   GhaScriptInjectionDetector,
   ShellScriptDetector,
   NextjsConfigDetector,
+  GitignoreEnvDetector,
 };
 
 /** Fresh instances of this group's detectors, registered after the built-in ones. */
@@ -31,6 +33,7 @@ export const infraDetectors = (): Detector[] => [
   new GhaScriptInjectionDetector(),
   new ShellScriptDetector(),
   new NextjsConfigDetector(),
+  new GitignoreEnvDetector(),
 ];
 
 /**
@@ -47,4 +50,5 @@ export const infraNonJsExempt: Readonly<Record<string, readonly FileKind[]>> = {
   "github-workflow-detector": ["workflow", "gh-action"],
   "gha-script-injection-detector": ["workflow", "gh-action"],
   "shell-script-detector": ["shell"],
+  "gitignore-env-detector": ["gitignore"],
 };

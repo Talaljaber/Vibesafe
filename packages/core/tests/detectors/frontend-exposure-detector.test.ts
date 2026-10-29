@@ -401,3 +401,71 @@ export async function getSession() { return admin.auth.getSession(); }
     });
   });
 });
+
+describe("FrontendExposureDetector: provider keys under a public prefix", () => {
+  const detector = new FrontendExposureDetector();
+  const run = async (files: Record<string, string>) =>
+    detector.detect({
+      rootPath: "/fake/path",
+      projectContext: { framework: "nextjs", dependencies: {}, devDependencies: {} } as never,
+      files: Object.keys(files),
+      config: { rootPath: "/fake/path" },
+      readFile: async (f: string) => files[f] ?? "",
+    } as ScanContext);
+  const rules = (f: { ruleId: string }[]) => f.map((x) => x.ruleId);
+
+  it("flags NEXT_PUBLIC_OPENAI_API_KEY in a client file", async () => {
+    const f = await run({
+      "app/chat.tsx": `"use client";\nconst c = new OpenAI({ apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY });\n`,
+    });
+    expect(rules(f)).toEqual(["frontend_exposure/public-secret-var"]);
+    expect(f[0]?.line).toBe(2);
+    const again = await run({
+      "app/chat.tsx": `"use client";\nconst c = new OpenAI({ apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY });\n`,
+    });
+    expect(again[0]?.id).toBe(f[0]?.id);
+  });
+
+  it("flags the same name in .env.local and import.meta.env.VITE_GROQ_API_KEY", async () => {
+    const env = await run({ ".env.local": "NEXT_PUBLIC_OPENAI_API_KEY=x\n" });
+    expect(rules(env)).toEqual(["frontend_exposure/public-secret-var"]);
+    const vite = await run({
+      "src/App.tsx": `"use client";\nconst k = import.meta.env.VITE_GROQ_API_KEY;\n`,
+    });
+    expect(rules(vite)).toEqual(["frontend_exposure/public-secret-var"]);
+  });
+
+  it("is silent for safe names, server files, comments and templates", async () => {
+    expect(
+      await run({
+        "app/a.tsx": `"use client";\nconst k = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;\nconst m = process.env.NEXT_PUBLIC_OPENAI_MODEL;\n`,
+      }),
+    ).toEqual([]);
+    expect(
+      await run({ "app/api/x/route.ts": `const k = process.env.NEXT_PUBLIC_OPENAI_API_KEY;\n` }),
+    ).toEqual([]);
+    expect(
+      await run({ "app/a.tsx": `"use client";\n// process.env.NEXT_PUBLIC_OPENAI_API_KEY\n` }),
+    ).toEqual([]);
+    expect(await run({ ".env.example": "NEXT_PUBLIC_OPENAI_API_KEY=\n" })).toEqual([]);
+  });
+
+  it("does not flag the public Firebase databaseURL in an env file or client config", async () => {
+    const f = await run({
+      ".env":
+        "NEXT_PUBLIC_FIREBASE_DATABASE_URL=https://x.firebaseio.com\nVITE_FIREBASE_DATABASE_URL=https://x.firebaseio.com\n",
+      "lib/firebase.ts": `"use client";\nexport const firebaseConfig = { databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL };\n`,
+    });
+    expect(rules(f)).toEqual([]);
+  });
+
+  it("flags a public admin key and a public database url", async () => {
+    const f = await run({
+      ".env": "NEXT_PUBLIC_ADMIN_KEY=abc\nNEXT_PUBLIC_DATABASE_URL=postgres://x\n",
+    });
+    expect(rules(f)).toEqual([
+      "frontend_exposure/public-secret-var",
+      "frontend_exposure/public-secret-var",
+    ]);
+  });
+});

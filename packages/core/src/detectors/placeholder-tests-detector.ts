@@ -5,7 +5,8 @@
 // package.json only:
 //   - a `test` script that is just `echo ...` (npm's default placeholder),
 //   - a test command with `--passWithNoTests`, which turns "zero tests" into a pass.
-// With `includeTests`, test files are read too: a test file whose only tests are
+// Test files are always read by this detector (from `context.testFiles` when includeTests is
+// off, so no other detector ever scans them): a test file whose only tests are
 // `it.todo` / `it.skip` placeholders, or whose only assertions compare constants
 // (`expect(true).toBe(true)`), is reported, and `--passWithNoTests` is no longer
 // reported once a real test file is seen.
@@ -101,15 +102,17 @@ export class PlaceholderTestsDetector implements Detector {
   name = "Placeholder-Only Tests";
   category = "structure" as const;
   description =
-    "Detects test setups that pass without testing anything: echo test scripts, --passWithNoTests, and (with includeTests) todo-only or constant-assertion test files.";
+    "Detects test setups that pass without testing anything: echo test scripts, --passWithNoTests, and todo-only or constant-assertion test files (test files are always read by this detector).";
 
   async detect(context: ScanContext): Promise<Finding[]> {
     const findings: Finding[] = [];
     try {
       let realTestSeen = false;
       const fileFindings: Finding[] = [];
-      if (context.config?.includeTests === true) {
-        for (const file of context.files) {
+      {
+        const candidates =
+          context.config?.includeTests === true ? context.files : (context.testFiles ?? []);
+        for (const file of candidates) {
           if (!isTestFile(file)) continue;
           const text = await context.readFile(file);
           if (!text) continue;
