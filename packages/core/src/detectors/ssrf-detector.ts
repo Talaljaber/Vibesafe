@@ -55,32 +55,35 @@ export class SsrfDetector implements Detector {
     return findings;
   }
 
-  /** The URL argument: the first argument, or the `url` property of a config object (`axios({ url })`). */
-  private urlArgument(f: SinkFile, call: SinkCall): Range | undefined {
+  /** The URL arguments: the first argument, or the `baseURL` and `url` properties of a config object (`axios({ url })`). */
+  private urlArguments(f: SinkFile, call: SinkCall): Range[] {
     const arg = call.args[0];
-    if (arg === undefined) return undefined;
+    if (arg === undefined) return [];
     const code = f.src.code;
-    if (code[arg.start] !== "{") return arg;
+    if (code[arg.start] !== "{") return [arg];
     const close = f.src.matchOf(arg.start);
-    if (close < 0) return undefined;
-    let url: Range | undefined;
+    if (close < 0) return [];
+    const out: Range[] = [];
     for (const part of splitTopLevel(f.src, { start: arg.start + 1, end: close }, ",")) {
       const text = code.slice(part.start, part.end);
-      // `baseURL` controls the host, so it wins over `url`
-      const b = /^baseURL\s*:\s*/.exec(text);
-      if (b !== null) return trimRange(f.src, { start: part.start + b[0].length, end: part.end });
-      if (/^baseURL$/.test(text.trim())) return trimRange(f.src, part);
-      const m = /^url\s*:\s*/.exec(text);
-      if (m !== null) url ??= trimRange(f.src, { start: part.start + m[0].length, end: part.end });
-      // shorthand `{ url }`
-      else if (/^url$/.test(text.trim())) url ??= trimRange(f.src, part);
+      // a tainted `baseURL` controls the host; a tainted `url` does too unless it is provably relative
+      const m = /^(?:baseURL|url)s*:s*/.exec(text);
+      if (m !== null)
+        out.push(trimRange(f.src, { start: part.start + m[0].length, end: part.end }));
+      else if (/^(?:baseURL|url)$/.test(text.trim())) out.push(trimRange(f.src, part)); // shorthand
     }
-    return url;
+    return out;
   }
 
   private check(f: SinkFile, an: SinkAnalyzer, call: SinkCall): Finding | undefined {
-    const arg = this.urlArgument(f, call);
-    if (arg === undefined) return undefined;
+    for (const arg of this.urlArguments(f, call)) {
+      const finding = this.checkArg(f, an, call, arg);
+      if (finding !== undefined) return finding;
+    }
+    return undefined;
+  }
+
+  private checkArg(f: SinkFile, an: SinkAnalyzer, call: SinkCall, arg: Range): Finding | undefined {
     const t = an.argTaint(arg, call.start);
     if (t === undefined) return undefined;
     const position = an.position(t.state, arg, call.start);

@@ -31,6 +31,8 @@ describe("isServerOnlyPublicName", () => {
     "NEXT_PUBLIC_FIREBASE_DATABASE_URL",
     "VITE_FIREBASE_DATABASE_URL",
     "REACT_APP_FIREBASE_DATABASE_URL",
+    "NEXT_PUBLIC_WEBSERVICE_KEY",
+    "NEXT_PUBLIC_BADMIN_KEY",
   ])("ignores %s", (name) => {
     expect(isServerOnlyPublicName(name)).toBe(false);
   });

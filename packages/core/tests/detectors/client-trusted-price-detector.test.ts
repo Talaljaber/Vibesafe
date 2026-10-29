@@ -208,7 +208,7 @@ export async function POST(req: Request) {
 `;
     const donation = `export async function POST(req: Request) {
   const { amount } = await req.json();
-  await stripe.paymentIntents.create({ amount, currency: "usd" });
+  await stripe.paymentIntents.create({ amount, currency: "usd", description: "donation" });
   return Response.json({});
 }
 `;
