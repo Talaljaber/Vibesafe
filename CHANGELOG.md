@@ -51,7 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dependency and error-boundary detectors use the root `package.json`; the git history scan streams its output and works from subdirectories.
 - Evidence is sanitized and truncated in every detector.
 - The error-boundary rule was renamed and dead code and exports were cleaned up.
-- All packages share one version (0.3.0), kept in sync by `scripts/sync-versions.mjs`.
+- All packages share one version (0.3.1), kept in sync by `scripts/sync-versions.mjs`. 0.3.1 is the first complete npm release under `@talaljaber/vibesafe-*`; `@talaljaber/vibesafe-core@0.3.0` never left npm staging, so 0.3.0 of the CLI and MCP server cannot be installed.
 - GitHub Action: the build installs only the CLI and its workspace dependencies (`--config.dedupe-peer-dependents=false`) and caches its private pnpm store with `actions/cache`, keyed on the action's lockfile, pnpm version, OS and architecture; `packageManager` pins pnpm with its sha512 hash; a `uses: ./` self-test workflow runs the action on Ubuntu, Windows and macOS; CI reads the pnpm version from `packageManager` (#100).
 - `scan` prints the deep-scan notice when the config file turns on `deep`, not only for `--deep` (#99).
 - CI pins its third-party actions to full commit SHAs.

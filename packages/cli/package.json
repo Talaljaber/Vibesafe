@@ -1,6 +1,6 @@
 {
   "name": "@talaljaber/vibesafe-cli",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "The don't-deploy-that-yet tool for vibe-coded apps — CLI",
   "license": "MIT",
   "author": "Talal Jaber",
