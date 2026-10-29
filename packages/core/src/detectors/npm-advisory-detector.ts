@@ -30,6 +30,7 @@ import {
   classifySpec,
 } from "./utils/semver.js";
 import {
+  DirectClaims,
   findLockfile,
   manifestFiles,
   parseManifest,
@@ -93,7 +94,7 @@ export class NpmAdvisoryDetector implements Detector {
     const findings: Finding[] = [];
     try {
       const lockCache = new Map<string, LockfileInfo>();
-      const directByLockfile = new Map<string, Set<string>>();
+      const claims = new DirectClaims();
       let warnedEmpty = false;
 
       for (const file of manifestFiles(context)) {
@@ -101,9 +102,8 @@ export class NpmAdvisoryDetector implements Detector {
         if (!manifest) continue;
         const lock = await findLockfile(context, file, lockCache);
         if (lock.file) {
-          const names = directByLockfile.get(lock.file) ?? new Set<string>();
-          for (const d of manifest.deps) names.add(d.name);
-          directByLockfile.set(lock.file, names);
+          for (const d of manifest.deps)
+            claims.claim(lock.file, d, lock.versions.get(d.name) ?? []);
         }
         if (lock.state === "empty" && !warnedEmpty) {
           warnedEmpty = true;
@@ -121,14 +121,13 @@ export class NpmAdvisoryDetector implements Detector {
         }
       }
 
-      // Transitive: packages the lockfile resolves that no manifest lists directly.
+      // Transitive: lockfile versions no manifest accounts for directly, including
+      // nested copies of a package that is also a direct dependency.
       for (const [lockFile, info] of lockCache) {
         if (info.state !== "ok") continue;
-        const direct = directByLockfile.get(lockFile) ?? new Set<string>();
         for (const [name, advisories] of ADVISORIES_BY_NAME) {
-          if (direct.has(name)) continue;
-          const entries = info.versions.get(name);
-          if (!entries) continue;
+          const entries = claims.unclaimed(lockFile, name, info.versions.get(name) ?? []);
+          if (entries.length === 0) continue;
           for (const advisory of advisories) {
             const hits = entries.filter((e) => satisfies(e.version, advisory.affected));
             const first = hits[0];

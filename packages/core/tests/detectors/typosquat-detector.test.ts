@@ -112,6 +112,29 @@ describe("TyposquatDetector", () => {
     expect(findings).toEqual([]);
   });
 
+  it("does not flag real published packages one edit away from a popular name", async () => {
+    const real = [
+      "server",
+      "openapi",
+      "mkdir",
+      "classname",
+      "globs",
+      "colour",
+      "jslint",
+      "scrypt",
+      "graphiql",
+      "csv-parser",
+      "axiom",
+      "uuid4",
+      "react-icon",
+    ];
+    for (const name of real) expect(lookAlikeTarget(name), name).toBeUndefined();
+    const findings = await run({
+      "package.json": pkg(Object.fromEntries(real.map((n) => [n, "1.0.0"]))),
+    });
+    expect(findings).toEqual([]);
+  });
+
   it("ignores scripts, nested node_modules manifests and unparseable files", async () => {
     expect(
       await run({

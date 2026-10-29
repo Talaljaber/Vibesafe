@@ -3,6 +3,7 @@ import type { ScanContext } from "@talaljaber/vibesafe-shared";
 import {
   PlaceholderTestsDetector,
   classifyTestFile,
+  isEchoOnlyScript,
 } from "../../src/detectors/placeholder-tests-detector.js";
 import { expectRubric } from "../helpers/rubric.js";
 
@@ -82,6 +83,36 @@ describe("PlaceholderTestsDetector (package.json only, default mode)", () => {
     expect(await run({ "package.json": "{ broken" })).toEqual([]);
   });
 
+  it("does not flag an echo that precedes a real test runner", async () => {
+    for (const test of [
+      "echo running && vitest run",
+      "echo 'unit tests'; jest --ci",
+      'echo "a && b" && node --test',
+      "echo start || exit 1 && mocha",
+      "echo hi | tee log.txt",
+    ]) {
+      expect(await run({ "package.json": pkg(test) }), test).toEqual([]);
+    }
+  });
+
+  it("locates the test script in a one-line scripts block", async () => {
+    const text = [
+      "{",
+      '  "name": "app",',
+      '  "scripts": { "dev": "next dev", "test": "echo \\"no tests\\" && exit 1" }',
+      "}",
+    ].join("\n");
+    const findings = await run({ "package.json": text });
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.line).toBe(3);
+  });
+
+  it("reads a package.json that starts with a UTF-8 BOM", async () => {
+    const findings = await run({ "package.json": "﻿" + pkg("echo none && exit 1") });
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.line).toBe(5);
+  });
+
   it("does not read test files unless includeTests is set", async () => {
     const files = { "package.json": pkg("vitest run"), "tests/app.test.ts": TODO_ONLY };
     expect(await run(files)).toEqual([]);
@@ -134,6 +165,22 @@ it("real", () => { expect(sum(2, 2)).toBe(4); });
 describe("classifyTestFile", () => {
   it("returns null for a file with no tests at all", () => {
     expect(classifyTestFile("export const x = 1;")).toBeNull();
+  });
+  it("counts it.each / test.each as real tests", () => {
+    const code = `it.each([[1, 2, 3]])("adds %i + %i", (a, b, c) => { expect(add(a, b)).toBe(c); });
+test.each\`a | b\`("t", () => { expect(sum()).toBe(0); });
+it.todo("overflow");`;
+    expect(classifyTestFile(code)?.placeholderOnly).toBe(false);
+    const skipped = `it.todo("x");\ntest.skip.each([1])("y", () => {});`;
+    expect(classifyTestFile(skipped)?.placeholderOnly).toBe(true);
+  });
+  it("isEchoOnlyScript accepts npm's default placeholder and plain echoes only", () => {
+    expect(isEchoOnlyScript('echo "Error: no test specified" && exit 1')).toBe(true);
+    expect(isEchoOnlyScript("echo 'no tests'")).toBe(true);
+    expect(isEchoOnlyScript("echo skip; exit 0")).toBe(true);
+    expect(isEchoOnlyScript("exit 0")).toBe(false);
+    expect(isEchoOnlyScript("echo running && vitest run")).toBe(false);
+    expect(isEchoOnlyScript("vitest run && echo done")).toBe(false);
   });
   it("treats supertest-style .expect(...) as a real assertion", () => {
     const code = `it("ok", async () => { await request(app).get("/").expect(200); });`;

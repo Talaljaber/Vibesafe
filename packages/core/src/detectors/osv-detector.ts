@@ -15,6 +15,7 @@ import type { Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared
 import { makeFinding } from "./utils/finding.js";
 import { classifySpec, formatVersion, parseVersion, satisfies } from "./utils/semver.js";
 import {
+  DirectClaims,
   findLockfile,
   isValidPackageName,
   manifestFiles,
@@ -158,17 +159,16 @@ export class OsvDetector implements Detector {
       queries.push(q);
     };
 
-    const directNames = new Map<string, Set<string>>();
+    const claims = new DirectClaims();
     for (const file of manifestFiles(context)) {
       const manifest = parseManifest(file, await context.readFile(file));
       if (!manifest) continue;
       const lock = await findLockfile(context, file, lockCache);
-      const names = directNames.get(lock.file ?? "") ?? new Set<string>();
       for (const dep of manifest.deps) {
-        names.add(dep.name);
+        const entries = lock.versions.get(dep.name) ?? [];
+        if (lock.file) claims.claim(lock.file, dep, entries);
         const kind = classifySpec(dep.spec);
         if (kind !== "exact" && kind !== "range") continue;
-        const entries = lock.versions.get(dep.name) ?? [];
         const resolved = (entries.find((e) => satisfies(e.version, dep.spec)) ?? entries[0])
           ?.version;
         const pinned = kind === "exact" ? parseVersion(dep.spec) : null;
@@ -183,14 +183,13 @@ export class OsvDetector implements Detector {
           direct: true,
         });
       }
-      directNames.set(lock.file ?? "", names);
     }
+    // Lockfile versions no manifest accounts for, including nested copies of a
+    // package that is also a direct dependency.
     for (const [lockFile, info] of lockCache) {
       if (info.state !== "ok") continue;
-      const direct = directNames.get(lockFile) ?? new Set<string>();
       for (const [name, entries] of info.versions) {
-        if (direct.has(name)) continue;
-        for (const e of entries)
+        for (const e of claims.unclaimed(lockFile, name, entries))
           push({
             name,
             version: e.version,

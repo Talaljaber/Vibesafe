@@ -116,6 +116,45 @@ describe("OsvDetector", () => {
     expect(warnings.join("\n")).toContain("sent 3 package name/version pair(s)");
   });
 
+  it("queries nested copies of a direct dependency, but not its own resolved version twice", async () => {
+    const nestedLock = JSON.stringify(
+      {
+        lockfileVersion: 3,
+        packages: {
+          "": {},
+          "node_modules/react": { version: "18.2.0" },
+          "node_modules/old-lib/node_modules/react": { version: "16.4.0" },
+          "node_modules/old-lib": { version: "1.0.0" },
+        },
+      },
+      null,
+      2,
+    );
+    const { fn, calls } = mockFetch((call) => ({
+      results: call.body.queries.map((q) =>
+        q.package.name === "react" && q.version === "16.4.0"
+          ? { vulns: [{ id: "GHSA-mvjj-gqq2-p4hw" }] }
+          : {},
+      ),
+    }));
+    const findings = await new OsvDetector(fn).detect(
+      createContext(
+        {
+          "package.json": JSON.stringify({ dependencies: { react: "^18.2.0" } }, null, 2),
+          "package-lock.json": nestedLock,
+        },
+        true,
+      ),
+    );
+    expectRubric(findings);
+    const sent = calls[0]!.body.queries.map((q) => `${q.package.name}@${q.version}`).sort();
+    expect(sent).toEqual(["old-lib@1.0.0", "react@16.4.0", "react@18.2.0"]);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.file).toBe("package-lock.json");
+    expect(findings[0]!.title).toContain("react 16.4.0");
+    expect(findings[0]!.severity).toBe("low");
+  });
+
   it("turns HTTP errors, bad JSON shapes and network failures into a warning", async () => {
     const cases = [
       mockFetch(() => ({ results: [] }), 503).fn,

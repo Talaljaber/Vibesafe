@@ -276,4 +276,29 @@ export const LEGITIMATE_NEIGHBOURS: readonly string[] = [
   "nuxt", // next
   "tslint", // eslint
   "colord", // color
+  "colour", // color
+  "server", // semver
+  "openapi", // openai
+  "mkdir", // mkdirp
+  "classname", // classnames
+  "globs", // glob
+  "bless", // less
+  "lessc", // less
+  "jslint", // eslint
+  "scrypt", // bcrypt
+  "bcrypto", // bcrypt
+  "graphiql", // graphql
+  "csv-parser", // csv-parse
+  "expresso", // express
+  "requests", // request
+  "prism", // prisma
+  "strip", // stripe
+  "chain", // chai
+  "reactn", // react
+  "axiom", // axios
+  "uuid4", // uuid
+  "nuxt3", // nuxt
+  "mongod", // mongodb
+  "marker", // marked
+  "react-icon", // react-icons
 ];

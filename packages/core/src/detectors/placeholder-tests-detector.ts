@@ -34,7 +34,22 @@ const TRIVIAL_ASSERT_RE = new RegExp(
   "g",
 );
 const ANY_ASSERT_RE = /\bexpect\s*\(|\bassert(?:\.\w+)?\s*\(|\bexpectTypeOf\s*\(/g;
-const REAL_TEST_RE = /\b(?:it|test)(?:\.only|\.concurrent)?\s*\(/g;
+const REAL_TEST_RE = /\b(?:it|test)(?:\s*\.\s*(?:only|concurrent))?\s*(?:\(|\.\s*each\b)/g;
+
+/**
+ * True when a `test` script only prints and exits (npm's default
+ * `echo "Error: no test specified" && exit 1`): every `&&` / `||` / `;` / `|`
+ * segment is `echo ...` or `exit [N]`, and at least one is `echo`.
+ */
+export function isEchoOnlyScript(script: string): boolean {
+  const unquoted = script.replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, '""');
+  const segments = unquoted
+    .split(/&&|\|\||[;|]/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  if (!segments.some((s) => /^echo\b/.test(s))) return false;
+  return segments.every((s) => /^echo\b/.test(s) || /^exit(?:\s+\d+)?$/.test(s));
+}
 const PLACEHOLDER_RE =
   /\b(?:it|test|describe)\s*\.\s*(?:todo|skip)\s*\(|\b(?:xit|xtest|xdescribe)\s*\(/g;
 
@@ -121,7 +136,7 @@ export class PlaceholderTestsDetector implements Detector {
         const test = (scripts as Record<string, unknown>).test;
         if (typeof test !== "string") continue;
         const at = manifest.scriptLines.get("test");
-        if (/^\s*echo\b/.test(test)) {
+        if (isEchoOnlyScript(test)) {
           findings.push(
             makeFinding({
               category: "structure",

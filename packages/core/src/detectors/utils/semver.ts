@@ -457,8 +457,10 @@ function fromYarnLock(text: string): ResolvedVersions {
  * basename (`package-lock.json`, `npm-shrinkwrap.json`, `pnpm-lock.yaml`, `yarn.lock`).
  * Returns an empty map for unknown names or unparseable content.
  */
-export function resolvedVersions(fileName: string, content: string): ResolvedVersions {
-  if (typeof content !== "string" || content.length === 0) return new Map();
+export function resolvedVersions(fileName: string, raw: string): ResolvedVersions {
+  if (typeof raw !== "string" || raw.length === 0) return new Map();
+  // npm and yarn tolerate a leading UTF-8 BOM; JSON.parse does not.
+  const content = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
   const base = fileName.replace(/\\/g, "/").split("/").pop() ?? "";
   if (base === "package-lock.json" || base === "npm-shrinkwrap.json")
     return fromPackageLock(content);

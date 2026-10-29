@@ -153,6 +153,86 @@ describe("NpmAdvisoryDetector", () => {
     expect(findings[0]!.title).toContain("minimist 1.2.5");
   });
 
+  it("reports a nested vulnerable copy of a package that is also a direct dependency", async () => {
+    const lock = JSON.stringify(
+      {
+        lockfileVersion: 3,
+        packages: {
+          "": { dependencies: { minimist: "^1.2.6", mkdirp: "0.5.1" } },
+          "node_modules/minimist": { version: "1.2.8" },
+          "node_modules/mkdirp": { version: "0.5.1" },
+          "node_modules/mkdirp/node_modules/minimist": { version: "0.0.8" },
+        },
+      },
+      null,
+      2,
+    );
+    const findings = await byName(
+      createContext({
+        "package.json": pkg({ minimist: "^1.2.6", mkdirp: "0.5.1" }),
+        "package-lock.json": lock,
+      }),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.file).toBe("package-lock.json");
+    const nestedLine =
+      lock.split("\n").findIndex((l) => l.includes('"node_modules/mkdirp/node_modules/minimist"')) +
+      1;
+    expect(nestedLine).toBeGreaterThan(0);
+    expect(findings[0]!.line).toBe(nestedLine);
+    expect(findings[0]!.title).toContain("minimist 0.0.8");
+    expect(findings[0]!.severity).toBe("medium");
+  });
+
+  it("does not report a direct dependency's own resolved version a second time", async () => {
+    const lock = JSON.stringify(
+      {
+        lockfileVersion: 3,
+        packages: {
+          "": {},
+          "node_modules/minimist": { version: "1.2.5" },
+          "node_modules/mkdirp/node_modules/minimist": { version: "1.2.8" },
+        },
+      },
+      null,
+      2,
+    );
+    const findings = await byName(
+      createContext({ "package.json": pkg({ minimist: "^1.2.0" }), "package-lock.json": lock }),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.file).toBe("package.json");
+    expect(findings[0]!.confidence).toBe("high");
+    expect(findings[0]!.title).toContain("minimist 1.2.5");
+
+    // A stale lockfile (no version fits the spec) is judged from the spec alone, once.
+    const stale = JSON.stringify({
+      lockfileVersion: 3,
+      packages: { "": {}, "node_modules/minimist": { version: "1.2.5" } },
+    });
+    const staleFindings = await byName(
+      createContext({ "package.json": pkg({ minimist: "^1.2.6" }), "package-lock.json": stale }),
+    );
+    expect(staleFindings).toEqual([]);
+  });
+
+  it("reads lockfiles and manifests that start with a UTF-8 BOM, and one-line blocks", async () => {
+    const lock =
+      "﻿" +
+      JSON.stringify({
+        lockfileVersion: 3,
+        packages: { "": {}, "node_modules/next": { version: "14.1.0" } },
+      });
+    const manifest = '﻿{\n  "name": "app",\n  "dependencies": { "next": "^14.0.0" }\n}\n';
+    const findings = await byName(
+      createContext({ "package.json": manifest, "package-lock.json": lock }),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.confidence).toBe("high");
+    expect(findings[0]!.title).toBe("next 14.1.0 is affected by CVE-2025-29927");
+    expect(findings[0]!.line).toBe(3);
+  });
+
   it("matches exact package names only and ignores non-registry specs", async () => {
     const findings = await byName(
       createContext({
