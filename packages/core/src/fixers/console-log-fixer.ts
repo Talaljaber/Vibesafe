@@ -1,87 +1,23 @@
 import type { AutoFixer, Finding, FixPreview, FixResult } from "@talaljaber/vibesafe-shared";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { findMatchingBrace, isJsxPath, maskCode } from "../detectors/utils/js-source.js";
 import { resolveInsideRoot } from "./safe-path.js";
 
 type Edit = { startLine: number; endLine: number; before: string[]; after: string[] };
 type Analysis = { ok: true; content: string; edit: Edit } | { ok: false; reason: string };
 
-/** Returns "code" if `offset` is at top-level code, otherwise what it is inside. */
-function lexStateAt(content: string, offset: number): "code" | "string" | "comment" {
-  let i = 0;
-  while (i < offset) {
-    const c = content[i];
-    const n = content[i + 1];
-    if (c === "/" && n === "/") {
-      const nl = content.indexOf("\n", i);
-      if (nl === -1 || nl >= offset) return "comment";
-      i = nl + 1;
-    } else if (c === "/" && n === "*") {
-      const close = content.indexOf("*/", i + 2);
-      if (close === -1 || close + 2 > offset) return "comment";
-      i = close + 2;
-    } else if (c === '"' || c === "'" || c === "`") {
-      let j = i + 1;
-      while (j < content.length && content[j] !== c) {
-        if (content[j] === "\\") j++;
-        else if (c !== "`" && content[j] === "\n") break;
-        j++;
-      }
-      if (j >= offset) return "string";
-      i = j + 1;
-    } else {
-      i++;
-    }
-  }
-  return "code";
-}
+/** Characters after which `console.log(` would be an operand or argument, not a statement. */
+const EXPRESSION_PREV = new Set("(,=:?[+-*/%&|^!~<>.".split(""));
 
 /**
- * Finds the end offset (exclusive) of the call whose opening paren is at `open`,
- * or null when the parentheses do not balance or the call contains constructs
- * we do not scan safely (template literals with substitutions).
+ * Finds the standalone `console.log(...)` statement starting on `line` and the lines it
+ * spans. The file is masked with the shared JS source model (comments, strings, template
+ * text and regex literals blanked), so parentheses inside strings, template
+ * substitutions or comments never confuse the call's end, and a `console.log(` inside a
+ * string or comment is never touched.
  */
-function findCallEnd(content: string, open: number): number | null {
-  let depth = 0;
-  let i = open;
-  while (i < content.length) {
-    const c = content[i];
-    const n = content[i + 1];
-    if (c === "/" && n === "/") {
-      const nl = content.indexOf("\n", i);
-      if (nl === -1) return null;
-      i = nl + 1;
-      continue;
-    }
-    if (c === "/" && n === "*") {
-      const close = content.indexOf("*/", i + 2);
-      if (close === -1) return null;
-      i = close + 2;
-      continue;
-    }
-    if (c === '"' || c === "'" || c === "`") {
-      let j = i + 1;
-      while (j < content.length && content[j] !== c) {
-        if (c === "`" && content[j] === "$" && content[j + 1] === "{") return null;
-        if (content[j] === "\\") j++;
-        else if (c !== "`" && content[j] === "\n") return null;
-        j++;
-      }
-      if (j >= content.length) return null;
-      i = j + 1;
-      continue;
-    }
-    if (c === "(") depth++;
-    else if (c === ")") {
-      depth--;
-      if (depth === 0) return i + 1;
-    }
-    i++;
-  }
-  return null;
-}
-
-function analyze(content: string, line: number): Analysis {
+function analyze(content: string, line: number, file: string): Analysis {
   const lines = content.split("\n");
   const idx = line - 1;
   if (idx < 0 || idx >= lines.length) return { ok: false, reason: "Invalid line number." };
@@ -98,8 +34,18 @@ function analyze(content: string, line: number): Analysis {
   let lineStart = 0;
   for (let k = 0; k < idx; k++) lineStart += (lines[k] ?? "").length + 1;
 
-  if (lexStateAt(content, lineStart) !== "code") {
+  const code = maskCode(content, { jsx: isJsxPath(file) });
+  const callStart = lineStart + (m[1] ?? "").length;
+  if (code.slice(callStart, callStart + 11) !== "console.log") {
     return { ok: false, reason: `Line ${line} is inside a string or comment; not modifying it.` };
+  }
+  let p = callStart - 1;
+  while (p >= 0 && /\s/.test(code[p]!)) p--;
+  if (p >= 0 && EXPRESSION_PREV.has(code[p]!)) {
+    return {
+      ok: false,
+      reason: "console.log(...) is part of a larger expression or statement; not modifying it.",
+    };
   }
 
   // A braceless if/else/for/while body would change meaning if its statement were removed.
@@ -117,16 +63,22 @@ function analyze(content: string, line: number): Analysis {
   }
 
   const open = lineStart + m[0].length - 1;
-  const end = findCallEnd(content, open);
-  if (end === null) {
+  const close = findMatchingBrace(content, open, code);
+  if (close < 0) {
     return { ok: false, reason: "Could not find the end of the console.log(...) call safely." };
   }
+  const end = close + 1;
 
   const endLineIdx = content.slice(0, end).split("\n").length - 1;
-  const lastLine = lines[endLineIdx] ?? "";
-  const lastLineEnd = end - (content.slice(0, end).lastIndexOf("\n") + 1);
-  const tail = lastLine.slice(lastLineEnd).replace(/\r$/, "");
-  if (!/^\s*;?\s*(\/\/.*)?$/.test(tail)) {
+  const lineEnd = content.indexOf("\n", end);
+  // Comments after the call are masked to spaces, so only `;` and whitespace may remain.
+  const tail = code.slice(end, lineEnd < 0 ? code.length : lineEnd).replace(/\r$/, "");
+  let next = end;
+  while (next < code.length && /\s/.test(code[next]!)) next++;
+  // Without a `;`, a following line starting with `(`, `[`, `.`, a template or an operator
+  // continues the same expression (ASI), so commenting the call out would change it.
+  const continues = !tail.includes(";") && /[([`.+\-*/%,?:=<>&|]/.test(code[next] ?? "");
+  if (!/^\s*;?\s*$/.test(tail) || continues) {
     return {
       ok: false,
       reason: "console.log(...) is part of a larger expression or statement; not modifying it.",
@@ -163,7 +115,7 @@ export class ConsoleLogFixer implements AutoFixer {
   ): Promise<{ filePath: string; result: Analysis }> {
     const filePath = await resolveInsideRoot(rootPath, finding.file as string);
     const content = await fs.readFile(filePath, "utf-8");
-    return { filePath, result: analyze(content, finding.line as number) };
+    return { filePath, result: analyze(content, finding.line as number, finding.file as string) };
   }
 
   async preview(finding: Finding, rootPath: string): Promise<FixPreview> {

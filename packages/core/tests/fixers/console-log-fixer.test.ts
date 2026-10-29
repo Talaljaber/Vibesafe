@@ -80,6 +80,49 @@ describe("ConsoleLogFixer", () => {
     expect(await read()).toBe("a();\n// console.log(\n  // 'x',\n  // fn(1, ')')\n// );\nb();\n");
   });
 
+  it("handles multi-line calls with template substitutions, regex literals and comments", async () => {
+    const src =
+      "a();\nconsole.log(\n  `total ${fn(1, ')')}`,\n  /\\)/.test(s), // why )\n  /* ) */ x\n); // done\nb();\n";
+    await write(src);
+    const preview = await fixer.preview(at(2), tempDir);
+    expect(preview.filesToModify).toEqual(["index.js"]);
+    expect((await fixer.apply(at(2), tempDir)).success).toBe(true);
+    expect(await read()).toBe(
+      "a();\n// console.log(\n  // `total ${fn(1, ')')}`,\n  // /\\)/.test(s), // why )\n  // /* ) */ x\n// ); // done\nb();\n",
+    );
+  });
+
+  it("handles a template literal that spans lines inside the call", async () => {
+    await write("a();\nconsole.log(`line one\n${b(\n  2,\n)} line two`);\nc();\n");
+    expect((await fixer.apply(at(2), tempDir)).success).toBe(true);
+    expect(await read()).toBe(
+      "a();\n// console.log(`line one\n// ${b(\n  // 2,\n// )} line two`);\nc();\n",
+    );
+  });
+
+  it("refuses unbalanced calls, arguments and ASI continuations", async () => {
+    for (const [src, line] of [
+      ["a();\nconsole.log(a, `${b}`\n", 2],
+      ["foo(\nconsole.log(1)\n);\n", 2],
+      ["const x = [\nconsole.log(1),\n];\n", 2],
+      ["a();\nconsole.log(1)\n[1, 2].forEach(f)\n", 2],
+      ["a();\nconsole.log(1)\n.then(f)\n", 2],
+    ] as const) {
+      await write(src);
+      expect((await fixer.apply(at(line), tempDir)).success, src).toBe(false);
+      expect(await read()).toBe(src);
+    }
+  });
+
+  it("masks JSX text in .tsx files", async () => {
+    const src = "const el = <p>(</p>;\nconsole.log(el);\n";
+    await fs.writeFile(path.join(tempDir, "view.tsx"), src);
+    expect((await fixer.apply(at(2, "view.tsx"), tempDir)).success).toBe(true);
+    expect(await fs.readFile(path.join(tempDir, "view.tsx"), "utf-8")).toBe(
+      "const el = <p>(</p>;\n// console.log(el);\n",
+    );
+  });
+
   it("fixes consecutive semicolon-less console.log lines", async () => {
     await write("const x = 1\nconsole.log(a)\nconsole.log(b)\nexport {}\n");
     expect((await fixer.apply(at(2), tempDir)).success).toBe(true);
