@@ -7,6 +7,7 @@ import {
   SCANNABLE_FILENAMES,
   TEST_PATH_GLOBS,
   buildExcludedDirGlobs,
+  isPythonRequirementsFile,
 } from "@vibesafe/shared";
 
 type Ignore = ReturnType<typeof ignore>;
@@ -71,7 +72,8 @@ export class FileDiscovery {
 
       if (
         (SCANNABLE_FILENAMES as readonly string[]).includes(basename) ||
-        (SCANNABLE_EXTENSIONS as readonly string[]).includes(ext)
+        (SCANNABLE_EXTENSIONS as readonly string[]).includes(ext) ||
+        isPythonRequirementsFile(file)
       ) {
         files.push(file);
       }

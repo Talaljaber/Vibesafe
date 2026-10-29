@@ -60,11 +60,21 @@ describe("isExcludedPath", () => {
 });
 
 describe("isRelevantPath", () => {
-  it.each(["src/a.ts", "package.json", ".gitignore", ".env", ".env.local", "x/prod.env"])(
-    "true for %s",
-    (p) => expect(isRelevantPath(p)).toBe(true),
+  it.each([
+    "src/a.ts",
+    "package.json",
+    ".gitignore",
+    ".env",
+    ".env.local",
+    "x/prod.env",
+    "app/views.py",
+    "requirements-dev.txt",
+    "requirements/prod.txt",
+    "Pipfile",
+  ])("true for %s", (p) => expect(isRelevantPath(p)).toBe(true));
+  it.each(["image.png", "notes.xyz", "notes.txt"])("false for %s", (p) =>
+    expect(isRelevantPath(p)).toBe(false),
   );
-  it.each(["image.png", "notes.xyz"])("false for %s", (p) => expect(isRelevantPath(p)).toBe(false));
 });
 
 describe("stripControl", () => {

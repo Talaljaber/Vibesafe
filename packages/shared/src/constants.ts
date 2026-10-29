@@ -46,8 +46,18 @@ export const SCANNABLE_FILENAMES = [
   "yarn.lock",
   "requirements.txt",
   "pyproject.toml",
+  "Pipfile",
   "manage.py",
 ] as const;
+
+/**
+ * Python requirements files, which are also scanned: `requirements*.txt` anywhere, or
+ * any `.txt` file inside a `requirements/` directory (e.g. `requirements/prod.txt`).
+ */
+export function isPythonRequirementsFile(relativePath: string): boolean {
+  const p = relativePath.replace(/\\/g, "/");
+  return /(^|\/)requirements[\w.-]*\.txt$/i.test(p) || /(^|\/)requirements\/[^/]+\.txt$/i.test(p);
+}
 
 /**
  * Directories excluded at ANY depth (dependency, VCS and tool-cache dirs whose

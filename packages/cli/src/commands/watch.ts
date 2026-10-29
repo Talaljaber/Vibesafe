@@ -7,6 +7,7 @@ import {
   ROOT_ANCHORED_EXCLUDED_DIRS,
   SCANNABLE_EXTENSIONS,
   SCANNABLE_FILENAMES,
+  isPythonRequirementsFile,
   WORKSPACE_PACKAGE_CONTAINERS,
 } from "@vibesafe/shared";
 import type { Finding } from "@vibesafe/shared";
@@ -80,6 +81,7 @@ export function isExcludedPath(p: string): boolean {
 export function isRelevantPath(p: string): boolean {
   const base = p.split("/").pop() ?? p;
   if ((SCANNABLE_FILENAMES as readonly string[]).includes(base)) return true;
+  if (isPythonRequirementsFile(p)) return true;
   if (base === ".gitignore" || base === "package.json" || /^\.env(\..*)?$|\.env$/.test(base))
     return true;
   const dot = base.lastIndexOf(".");

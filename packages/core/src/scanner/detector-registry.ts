@@ -14,6 +14,7 @@ import { GitHistoryDetector } from "../detectors/git-history-detector.js";
 import { DangerousHtmlDetector } from "../detectors/dangerous-html-detector.js";
 import { DjangoSettingsDetector } from "../detectors/django-settings-detector.js";
 import { DjangoViewsDetector } from "../detectors/django-views-detector.js";
+import { PythonDependencyDetector } from "../detectors/python-dependency-detector.js";
 import { SupabaseRlsDetector } from "../detectors/supabase-rls-detector.js";
 import { SecurityHeadersDetector } from "../detectors/security-headers-detector.js";
 import { CorsDetector } from "../detectors/cors-detector.js";
@@ -36,6 +37,7 @@ export function createDefaultRegistry(): DetectorRegistry {
   registry.register(new DangerousHtmlDetector());
   registry.register(new DjangoSettingsDetector());
   registry.register(new DjangoViewsDetector());
+  registry.register(new PythonDependencyDetector());
   registry.register(new SupabaseRlsDetector());
   registry.register(new SecurityHeadersDetector());
   registry.register(new CorsDetector());

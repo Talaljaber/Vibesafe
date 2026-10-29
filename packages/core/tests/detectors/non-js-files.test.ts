@@ -12,6 +12,12 @@ import { MissingAuthDetector } from "../../src/detectors/missing-auth-detector.j
 import { MissingAuthorizationDetector } from "../../src/detectors/missing-authorization-detector.js";
 import { MissingValidationDetector } from "../../src/detectors/missing-validation-detector.js";
 import { ErrorBoundaryDetector } from "../../src/detectors/error-boundary-detector.js";
+import { CodebaseMessDetector } from "../../src/detectors/codebase-mess-detector.js";
+import { CorsDetector } from "../../src/detectors/cors-detector.js";
+import { RateLimitDetector } from "../../src/detectors/rate-limit-detector.js";
+import { SecurityHeadersDetector } from "../../src/detectors/security-headers-detector.js";
+import { StripeWebhookDetector } from "../../src/detectors/stripe-webhook-detector.js";
+import { DependencyDetector } from "../../src/detectors/dependency-detector.js";
 
 const createContext = (files: Record<string, string>): ScanContext => ({
   rootPath: "/fake/path",
@@ -32,6 +38,19 @@ const PY = [
   "process.env.NEXT_PUBLIC_SECRET_KEY",
 ].join("\n");
 
+/** A Django REST view that would trip JS route detectors if they read Python. */
+const DJANGO_VIEWS = [
+  "from rest_framework.views import APIView",
+  "import stripe",
+  "from openai import OpenAI",
+  "class Login(APIView):",
+  "    def post(self, request):",
+  "        event = stripe.Webhook.construct_event(request.body, sig, secret)",
+  "        res = fetch('http://localhost:3000/api/login', { method: 'POST' })",
+  "        app.use(cors({ origin: '*', credentials: true }))",
+  "        return Response(request.data)",
+].join("\n");
+
 const SQL = "SELECT * FROM users WHERE name = 'http://localhost:3000';\n-- console.log\n";
 
 describe("non-JS files", () => {
@@ -44,12 +63,25 @@ describe("non-JS files", () => {
       new MissingAuthorizationDetector(),
       new MissingValidationDetector(),
       new ErrorBoundaryDetector(),
+      new CodebaseMessDetector(),
+      new CorsDetector(),
+      new RateLimitDetector(),
+      new SecurityHeadersDetector(),
+      new StripeWebhookDetector(),
+      new DependencyDetector(),
     ];
 
     for (const detector of detectors) {
       it(`${detector.constructor.name} produces no findings`, async () => {
         const findings = await detector.detect(
-          createContext({ "server/app.py": PY, "db/schema.sql": SQL }),
+          createContext({
+            "server/app.py": PY,
+            "db/schema.sql": SQL,
+            "api/views.py": DJANGO_VIEWS,
+            "app/api/login/views.py": DJANGO_VIEWS,
+            "requirements.txt": "django\nexpress\n",
+            Pipfile: '[packages]\nnext = "*"\n',
+          }),
         );
         expect(findings).toEqual([]);
       });
