@@ -21,7 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Express apps without helmet and Next.js apps without security headers (`security_config/missing-helmet`, `security_config/missing-security-headers`, #87).
   - Supabase tables without Row Level Security and policies that let everyone write (`authorization/supabase-missing-rls`, `authorization/supabase-permissive-policy`, #89).
   - Django/Python MVP: Django project detection, Python test discovery and insecure Django settings (`DEBUG`, `SECRET_KEY`, `ALLOWED_HOSTS`, CORS, cookies, `csrf_exempt`) (`security_config/django-*`, `secret/django-secret-key*`, #92).
-  - `dangerouslySetInnerHTML` with dynamic content (`xss/dangerously-set-inner-html`, #25, thanks to @i-am-paradox), hardcoded localhost URLs, a missing React error boundary, and a git history secret scan (`--deep`).
+  - `dangerouslySetInnerHTML` with dynamic content (`xss/dangerously-set-inner-html`, #25). Thanks to @i-am-paradox.
+  - Hardcoded localhost URLs (`code_quality/hardcoded-localhost`, #21). Thanks to @AlexMnrs.
+  - Missing React error boundary (`structure/missing-error-boundary`, #22). Thanks to @kamakshi-mehta.
+  - Git history secret scan with `--deep` (`secret/git-history-*`, #23).
 - **Config file** (#81): `.vibesafe.config.json` / `vibesafe.config.json` with rule overrides (exact ids or globs, `"off"` or a severity), `disabledDetectors`, `categories`, `exclude`, `includeTests`, `minSeverity` and `deep`. It applies to `scan`, `fix`, `fix --all`, `fix -i` and `watch`. Script configs (`.ts`, `.js`, ...) are ignored unless `--trust-config` is passed; `--no-config` ignores the file. Applied configs and suppressed findings are reported as scan warnings.
 - **CLI**
   - `scan --format json|sarif|markdown` and `--output <file>` (#90, #91). SARIF 2.1.0 works with GitHub code scanning; markdown is a PR-comment summary.
@@ -45,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Evidence is sanitized and truncated in every detector.
 - The error-boundary rule was renamed and dead code and exports were cleaned up.
 - All packages share one version (0.3.0), kept in sync by `scripts/sync-versions.mjs`.
+- GitHub Action: the build installs only the CLI and its workspace dependencies (`--config.dedupe-peer-dependents=false`) and caches its private pnpm store with `actions/cache`, keyed on the action's lockfile, OS and architecture; `packageManager` pins pnpm with its sha512 hash; a `uses: ./` self-test workflow runs the action on Ubuntu, Windows and macOS; CI reads the pnpm version from `packageManager` (#100).
 
 ### Fixed
 

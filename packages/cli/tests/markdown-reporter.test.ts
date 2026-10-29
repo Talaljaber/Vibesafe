@@ -281,7 +281,8 @@ describe("action.yml", () => {
       .split(/\n\s+run: \|/)
       .slice(1)
       .map((block) => block.split(/\n    - name:/)[0] ?? "");
-    expect(scripts.length).toBe(4);
+    // Cache key, build, scan, comment and fail-on.
+    expect(scripts.length).toBe(5);
     for (const script of scripts) expect(script).not.toContain("${{");
   });
 

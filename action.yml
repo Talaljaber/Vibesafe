@@ -48,6 +48,27 @@ runs:
       with:
         node-version: ${{ inputs.node-version }}
 
+    # hashFiles() only reads inside GITHUB_WORKSPACE, and the action's own files live outside
+    # it when the action is used from another repository, so hash the lockfile here.
+    - name: Compute the VibeSafe build cache key
+      id: cache-key
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        hash="$(node -e 'process.stdout.write(require("crypto").createHash("sha256").update(require("fs").readFileSync("pnpm-lock.yaml")).update(String(require("./package.json").packageManager)).digest("hex"))')"
+        echo "key=vibesafe-pnpm-store-${RUNNER_OS}-${RUNNER_ARCH}-${hash}" >> "$GITHUB_OUTPUT"
+
+    # Cache the private pnpm store used by the build below. The key only depends on the
+    # action's own lockfile and pnpm version, never on the scanned repository. The store is
+    # only saved when the job succeeds. GitHub scopes caches by
+    # branch: a pull request can read its base branch's cache but only writes its own.
+    - name: Cache the VibeSafe pnpm store
+      uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+      with:
+        path: ${{ runner.temp }}/vibesafe-build/store
+        key: ${{ steps.cache-key.outputs.key }}
+
     # Build the CLI from this action's own source (the ref pinned in `uses:`) instead of
     # running a package from npm. The project does not publish to npm, and the npm name
     # @vibesafe/cli belongs to an unrelated package.
@@ -75,8 +96,12 @@ runs:
         export NPM_CONFIG_UPDATE_NOTIFIER="false"
         export COREPACK_NPM_REGISTRY="https://registry.npmjs.org"
 
-        # corepack runs the pnpm version pinned by packageManager in the action's package.json.
-        corepack pnpm install --frozen-lockfile --ignore-scripts --filter "@vibesafe/cli..." --store-dir "$builddir/store"
+        # corepack runs the pnpm version pinned (with its sha512 hash) by packageManager in the
+        # action's package.json. pnpm 9 defaults dedupe-peer-dependents to true, which pulls the
+        # dependencies of every workspace package into a filtered install; turn it off so only
+        # the CLI and its workspace dependencies (shared, core) are installed.
+        corepack pnpm install --frozen-lockfile --ignore-scripts --filter "@vibesafe/cli..." \
+          --config.dedupe-peer-dependents=false --store-dir "$builddir/store"
         corepack pnpm --filter "@vibesafe/cli..." run build
         test -f packages/cli/dist/bin.js
 
