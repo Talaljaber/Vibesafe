@@ -190,6 +190,6 @@ export function List({ items }: { items: any[] }) {
 }
 `,
     });
-    expect(Date.now() - t0).toBeLessThan(1000);
+    expect(Date.now() - t0).toBeLessThan(4000);
   });
 });

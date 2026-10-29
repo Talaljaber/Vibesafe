@@ -615,10 +615,14 @@ function operandsAreSelf(src: JsSource, start: number, end: number, depth: numbe
   const ops = leadingOperands(src, start, end);
   if (ops.length === 0) return false;
   return ops.every((op) => {
-    const text = src.code.slice(op.start, op.end).replace(/!+\s*$/, "").trim();
+    const text = src.code
+      .slice(op.start, op.end)
+      .replace(/!+\s*$/, "")
+      .trim();
     if (SELF_ONLY_RE.test(text)) return true;
-    if (!/^[A-Za-z_$][\w$]*$/.test(text)) return false;
-    const decl = findDeclaration(src, text, op.start);
+    const base = text.replace(/\s*\??\.\s*(?:toString\s*\(\s*\)|href)$/, "");
+    if (!/^[A-Za-z_$][\w$]*$/.test(base)) return false;
+    const decl = findDeclaration(src, base, op.start);
     return (
       decl !== undefined &&
       !decl.destructured &&
@@ -627,8 +631,7 @@ function operandsAreSelf(src: JsSource, start: number, end: number, depth: numbe
   });
 }
 
-const SELF_SRC =
-  String.raw`(?:(?:window|self)\s*\??\.\s*)?location\s*\??\.\s*(?:href|pathname|origin)|router\s*\??\.\s*(?:asPath|pathname)|document\s*\??\.\s*(?:URL|documentURI|baseURI)`;
+const SELF_SRC = String.raw`(?:(?:window|self)\s*\??\.\s*)?location\s*\??\.\s*(?:href|pathname|origin)|router\s*\??\.\s*(?:asPath|pathname)|document\s*\??\.\s*(?:URL|documentURI|baseURI)`;
 const TO_STRING = String.raw`(?:\s*\??\.\s*toString\s*\(\s*\))?`;
 const SELF_ONLY_RE = new RegExp(
   String.raw`^(?:(?:${SELF_SRC})${TO_STRING}|new\s+URL\s*\(\s*(?:${SELF_SRC})\s*(?:,\s*[^()]*)?\)\s*(?:\??\.\s*href)?${TO_STRING})$`,

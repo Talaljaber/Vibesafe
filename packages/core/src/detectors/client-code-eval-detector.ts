@@ -54,7 +54,7 @@ const REDIRECT_NAME_RE =
   /^(?:next|nexturl|nextpath|redirect|redirectto|redirecturl|redirecturi|redirectpath|returnto|returnurl|returnpath|callbackurl|callback|continue|continueurl|url|dest|destination|goto|target|targeturl)$/;
 /** The same names as a query key literal or member (`get("next")`, `query.returnTo`). */
 const REDIRECT_KEY_RE =
-  /["'`](?:next|redirect(?:[_-]?(?:to|url|uri|path))?|return[_-]?(?:to|url|path)|callback[_-]?url|callback|continue|url|dest(?:ination)?|goto|target)["'`]|\.\s*(?:next|redirect(?:To|Url|Uri|_to|_url)?|return(?:To|Url|_to|_url)|callback(?:Url|_url)?|continue|url|dest(?:ination)?|goto)\b/i;
+  /["'`][?&]?(?:next|redirect[\w-]*|return[\w-]*|callback[\w-]*|continue|url|dest\w*|goto|target)=|["'`](?:next|redirect(?:[_-]?(?:to|url|uri|path))?|return[_-]?(?:to|url|path)|callback[_-]?url|callback|continue|url|dest(?:ination)?|goto|target)["'`]|\.\s*(?:next|redirect(?:To|Url|Uri|_to|_url)?|return(?:To|Url|_to|_url)|callback(?:Url|_url)?|continue|url|dest(?:ination)?|goto)\b/i;
 
 /** A helper that vets a destination (`isSafeRedirect(x)`, `getSafeUrl(x)`, `sanitizeNext(x)`). */
 const SAFE_HELPER_NAME = String.raw`(?<![\w$])(?:is|ensure|get|to|make|validate|sanitize|safe|check)\w*(?:Url|Path|Redirect|Href|Link|Next|Destination|Return\w*)`;

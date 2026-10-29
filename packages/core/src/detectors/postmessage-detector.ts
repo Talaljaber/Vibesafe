@@ -174,10 +174,7 @@ function checksOrigin(cf: ClientFile, body: string, param: string, depth = 0): b
     String.raw`\.\s*(?:includes|has|indexOf|test|some)\s*\(\s*${origin}`,
   ];
   if (new RegExp(checks.join("|")).test(body)) return true;
-  const call = new RegExp(
-    String.raw`([A-Za-z_$][\w$.]*)\s*\(\s*(?:[^()]*,\s*)?${esc}\s*[,)]`,
-    "g",
-  );
+  const call = new RegExp(String.raw`([A-Za-z_$][\w$.]*)\s*\(\s*(?:[^()]*,\s*)?${esc}\s*[,)]`, "g");
   for (let m = call.exec(body); m !== null; m = call.exec(body)) {
     const callee = m[1]!;
     if (/origin/i.test(callee)) return true;

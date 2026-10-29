@@ -205,7 +205,8 @@ export class BrowserStorageDetector implements Detector {
       if (chains.length === 0) continue; // literal-only value (e.g. clearing with "")
       const k = w.key === undefined ? "" : norm(w.key);
       // A CSRF/XSRF token is meant to be readable by the page.
-      if (/csrf|xsrf/.test(k) || chains.some((c) => /csrf|xsrf/i.test(c.segments.join("")))) continue;
+      if (/csrf|xsrf/.test(k) || chains.some((c) => /csrf|xsrf/i.test(c.segments.join(""))))
+        continue;
       const keySecret =
         k !== "" && w.key !== undefined && isSecretKey(w.key) && !NOT_SECRET_KEY_RE.test(k);
       const valueSecret = chains.some((c) => isSecretValueName(c.segments[c.segments.length - 1]!));
