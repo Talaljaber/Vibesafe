@@ -193,9 +193,19 @@ describe("docs hygiene", () => {
     expect(m![3]).toHaveLength(hexLength);
     // pnpm/action-setup refuses a `version:` input that differs from packageManager.
     const ci = read(".github/workflows/ci.yml");
-    const setup = /uses: pnpm\/action-setup@\S+\n((?: {8}.*\n)*)/.exec(ci);
+    const setup = /uses: pnpm\/action-setup@\S+(?: #[^\n]*)?\n((?: {8}.*\n)*)/.exec(ci);
     expect(setup, "pnpm/action-setup step not found").not.toBeNull();
     expect(setup![1]).not.toMatch(/^\s*version:/m);
+  });
+
+  it("CI pins every third-party action to a full commit SHA with its version tag", () => {
+    const ci = read(".github/workflows/ci.yml");
+    const uses = [...ci.matchAll(/^\s*(?:- )?uses:\s*(\S+)(.*)$/gm)];
+    expect(uses.length).toBeGreaterThan(0);
+    for (const [line, ref, rest] of uses) {
+      expect(ref, line).toMatch(/@[0-9a-f]{40}$/);
+      expect(rest, line).toMatch(/^ # v\d+\.\d+\.\d+$/);
+    }
   });
 
   it("a self-test workflow runs the action from this checkout on every runner OS", () => {
