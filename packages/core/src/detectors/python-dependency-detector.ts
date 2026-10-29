@@ -13,7 +13,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared";
-import { CATEGORY_PREFIX, createFindingId, isPythonRequirementsFile } from "@talaljaber/vibesafe-shared";
+import {
+  CATEGORY_PREFIX,
+  createFindingId,
+  isPythonRequirementsFile,
+} from "@talaljaber/vibesafe-shared";
 import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
 
 const UNPINNED_RULE = "dependency/python-unpinned";
