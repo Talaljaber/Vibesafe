@@ -164,7 +164,7 @@ describe("docs hygiene", () => {
     expect(order[1]).toBeLessThan(build);
   });
 
-  it("the cache key step hashes the lockfile the same way as sha256 of its bytes", async () => {
+  it("the cache key step hashes the lockfile bytes plus the pinned pnpm version", async () => {
     const action = read("action.yml");
     const script = /node -e '([^']+)'/.exec(action)?.[1];
     expect(script, "node -e hash script not found").toBeDefined();
@@ -176,8 +176,10 @@ describe("docs hygiene", () => {
     });
     const expected = createHash("sha256")
       .update(fs.readFileSync(path.join(repoRoot, "pnpm-lock.yaml")))
+      .update(String(JSON.parse(read("package.json")).packageManager))
       .digest("hex");
     expect(out).toBe(expected);
+    expect(JSON.parse(read("package.json")).packageManager).toMatch(/^pnpm@/);
   });
 
   it("packageManager pins pnpm with an integrity hash corepack can verify", () => {
