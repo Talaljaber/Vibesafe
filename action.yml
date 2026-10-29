@@ -70,8 +70,8 @@ runs:
         key: ${{ steps.cache-key.outputs.key }}
 
     # Build the CLI from this action's own source (the ref pinned in `uses:`) instead of
-    # running a package from npm. The project does not publish to npm, and the npm name
-    # @vibesafe/cli belongs to an unrelated package.
+    # running a package from npm, so the scan always matches the pinned ref and needs no
+    # registry package to exist.
     - name: Build VibeSafe from the action source
       shell: bash
       working-directory: ${{ github.action_path }}
@@ -100,9 +100,9 @@ runs:
         # action's package.json. pnpm 9 defaults dedupe-peer-dependents to true, which pulls the
         # dependencies of every workspace package into a filtered install; turn it off so only
         # the CLI and its workspace dependencies (shared, core) are installed.
-        corepack pnpm install --frozen-lockfile --ignore-scripts --filter "@vibesafe/cli..." \
+        corepack pnpm install --frozen-lockfile --ignore-scripts --filter "@talaljaber/vibesafe-cli..." \
           --config.dedupe-peer-dependents=false --store-dir "$builddir/store"
-        corepack pnpm --filter "@vibesafe/cli..." run build
+        corepack pnpm --filter "@talaljaber/vibesafe-cli..." run build
         test -f packages/cli/dist/bin.js
 
     - name: Run VibeSafe scan

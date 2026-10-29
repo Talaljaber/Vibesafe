@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { applyInlineIgnores } from "../../src/scanner/inline-ignores.js";
-import type { Finding } from "@vibesafe/shared";
+import type { Finding } from "@talaljaber/vibesafe-shared";
 
 function f(ruleId: string, line?: number, file: string | null = "a.ts"): Finding {
   return {

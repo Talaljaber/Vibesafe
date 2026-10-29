@@ -3,7 +3,7 @@ import { sanitizeEvidence } from "../../src/detectors/utils/sanitize-evidence";
 import { FrontendExposureDetector } from "../../src/detectors/frontend-exposure-detector";
 import { HardcodedLocalhostDetector } from "../../src/detectors/hardcoded-localhost-detector";
 import { CodebaseMessDetector } from "../../src/detectors/codebase-mess-detector";
-import type { ScanContext } from "@vibesafe/shared";
+import type { ScanContext } from "@talaljaber/vibesafe-shared";
 
 const ctx = (files: Record<string, string>): ScanContext => ({
   rootPath: "/fake",

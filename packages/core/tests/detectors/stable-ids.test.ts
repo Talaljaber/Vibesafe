@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { HardcodedLocalhostDetector } from "../../src/detectors/hardcoded-localhost-detector";
 import { CodebaseMessDetector } from "../../src/detectors/codebase-mess-detector";
-import type { ScanContext } from "@vibesafe/shared";
+import type { ScanContext } from "@talaljaber/vibesafe-shared";
 
 const createContext = (files: Record<string, string>): ScanContext => ({
   rootPath: "/fake/path",

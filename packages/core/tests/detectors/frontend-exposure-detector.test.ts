@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { FrontendExposureDetector } from "../../src/detectors/frontend-exposure-detector";
-import type { ScanContext } from "@vibesafe/shared";
+import type { ScanContext } from "@talaljaber/vibesafe-shared";
 
 describe("FrontendExposureDetector", () => {
   const detector = new FrontendExposureDetector();

@@ -64,7 +64,7 @@ Then push your branch to GitHub and create a Pull Request against `main` in [Tal
 
 ## 6. Versioning
 
-All workspace packages (and `VIBESAFE_VERSION` in `@vibesafe/shared`) share one version. Run `node scripts/sync-versions.mjs <version>` to align them (omit the version to use the highest current one) and `pnpm version:check` (same as `node scripts/sync-versions.mjs --check`) to verify.
+All workspace packages (and `VIBESAFE_VERSION` in `@talaljaber/vibesafe-shared`) share one version. Run `node scripts/sync-versions.mjs <version>` to align them (omit the version to use the highest current one) and `pnpm version:check` (same as `node scripts/sync-versions.mjs --check`) to verify.
 
 ## 7. Formatting and line endings
 

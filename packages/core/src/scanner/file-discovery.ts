@@ -7,7 +7,7 @@ import {
   SCANNABLE_FILENAMES,
   TEST_PATH_GLOBS,
   buildExcludedDirGlobs,
-} from "@vibesafe/shared";
+} from "@talaljaber/vibesafe-shared";
 
 type Ignore = ReturnType<typeof ignore>;
 

@@ -1,6 +1,6 @@
 import path from "path";
 import chalk from "chalk";
-import { ScannerPipeline, createDefaultRegistry, loadUserConfig } from "@vibesafe/core";
+import { ScannerPipeline, createDefaultRegistry, loadUserConfig } from "@talaljaber/vibesafe-core";
 import { printScanResult } from "../ui/printer.js";
 import { confirm } from "@inquirer/prompts";
 import cliProgress from "cli-progress";

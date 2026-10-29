@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
-import { ALL_CATEGORIES } from "@vibesafe/shared";
+import { ALL_CATEGORIES } from "@talaljaber/vibesafe-shared";
 import { scanInputShape } from "../src/tools/scan.js";
 
 // The category enum is built from ALL_CATEGORIES through a tuple cast that has no runtime guard,

@@ -2,14 +2,14 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { ScanContext } from "@vibesafe/shared";
+import type { ScanContext } from "@talaljaber/vibesafe-shared";
 import { DjangoSettingsDetector } from "../../src/detectors/django-settings-detector";
 import { SecretDetector } from "../../src/detectors/secret-detector";
 import { ProjectContextBuilder } from "../../src/scanner/project-context";
 import { createDefaultRegistry } from "../../src/scanner/detector-registry";
 import { ScannerPipeline } from "../../src/scanner/pipeline";
 import { FileDiscovery } from "../../src/scanner/file-discovery";
-import { CATEGORY_MULTIPLIERS, CATEGORY_PREFIX } from "@vibesafe/shared";
+import { CATEGORY_MULTIPLIERS, CATEGORY_PREFIX } from "@talaljaber/vibesafe-shared";
 
 const detector = new DjangoSettingsDetector();
 

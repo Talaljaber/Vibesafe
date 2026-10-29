@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Keeps every workspace package (and VIBESAFE_VERSION in @vibesafe/shared) on one version.
+// Keeps every workspace package (and VIBESAFE_VERSION in @talaljaber/vibesafe-shared) on one version.
 //
 // Usage:
 //   node scripts/sync-versions.mjs            # align everything to the highest current version

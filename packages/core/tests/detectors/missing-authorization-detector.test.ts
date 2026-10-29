@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { MissingAuthorizationDetector } from "../../src/detectors/missing-authorization-detector";
-import type { ScanContext } from "@vibesafe/shared";
+import type { ScanContext } from "@talaljaber/vibesafe-shared";
 
 describe("MissingAuthorizationDetector", () => {
   const detector = new MissingAuthorizationDetector();

@@ -106,19 +106,20 @@ describe("docs hygiene", () => {
 
   it("the GitHub Action builds the CLI from its own source instead of an npm package", () => {
     const action = read("action.yml");
-    // The npm name @vibesafe/cli belongs to an unrelated package; never fetch or run it.
+    // The action runs the pinned source, never a package fetched from npm.
     expect(action).not.toMatch(/\bnpx\b/);
     expect(action).not.toMatch(/\bnpm (exec|install|i)\b/);
-    expect(action).not.toContain("@vibesafe/cli@");
+    expect(action).not.toMatch(/@vibesafe\/cli/);
+    expect(action).not.toContain("@talaljaber/vibesafe-cli@");
     expect(action).toContain("working-directory: ${{ github.action_path }}");
     expect(action).toContain("corepack pnpm install --frozen-lockfile --ignore-scripts");
-    expect(action).toContain('--filter "@vibesafe/cli..."');
+    expect(action).toContain('--filter "@talaljaber/vibesafe-cli..."');
     expect(action).toContain('"$GITHUB_ACTION_PATH/packages/cli/dist/bin.js"');
     expect(action).toContain("NPM_CONFIG_USERCONFIG=");
     expect(action).toContain("scan --format markdown");
     // The filter and the corepack pnpm version must match the workspace.
     const cli = JSON.parse(read("packages/cli/package.json")) as { name: string };
-    expect(cli.name).toBe("@vibesafe/cli");
+    expect(cli.name).toBe("@talaljaber/vibesafe-cli");
     const root = JSON.parse(read("package.json")) as { packageManager: string };
     expect(root.packageManager).toMatch(/^pnpm@9\./);
     // Only the CLI and its workspace dependencies are installed (pnpm 9 defaults to true).
@@ -264,15 +265,91 @@ describe("docs hygiene", () => {
     }
   });
 
-  it("docs describe the source-built Action and keep the npm name warning", () => {
+  it("docs describe the source-built Action and the npm install under the new scope", () => {
     const readme = read("README.md");
-    expect(readme).not.toMatch(/npx @vibesafe\/cli@/);
     expect(readme).not.toMatch(/Do not use it until/);
     expect(readme).toContain("builds the CLI from the action's own source");
-    expect(readme).toMatch(/`@vibesafe\/cli` name on npm currently belongs to a different/);
+    expect(readme).toContain("npx @talaljaber/vibesafe-cli scan .");
+    expect(readme).toContain("npm i -g @talaljaber/vibesafe-cli");
+    expect(readme).toContain("npx -y @talaljaber/vibesafe-mcp");
+    // Releases are manual, so the README still points at the source build until one exists.
+    expect(readme).toMatch(/published by hand/);
+    expect(readme).toMatch(/`@vibesafe` npm scope belong to someone else/);
     const example = read("examples/github-action.yml");
     expect(example).not.toMatch(/^\s*version:/m);
     expect(example).not.toContain("npx");
+  });
+
+  it("no file outside the CHANGELOG still uses the old @vibesafe npm scope", async () => {
+    const { execFileSync } = await import("node:child_process");
+    // Tracked files only: untracked local notes (an agent guide, scratch files) are not repo
+    // content and must not turn the local gate red.
+    const files = execFileSync("git", ["ls-files", "-z", "--cached"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+    })
+      .split("\0")
+      .filter((f) => f !== "" && f !== "CHANGELOG.md" && fs.existsSync(path.join(repoRoot, f)))
+      .filter((f) => !/\.(png|jpe?g|gif|ico|vsix|tgz)$/i.test(f));
+    expect(files.length).toBeGreaterThan(100);
+    const oldScope = /@vibesafe\/(?:shared|core|cli|mcp)\b/;
+    const offenders = files.filter((f) => oldScope.test(read(f)));
+    expect(offenders).toEqual([]);
+  });
+
+  it("publishable packages use the @talaljaber scope and pack only their build", () => {
+    type Manifest = {
+      name: string;
+      version: string;
+      private?: boolean;
+      license?: string;
+      files?: string[];
+      bin?: Record<string, string>;
+      publishConfig?: { access?: string };
+      repository?: { url?: string; directory?: string };
+      homepage?: string;
+      bugs?: { url?: string };
+      dependencies?: Record<string, string>;
+    };
+    const manifest = (dir: string): Manifest =>
+      JSON.parse(read(`packages/${dir}/package.json`)) as Manifest;
+    const publishable: Record<string, string> = {
+      shared: "@talaljaber/vibesafe-shared",
+      core: "@talaljaber/vibesafe-core",
+      cli: "@talaljaber/vibesafe-cli",
+      mcp: "@talaljaber/vibesafe-mcp",
+    };
+    const names = new Set(Object.values(publishable));
+    expect(read("LICENSE")).toMatch(/^MIT License/);
+    for (const [dir, name] of Object.entries(publishable)) {
+      const pkg = manifest(dir);
+      expect(pkg.name, dir).toBe(name);
+      expect(pkg.private, dir).toBeUndefined();
+      expect(pkg.publishConfig?.access, dir).toBe("public");
+      expect(pkg.license, dir).toBe("MIT");
+      expect(read(`packages/${dir}/LICENSE`), dir).toBe(read("LICENSE"));
+      expect(fs.existsSync(path.join(repoRoot, `packages/${dir}/README.md`)), dir).toBe(true);
+      // Only the build output (plus README and LICENSE) goes into the tarball.
+      expect(pkg.files, dir).toContain("dist");
+      // Source maps point at ../src, which is not shipped, so they stay out of the tarball.
+      expect(pkg.files, dir).toContain("!dist/**/*.map");
+      for (const f of pkg.files ?? []) {
+        expect(f, dir).toMatch(/^(!?dist(\/.*)?|README\.md|LICENSE)$/);
+      }
+      expect(pkg.repository?.url, dir).toBe("git+https://github.com/Talaljaber/Vibesafe.git");
+      expect(pkg.repository?.directory, dir).toBe(`packages/${dir}`);
+      expect(pkg.homepage, dir).toMatch(/^https:\/\/github\.com\/Talaljaber\/Vibesafe\b/);
+      expect(pkg.bugs?.url, dir).toBe("https://github.com/Talaljaber/Vibesafe/issues");
+      // pnpm pack rewrites workspace:* to the real version, so every workspace dependency must
+      // be another publishable package in the same scope.
+      for (const [dep, range] of Object.entries(pkg.dependencies ?? {})) {
+        if (range.startsWith("workspace:")) expect(names.has(dep), `${dir} -> ${dep}`).toBe(true);
+      }
+    }
+    // Command names stay the same after the rename.
+    expect(Object.keys(manifest("cli").bin ?? {})).toEqual(["vibesafe"]);
+    expect(Object.keys(manifest("mcp").bin ?? {})).toEqual(["vibesafe-mcp"]);
   });
 
   it("every CLI and MCP flag in the README exists in the source", () => {

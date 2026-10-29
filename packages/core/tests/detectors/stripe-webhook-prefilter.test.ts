@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { ScanContext } from "@vibesafe/shared";
+import type { ScanContext } from "@talaljaber/vibesafe-shared";
 
 vi.mock("../../src/detectors/utils/strip-comments", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/detectors/utils/strip-comments")>();

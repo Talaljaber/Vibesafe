@@ -6,7 +6,7 @@ import {
   isInsideRoot,
   isFindingInsideRoot,
 } from "../src/util/findings.js";
-import type { Finding, ScanResult } from "@vibesafe/shared";
+import type { Finding, ScanResult } from "@talaljaber/vibesafe-shared";
 
 const mk = (id: string, file?: string): Finding => ({ id, file }) as unknown as Finding;
 

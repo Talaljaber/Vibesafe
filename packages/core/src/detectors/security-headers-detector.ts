@@ -1,5 +1,5 @@
-import type { Detector, Finding, ScanContext, Severity } from "@vibesafe/shared";
-import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
+import type { Detector, Finding, ScanContext, Severity } from "@talaljaber/vibesafe-shared";
+import { CATEGORY_PREFIX, createFindingId } from "@talaljaber/vibesafe-shared";
 import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
 
 const EXPRESS_SOURCE_RE = /\.(?:[cm]?[jt]s|[jt]sx)$/;

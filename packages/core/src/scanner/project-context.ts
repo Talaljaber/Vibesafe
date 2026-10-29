@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Dirent } from "node:fs";
-import { ALWAYS_EXCLUDED_DIRS, type ProjectContext } from "@vibesafe/shared";
+import { ALWAYS_EXCLUDED_DIRS, type ProjectContext } from "@talaljaber/vibesafe-shared";
 
 export class ProjectContextBuilder {
   private rootPath: string;

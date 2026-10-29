@@ -4,7 +4,7 @@ const scanMock = vi.hoisted(() => vi.fn());
 const confirmMock = vi.hoisted(() => vi.fn());
 const wizardMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@vibesafe/core", () => ({
+vi.mock("@talaljaber/vibesafe-core", () => ({
   createDefaultRegistry: () => ({}),
   loadUserConfig: async () => undefined,
   ScannerPipeline: class {

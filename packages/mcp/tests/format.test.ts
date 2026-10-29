@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { Finding, ScanResult, ProjectContext } from "@vibesafe/shared";
+import type { Finding, ScanResult, ProjectContext } from "@talaljaber/vibesafe-shared";
 import {
   summarizeScanResult,
   formatScanSummaryText,

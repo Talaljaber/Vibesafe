@@ -5,7 +5,7 @@ import {
   isClientFile,
   isViteConfigFile,
 } from "../../src/detectors/utils/file-classifier";
-import type { ScanContext } from "@vibesafe/shared";
+import type { ScanContext } from "@talaljaber/vibesafe-shared";
 
 const detector = new FrontendExposureDetector();
 

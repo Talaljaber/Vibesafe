@@ -1,5 +1,5 @@
-import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
-import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
+import type { Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared";
+import { CATEGORY_PREFIX, createFindingId } from "@talaljaber/vibesafe-shared";
 import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
 
 const CODE_FILE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];

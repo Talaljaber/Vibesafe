@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { SupabaseRlsDetector, stripSqlNoise } from "../../src/detectors/supabase-rls-detector";
-import type { ScanContext } from "@vibesafe/shared";
+import type { ScanContext } from "@talaljaber/vibesafe-shared";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

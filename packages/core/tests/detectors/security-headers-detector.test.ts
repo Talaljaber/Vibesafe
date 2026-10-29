@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { ScanContext } from "@vibesafe/shared";
+import type { ScanContext } from "@talaljaber/vibesafe-shared";
 import { SecurityHeadersDetector } from "../../src/detectors/security-headers-detector.js";
 
 const ctx = (files: Record<string, string>): ScanContext =>

@@ -1,6 +1,6 @@
 import path from "node:path";
-import { type Detector, type Finding, type ScanContext } from "@vibesafe/shared";
-import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
+import { type Detector, type Finding, type ScanContext } from "@talaljaber/vibesafe-shared";
+import { CATEGORY_PREFIX, createFindingId } from "@talaljaber/vibesafe-shared";
 import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
 import {
   hasUseServerDirective,

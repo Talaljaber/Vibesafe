@@ -1,4 +1,4 @@
-import type { FindingCategory, Severity } from "@vibesafe/shared";
+import type { FindingCategory, Severity } from "@talaljaber/vibesafe-shared";
 
 /** Shape of a `.vibesafe.config.*` file. Every field is optional. */
 export interface VibeSafeConfig {

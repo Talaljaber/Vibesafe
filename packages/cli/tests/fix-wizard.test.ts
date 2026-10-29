@@ -6,7 +6,7 @@ const previewMock = vi.hoisted(() => vi.fn());
 const applyMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@inquirer/prompts", () => ({ select: selectMock, confirm: vi.fn() }));
-vi.mock("@vibesafe/core", () => ({
+vi.mock("@talaljaber/vibesafe-core", () => ({
   createDefaultRegistry: () => ({}),
   createDefaultFixRegistry: () => ({
     getFixer: (ruleId: string) =>

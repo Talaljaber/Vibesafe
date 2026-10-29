@@ -1,4 +1,4 @@
-import type { ScanResult } from "@vibesafe/shared";
+import type { ScanResult } from "@talaljaber/vibesafe-shared";
 import { formatSarif } from "./sarif.js";
 import { formatMarkdownReport } from "../ui/markdown-reporter.js";
 

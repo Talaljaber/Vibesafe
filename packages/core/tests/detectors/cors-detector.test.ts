@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { CorsDetector } from "../../src/detectors/cors-detector";
-import type { ScanContext } from "@vibesafe/shared";
+import type { ScanContext } from "@talaljaber/vibesafe-shared";
 
 const detector = new CorsDetector();
 

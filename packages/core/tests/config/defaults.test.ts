@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ALL_CATEGORIES } from "@vibesafe/shared";
+import { ALL_CATEGORIES } from "@talaljaber/vibesafe-shared";
 import { DEFAULT_CONFIG, mergeConfig } from "../../src/config/defaults.js";
 import { createDefaultRegistry } from "../../src/scanner/detector-registry.js";
 

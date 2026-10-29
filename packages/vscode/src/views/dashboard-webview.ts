@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import type { ScanResult } from "@vibesafe/shared";
+import type { ScanResult } from "@talaljaber/vibesafe-shared";
 import { cspMeta, getNonce } from "../util/csp.js";
 
 let currentPanel: vscode.WebviewPanel | undefined;

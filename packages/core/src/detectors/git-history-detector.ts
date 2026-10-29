@@ -4,8 +4,8 @@ import {
   type ScanContext,
   type Severity,
   redactSecret,
-} from "@vibesafe/shared";
-import { CATEGORY_PREFIX, createFindingId } from "@vibesafe/shared";
+} from "@talaljaber/vibesafe-shared";
+import { CATEGORY_PREFIX, createFindingId } from "@talaljaber/vibesafe-shared";
 import { SECRET_PATTERNS, matchSecretPattern } from "./patterns/secret-patterns.js";
 import {
   getHistoricalAddedLines,
