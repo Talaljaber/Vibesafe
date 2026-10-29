@@ -119,4 +119,76 @@ describe("SecretDetector", () => {
       expect(findings.some((f) => f.deployBlocking)).toBe(false);
     });
   });
+
+  describe("database URLs with passwords", () => {
+    const DB_HOST = "db.kq7wpzt3hxv.supabase.co";
+    // Built at runtime so this test file does not itself contain a scannable URL.
+    const PW = "Xk9prodQ2v7";
+    const dbUrl = (pass: string, host = DB_HOST, scheme = "postgres", user = "postgres") =>
+      `${scheme}://${user}:${pass}@${host}:5432/postgres`;
+    const urlFindings = async (files: Record<string, string>) =>
+      (await detector.detect(createContext(files))).filter(
+        (f) => f.ruleId === "secret/sec-database-url",
+      );
+
+    it.each([
+      ["postgres", dbUrl(PW)],
+      ["postgresql", dbUrl(PW, DB_HOST, "postgresql")],
+      ["mysql", dbUrl(PW, "mysql.prod.internal.acme.io", "mysql", "app")],
+      ["mongodb+srv", `mongodb+srv://app:${PW}@cluster0.ab1cd.mongodb.net/shop`],
+      ["rediss with empty user", `rediss://:${PW}@cache.acme-prod.io:6380`],
+      ["amqps", `amqps://svc:${PW}@rabbit.acme-prod.io/vhost`],
+    ])("flags a %s URL in code, .env and shell scripts", async (_name, url) => {
+      const findings = await urlFindings({
+        "scripts/backup.js": `const DATABASE_URL = process.env.DATABASE_URL ||\n  "${url}";`,
+        ".env.production": `DATABASE_URL=${url}`,
+        "scripts/restore.sh": `pg_restore -d "${url}" dump.bin`,
+      });
+      expect(findings.map((f) => [f.file, f.line])).toEqual([
+        ["scripts/backup.js", 2],
+        [".env.production", 1],
+        ["scripts/restore.sh", 1],
+      ]);
+      for (const f of findings) {
+        expect(f.severity).toBe("high");
+        expect(f.confidence).toBe("high");
+        expect(f.deployBlocking).toBe(false);
+        expect(f.evidence).not.toContain(PW);
+        expect(f.fixSteps[0]).toMatch(/Rotate the database password/);
+        expect(f.aiFixPrompt).toMatch(/DATABASE_URL/);
+      }
+    });
+
+    it.each([
+      ["localhost", dbUrl(PW, "localhost")],
+      ["loopback", dbUrl(PW, "127.0.0.1")],
+      ["compose service (single-label host)", dbUrl(PW, "db")],
+      ["default password", dbUrl("postgres")],
+      ["password placeholder", dbUrl("<password>", "<host>", "postgres", "<user>")],
+      ["changeme", dbUrl("changeme")],
+      ["template interpolation", dbUrl("${DB_PASSWORD}")],
+      ["shell variable", dbUrl("$PGPASSWORD")],
+      ["printf placeholder", dbUrl("%s")],
+      ["example host", dbUrl(PW, "db.example.com")],
+      ["password equals user", dbUrl("appuser", DB_HOST, "postgres", "appuser")],
+      ["no password", `postgres://postgres@${DB_HOST}:5432/postgres`],
+      ["https URL", `https://user:${PW}@${DB_HOST}/`],
+      [
+        "Supabase pooler placeholder",
+        dbUrl(
+          "[YOUR-PASSWORD]",
+          "aws-0-us-east-1.pooler.supabase.com",
+          "postgresql",
+          "postgres.kq7wpzt3hxv",
+        ),
+      ],
+      ["Supabase direct placeholder", dbUrl("[YOUR-PASSWORD]", DB_HOST, "postgresql")],
+      ["Upstash placeholder", "redis://default:your-redis-password@redis.upstash.io:6379"],
+      ["upper-case placeholder", dbUrl("YOUR_DB_PASSWORD")],
+    ])("does not flag %s", async (_name, url) => {
+      expect(
+        await urlFindings({ "a.ts": `const u = "${url}";`, ".env.example": `X=${url}` }),
+      ).toEqual([]);
+    });
+  });
 });
