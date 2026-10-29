@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runFixAll } from "../src/commands/fix-all.js";
 import { runWatch, buildWatchScanOptions, type WatchOptions } from "../src/commands/watch.js";
+import { resolveEffectiveDeep } from "../src/commands/scan.js";
 
 // The .vibesafe.config file must shape fix --all and watch exactly like scan, and
 // --no-config (config: false) must switch it off for them too.
@@ -200,6 +201,136 @@ describe("built binary threads the config flags", () => {
     }).stdout;
     expect(watchHelp).toContain("--no-include-tests");
   }, 30000);
+});
+
+// A .ts config that leaves a marker file behind when it is executed, and limits the scan to the
+// secret category so a trusted run is also visible in the findings.
+async function writeScriptConfig(): Promise<string> {
+  const marker = path.join(base, "script-config-ran.txt");
+  await write(
+    ".vibesafe.config.ts",
+    `import fs from "node:fs";\n` +
+      `fs.writeFileSync(${JSON.stringify(marker)}, "x");\n` +
+      `const config: { categories: string[] } = { categories: ["secret"] };\n` +
+      `export default config;\n`,
+  );
+  return marker;
+}
+const exists = (p: string) =>
+  fs.access(p).then(
+    () => true,
+    () => false,
+  );
+
+describe("script configs need --trust-config in fix --all and watch", () => {
+  it("fix --all does not execute a script config without trustConfig", async () => {
+    const marker = await writeScriptConfig();
+    const lines: string[] = [];
+    const res = await runFixAll(proj, { yes: true, log: (l) => void lines.push(l) });
+    expect(await exists(marker)).toBe(false);
+    expect(lines.join("\n")).toContain("Ignored .vibesafe.config.ts");
+    // The config was not applied: findings outside "secret" were fixed too.
+    expect(res.outcomes.map((o) => o.ruleId)).toContain("code_quality/console-log");
+  });
+
+  it("fix --all executes and applies a script config with trustConfig", async () => {
+    const marker = await writeScriptConfig();
+    const res = await runFixAll(proj, { yes: true, trustConfig: true, log: noLog });
+    expect(await exists(marker)).toBe(true);
+    expect(res.outcomes.map((o) => o.ruleId)).toEqual(["secret/env-not-ignored"]);
+    expect(await read("src/index.js")).toContain('console.log("debug"');
+  });
+
+  it("watch does not execute a script config without trustConfig", async () => {
+    const marker = await writeScriptConfig();
+    const ready = await readyEvent({});
+    expect(ready.type).toBe("ready");
+    expect(await exists(marker)).toBe(false);
+    expect(
+      (ready.warnings as string[]).some((w) => w.includes("Ignored .vibesafe.config.ts")),
+    ).toBe(true);
+    expect(categories(ready)).toContain("code_quality");
+  }, 30000);
+
+  it("watch executes and applies a script config with trustConfig", async () => {
+    const marker = await writeScriptConfig();
+    const ready = await readyEvent({ trustConfig: true });
+    expect(ready.type).toBe("ready");
+    expect(await exists(marker)).toBe(true);
+    expect(new Set(categories(ready))).toEqual(new Set(["secret"]));
+  }, 30000);
+});
+
+describe("resolveEffectiveDeep", () => {
+  it("prefers the --deep / --no-deep flag over the config file", async () => {
+    await writeConfig({ deep: true });
+    expect(await resolveEffectiveDeep(proj, { deep: false })).toBe(false);
+    await writeConfig({ deep: false });
+    expect(await resolveEffectiveDeep(proj, { deep: true })).toBe(true);
+  });
+
+  it("takes deep from the config file when the flag is unset", async () => {
+    expect(await resolveEffectiveDeep(proj, {})).toBe(false);
+    await writeConfig({ deep: true });
+    expect(await resolveEffectiveDeep(proj, {})).toBe(true);
+    await writeConfig({ deep: false });
+    expect(await resolveEffectiveDeep(proj, {})).toBe(false);
+  });
+
+  it("ignores the config file with --no-config", async () => {
+    await writeConfig({ deep: true });
+    expect(await resolveEffectiveDeep(proj, { config: false })).toBe(false);
+  });
+
+  it("resolves to false for a config that fails to load", async () => {
+    await write(".vibesafe.config.json", "{ nope");
+    expect(await resolveEffectiveDeep(proj, {})).toBe(false);
+  });
+
+  it("only executes a script config when trusted", async () => {
+    const marker = path.join(base, "deep-config-ran.txt");
+    await write(
+      ".vibesafe.config.ts",
+      `import fs from "node:fs";\nfs.writeFileSync(${JSON.stringify(marker)}, "x");\nexport default { deep: true };\n`,
+    );
+    expect(await resolveEffectiveDeep(proj, {})).toBe(false);
+    expect(await exists(marker)).toBe(false);
+    expect(await resolveEffectiveDeep(proj, { trustConfig: true })).toBe(true);
+    expect(await exists(marker)).toBe(true);
+  });
+});
+
+describe("scan deep-scan notice", () => {
+  const NOTICE = "Deep scan enabled";
+  const scan = (...args: string[]) =>
+    spawnSync(process.execPath, [BIN, "scan", proj, ...args], {
+      encoding: "utf-8",
+      maxBuffer: 64 * 1024 * 1024,
+    });
+
+  it("prints the notice when the config file sets deep: true", async () => {
+    await writeConfig({ deep: true });
+    expect(scan().stdout).toContain(NOTICE);
+  }, 30000);
+
+  it("prints the notice for --deep and not for a plain scan", () => {
+    expect(scan("--deep").stdout).toContain(NOTICE);
+    expect(scan().stdout).not.toContain(NOTICE);
+  }, 60000);
+
+  it("--no-deep and --no-config suppress a config-driven notice", async () => {
+    await writeConfig({ deep: true });
+    expect(scan("--no-deep").stdout).not.toContain(NOTICE);
+    expect(scan("--no-config").stdout).not.toContain(NOTICE);
+  }, 60000);
+
+  it("keeps machine output clean when the config enables deep", async () => {
+    await writeConfig({ deep: true });
+    const res = scan("--json");
+    expect(res.stdout + res.stderr).not.toContain(NOTICE);
+    expect(() => JSON.parse(res.stdout) as unknown).not.toThrow();
+    expect(scan("--format", "sarif").stdout).not.toContain(NOTICE);
+  }, 60000);
 });
 
 describe("scan output from config-supplied strings", () => {
