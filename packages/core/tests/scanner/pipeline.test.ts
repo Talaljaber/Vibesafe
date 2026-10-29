@@ -97,4 +97,47 @@ describe("ScannerPipeline", () => {
 
     expect(result.findings.length).toBe(0);
   });
+
+  it("counts and weights the injection and crypto categories", async () => {
+    const finding = (
+      category: "injection" | "crypto",
+      severity: "high" | "medium",
+      id: string,
+    ): Finding => ({
+      id,
+      ruleId: `${category}/mock`,
+      title: `Mock ${category} issue`,
+      severity,
+      category,
+      deployBlocking: false,
+      confidence: "high",
+      plainEnglishProblem: "Mock problem.",
+      whyItMatters: "Mock impact.",
+      fixSteps: ["Mock fix."],
+      autoFixAvailable: false,
+    });
+    const registry = new DetectorRegistry();
+    registry.register({
+      id: "mock-injection-crypto",
+      name: "Mock Injection and Crypto",
+      category: "injection",
+      description: "Emits one injection and one crypto finding",
+      detect: async () => [
+        finding("injection", "high", "INJ-mock-1"),
+        finding("crypto", "medium", "CRYPTO-mock-1"),
+      ],
+    });
+
+    const pipeline = new ScannerPipeline(registry);
+    const result = await pipeline.scan({ rootPath: fixturePath });
+
+    expect(result.summary.categoryCounts.injection).toBe(1);
+    expect(result.summary.categoryCounts.crypto).toBe(1);
+    // 100 - (10 * 1.4 injection) - (5 * 1.2 crypto) = 80
+    expect(result.score).toBe(80);
+
+    const empty = pipeline.buildSummary([], 0);
+    expect(empty.categoryCounts.injection).toBe(0);
+    expect(empty.categoryCounts.crypto).toBe(0);
+  });
 });

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFindingId, CATEGORY_PREFIX } from "../src/index.js";
+import { ALL_CATEGORIES, createFindingId, CATEGORY_PREFIX } from "../src/index.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../..");
@@ -381,7 +381,7 @@ describe("docs hygiene", () => {
     const ruleIds = [
       ...new Set(
         readme.match(
-          /\b(?:secret|auth|authorization|frontend_exposure|validation|dependency|code_quality|structure|xss|security_config)\/[a-z0-9-]*[a-z0-9](?![a-z0-9*-])/g,
+          new RegExp(`\\b(?:${ALL_CATEGORIES.join("|")})\\/[a-z0-9-]*[a-z0-9](?![a-z0-9*-])`, "g"),
         ) ?? [],
       ),
     ];

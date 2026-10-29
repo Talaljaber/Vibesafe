@@ -129,6 +129,8 @@ describe("constants", () => {
       structure: true,
       xss: true,
       security_config: true,
+      injection: true,
+      crypto: true,
     };
 
     it("lists every FindingCategory exactly once, including xss and security_config", () => {
@@ -138,8 +140,25 @@ describe("constants", () => {
       expect(ALL_CATEGORIES).toContain("security_config");
     });
 
+    it("includes the injection and crypto categories", () => {
+      expect(ALL_CATEGORIES).toContain("injection");
+      expect(ALL_CATEGORIES).toContain("crypto");
+    });
+
     it("matches the category multiplier table", () => {
       expect([...ALL_CATEGORIES].sort()).toEqual(Object.keys(CATEGORY_MULTIPLIERS).sort());
+    });
+  });
+
+  describe("injection and crypto multipliers", () => {
+    it("weights injection at 1.4, above auth and below secrets", () => {
+      expect(CATEGORY_MULTIPLIERS.injection).toBe(1.4);
+      expect(CATEGORY_MULTIPLIERS.injection).toBeGreaterThan(CATEGORY_MULTIPLIERS.auth);
+      expect(CATEGORY_MULTIPLIERS.injection).toBeLessThan(CATEGORY_MULTIPLIERS.secret);
+    });
+
+    it("weights crypto at 1.2", () => {
+      expect(CATEGORY_MULTIPLIERS.crypto).toBe(1.2);
     });
   });
 
@@ -156,6 +175,8 @@ describe("constants", () => {
         "structure",
         "xss",
         "security_config",
+        "injection",
+        "crypto",
       ] as const;
 
       for (const cat of categories) {
@@ -163,8 +184,21 @@ describe("constants", () => {
       }
     });
 
+    it("prefixes are unique so finding ids never collide across categories", () => {
+      const prefixes = Object.values(CATEGORY_PREFIX);
+      expect(new Set(prefixes).size).toBe(prefixes.length);
+    });
+
     it("CFG prefix is used for security_config", () => {
       expect(CATEGORY_PREFIX.security_config).toBe("CFG");
+    });
+
+    it("INJ prefix is used for injection", () => {
+      expect(CATEGORY_PREFIX.injection).toBe("INJ");
+    });
+
+    it("CRYPTO prefix is used for crypto", () => {
+      expect(CATEGORY_PREFIX.crypto).toBe("CRYPTO");
     });
 
     it("SEC prefix is used for secrets", () => {
