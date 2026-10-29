@@ -22,10 +22,10 @@ const RULE = "xss/postmessage-no-origin-check";
 describe("PostMessageDetector", () => {
   it("flags a named handler that navigates to message data (high)", async () => {
     const findings = await run({
-      "components/EmbedBridge.tsx": `"use client";
+      "components/WidgetFrame.tsx": `"use client";
 import { useEffect } from "react";
 
-export function EmbedBridge({ onAdd }: { onAdd: (id: string) => void }) {
+export function WidgetFrame({ onAdd }: { onAdd: (id: string) => void }) {
   useEffect(() => {
     function onMessage(event: MessageEvent) {
       const msg = event.data;

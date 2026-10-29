@@ -21,7 +21,7 @@ const RULE = "authorization/client-side-role-check";
 
 const ADMIN_PAGE = `"use client";
 import { useEffect, useState } from "react";
-import AdminUsersTable from "@/components/AdminUsersTable";
+import AdminPanel from "@/components/AdminPanel";
 
 export default function AdminPage() {
   const [role, setRole] = useState<string | null>(null);
@@ -33,7 +33,7 @@ export default function AdminPage() {
   if (role !== "owner" && role !== "admin") {
     return <p>Not allowed</p>;
   }
-  return <AdminUsersTable />;
+  return <AdminPanel />;
 }
 `;
 

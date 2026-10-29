@@ -84,10 +84,10 @@ export function Shop({ cart, theme, org }: any) {
 
 describe("BrowserStorageDetector: frontend_exposure/sensitive-data-console-log", () => {
   const LOGIN = `"use client";
-import { getSupabaseBrowser } from "@/lib/client/supabase";
+import { getBrowserClient } from "@/lib/client/supabase";
 export default function Login() {
   async function onSubmit(email: string, password: string) {
-    const supabase = getSupabaseBrowser();
+    const supabase = getBrowserClient();
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return;
     console.log("signed in", data.session);

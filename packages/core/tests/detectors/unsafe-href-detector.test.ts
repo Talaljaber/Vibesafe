@@ -39,7 +39,7 @@ export default async function StorePage({ params }: { params: { slug: string } }
 
 describe("UnsafeHrefDetector", () => {
   it("flags a profile-style URL field rendered as href (medium below React 19)", async () => {
-    const findings = await run({ "app/s/[slug]/page.tsx": STORE_PAGE });
+    const findings = await run({ "app/shops/[handle]/page.tsx": STORE_PAGE });
     expect(findings).toHaveLength(1);
     expect(findings[0]!.ruleId).toBe(RULE);
     expect(findings[0]!.category).toBe("xss");
@@ -49,7 +49,7 @@ describe("UnsafeHrefDetector", () => {
   });
 
   it("drops to low severity on React 19, which blocks javascript: URLs", async () => {
-    const findings = await run({ "app/s/[slug]/page.tsx": STORE_PAGE }, "^19.0.0");
+    const findings = await run({ "app/shops/[handle]/page.tsx": STORE_PAGE }, "^19.0.0");
     expect(findings).toHaveLength(1);
     expect(findings[0]!.severity).toBe("low");
   });
@@ -114,8 +114,8 @@ export function Card() { return <p>{"<a href={user.website}>"}</p>; }
   });
 
   it("produces stable ids across runs", async () => {
-    const a = await run({ "app/s/[slug]/page.tsx": STORE_PAGE });
-    const b = await run({ "app/s/[slug]/page.tsx": STORE_PAGE });
+    const a = await run({ "app/shops/[handle]/page.tsx": STORE_PAGE });
+    const b = await run({ "app/shops/[handle]/page.tsx": STORE_PAGE });
     expect(a.map((f) => f.id)).toEqual(b.map((f) => f.id));
   });
 });

@@ -46,7 +46,7 @@ export default function Tools() {
 import { useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 
-function parseFilters(raw: string | null) {
+function decodeQuery(raw: string | null) {
   if (!raw) return {};
   try {
     return eval("(" + raw + ")");
@@ -57,7 +57,7 @@ function parseFilters(raw: string | null) {
 
 export default function Orders() {
   const searchParams = useSearchParams();
-  const filters = useMemo(() => parseFilters(searchParams.get("filters")), [searchParams]);
+  const filters = useMemo(() => decodeQuery(searchParams.get("filters")), [searchParams]);
   return <pre>{JSON.stringify(filters)}</pre>;
 }
 `,

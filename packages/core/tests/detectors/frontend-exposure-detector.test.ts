@@ -386,10 +386,10 @@ const key = process.env.NEXT_PUBLIC_PAYMENTS_PRIVATE_KEY;
     it("does not follow import type into server modules", async () => {
       const findings = await detector.detect(
         createContext({
-          "components/ProductForm.tsx": `"use client";
+          "components/ItemEditor.tsx": `"use client";
 import type { getSession } from "@/lib/server/auth";
 type Session = Awaited<ReturnType<typeof getSession>>;
-export function ProductForm({ session }: { session: Session }) { return null; }
+export function ItemEditor({ session }: { session: Session }) { return null; }
 `,
           "lib/server/auth.ts": `import { createClient } from "@supabase/supabase-js";
 const admin = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
