@@ -25,6 +25,17 @@ const HELPER_NAME_RE =
 /** Cheap raw-text pre-filter so unrelated files are never scanned or stripped. */
 const RAW_PREFILTER_RE = /stripe|webhook/i;
 
+/**
+ * Cheap raw-text check run before any comment stripping: a file whose path and content never
+ * mention `stripe` or `webhook` cannot be a Stripe webhook handler.
+ */
+export function mayBeStripeWebhookFile(filePath: string, fileContent: string): boolean {
+  return RAW_PREFILTER_RE.test(filePath) || RAW_PREFILTER_RE.test(fileContent);
+}
+
+/** Route-level evidence that an Express webhook route is the Stripe receiver of its file. */
+const ROUTE_STRIPE_EVIDENCE_RE = /stripe|constructEvent|(?:express|bodyParser)\s*\.\s*raw|rawBody/i;
+
 function isHandlerText(text: string, allowDefaultExport: boolean, headerCounts = true): boolean {
   return (
     EXPORT_HANDLER_RE.test(text) ||
@@ -64,9 +75,11 @@ function hasStripeReference(code: string): boolean {
  * Determines if a file is a handler dedicated to Stripe webhooks, by path naming (`stripe` +
  * `webhook`, route-like files only) or by content (Stripe usage plus webhook signals, or a
  * `stripe-signature` header read). Either way the file must show real handler evidence.
- * Comments are stripped internally so callers can pass raw file content.
+ * Comments are stripped internally so callers can pass raw file content; files that fail the
+ * cheap `mayBeStripeWebhookFile` pre-filter return early without being stripped.
  */
 export function isStripeWebhookRoute(filePath: string, fileContent: string): boolean {
+  if (!mayBeStripeWebhookFile(filePath, fileContent)) return false;
   const normalizedPath = filePath.replace(/\\/g, "/").toLowerCase();
   if (TEST_FILE_RE.test(normalizedPath)) return false;
 
@@ -96,11 +109,24 @@ export function isStripeWebhookRoute(filePath: string, fileContent: string): boo
 }
 
 /**
- * True when an Express route path names a webhook endpoint. Paired with `isStripeWebhookRoute` (which
- * is file-level) so only the webhook routes of a Stripe webhook file are exempt from auth/validation.
+ * True when an Express route path names a webhook endpoint. Used by `isStripeWebhookExpressRoute`,
+ * which also needs route-level Stripe evidence, so only the Stripe receiver is exempt.
  */
 export function isWebhookPath(routePath: string): boolean {
   return /webhook/i.test(routePath);
+}
+
+/**
+ * True when an Express route in a Stripe webhook file is itself the Stripe receiver: its path names
+ * a webhook and its path or handler chain shows Stripe evidence (`stripe`, `constructEvent`,
+ * `express.raw`, `bodyParser.raw`, `rawBody`). `chainCode` has comments and string contents blanked, so only real
+ * code counts. Other webhook routes in the same file (e.g. `/webhooks/github`) stay covered.
+ */
+export function isStripeWebhookExpressRoute(route: { path: string; chainCode: string }): boolean {
+  return (
+    isWebhookPath(route.path) &&
+    (ROUTE_STRIPE_EVIDENCE_RE.test(route.path) || ROUTE_STRIPE_EVIDENCE_RE.test(route.chainCode))
+  );
 }
 
 /**
@@ -164,7 +190,7 @@ function findParsedBodyVerification(code: string): number | undefined {
   const re =
     /\bconstructEvent(?:Async)?\s*\(\s*(JSON\.stringify\s*\(|await\s+[\w.]+\.json\s*\(|[\w.]+\.body\b)/g;
   const hasRawHint =
-    /\bexpress\s*\.\s*raw\s*\(|bodyParser\s*:\s*false|\bgetRawBody\s*\(|(?<![.\w$])buffer\s*\(|\brawBody\b|\breq\.text\s*\(|\.arrayBuffer\s*\(/.test(
+    /\b(?:express|bodyParser)\s*\.\s*raw\s*\(|bodyParser\s*:\s*false|\bgetRawBody\s*\(|(?<![.\w$])buffer\s*\(|\brawBody\b|\breq\.text\s*\(|\.arrayBuffer\s*\(/.test(
       code,
     );
   for (const m of code.matchAll(re)) {
@@ -211,7 +237,7 @@ export class StripeWebhookDetector implements Detector {
       if (!SCANNABLE_SUFFIXES.some((suffix) => filePath.endsWith(suffix))) continue;
 
       const raw = await context.readFile(filePath);
-      if (!RAW_PREFILTER_RE.test(filePath) && !RAW_PREFILTER_RE.test(raw)) continue;
+      // isStripeWebhookRoute applies the cheap raw-text pre-filter before stripping comments.
       if (!isStripeWebhookRoute(filePath, raw)) continue;
 
       const content = stripComments(raw);
