@@ -34,7 +34,6 @@ export interface WatchOptions {
 
 /** Strips C0/C1 control characters (incl. ESC) so untrusted names cannot inject terminal sequences. */
 export function stripControl(s: string): string {
-  // eslint-disable-next-line no-control-regex
   return s.replace(/[\x00-\x1f\x7f-\x9f]/g, "");
 }
 
