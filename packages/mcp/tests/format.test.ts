@@ -4,6 +4,7 @@ import {
   summarizeScanResult,
   formatScanSummaryText,
   DEFAULT_TOP_FINDINGS_LIMIT,
+  MAX_TOP_FINDINGS_LIMIT,
 } from "../src/format.js";
 
 function makeFinding(
@@ -128,6 +129,20 @@ describe("summarizeScanResult", () => {
     expect(summary.topFindings).toHaveLength(0);
     expect(summary.truncatedCount).toBe(0);
   });
+
+  it("honours an explicit limit and clamps it to 1..MAX_TOP_FINDINGS_LIMIT", () => {
+    const findings = Array.from({ length: 250 }, (_, i) =>
+      makeFinding({ id: `SEC-${i}`, severity: "low" }),
+    );
+    const result = makeScanResult(findings);
+    expect(summarizeScanResult(result, 25).topFindings).toHaveLength(25);
+    expect(summarizeScanResult(result, 25).truncatedCount).toBe(225);
+    expect(summarizeScanResult(result, 1000).topFindings).toHaveLength(MAX_TOP_FINDINGS_LIMIT);
+    expect(summarizeScanResult(result, 0).topFindings).toHaveLength(1);
+    expect(summarizeScanResult(result, Number.NaN).topFindings).toHaveLength(
+      DEFAULT_TOP_FINDINGS_LIMIT,
+    );
+  });
 });
 
 describe("formatScanSummaryText", () => {
@@ -152,6 +167,8 @@ describe("formatScanSummaryText", () => {
     const text = formatScanSummaryText(summarizeScanResult(makeScanResult(findings)));
 
     expect(text).toContain("2 more finding(s) not shown");
+    expect(text).toContain(`higher limit (up to ${MAX_TOP_FINDINGS_LIMIT})`);
+    expect(text).toContain("vibesafe_repair_plan for every finding");
   });
 
   it("reports a clean result when there are no findings", () => {

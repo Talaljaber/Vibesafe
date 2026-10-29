@@ -89,14 +89,55 @@ describe("GitignoreEnvFixer", () => {
     await fs.rm(target, { force: true });
   });
 
-  it("should not append .env if it already exists", async () => {
+  it("adds .env.* when only .env is ignored, so .env.local stops being committable", async () => {
     await fs.writeFile(path.join(tempDir, ".gitignore"), "node_modules\n.env\n");
+
+    const preview = await fixer.preview(finding, tempDir);
+    expect(preview.filesToModify).toEqual([".gitignore"]);
+    expect(preview.diff).toBe("+ .env.*\n+ !.env.example\n");
 
     const result = await fixer.apply(finding, tempDir);
     expect(result.success).toBe(true);
-    expect(result.message).toContain("already in");
+    expect(result.filesModified).toEqual([".gitignore"]);
+    expect(await fs.readFile(path.join(tempDir, ".gitignore"), "utf-8")).toBe(
+      "node_modules\n.env\n.env.*\n!.env.example\n",
+    );
+  });
 
-    const content = await fs.readFile(path.join(tempDir, ".gitignore"), "utf-8");
-    expect(content).toBe("node_modules\n.env\n"); // unchanged
+  it("previews the full block for an empty .gitignore (never an empty diff)", async () => {
+    await fs.writeFile(path.join(tempDir, ".gitignore"), "");
+    const preview = await fixer.preview(finding, tempDir);
+    expect(preview.filesToModify).toEqual([".gitignore"]);
+    expect(preview.diff).toBe("+ .env\n+ .env.*\n+ !.env.example\n");
+    await fixer.apply(finding, tempDir);
+    expect(await fs.readFile(path.join(tempDir, ".gitignore"), "utf-8")).toBe(
+      ".env\n.env.*\n!.env.example\n",
+    );
+  });
+
+  it("previews the new file's content when .gitignore is missing", async () => {
+    const preview = await fixer.preview(finding, tempDir);
+    expect(preview.filesToCreate).toEqual([".gitignore"]);
+    expect(preview.diff).toContain("+ .env.*");
+  });
+
+  it("reports nothing to change, with no diff, when env files are already covered", async () => {
+    for (const content of [".env\n.env.*\n!.env.example\n", "/.env*\n!/.env.example\n"]) {
+      await fs.writeFile(path.join(tempDir, ".gitignore"), content);
+      const preview = await fixer.preview(finding, tempDir);
+      expect(preview.filesToModify).toEqual([]);
+      expect(preview.diff).toBeUndefined();
+      expect(preview.description).toContain("nothing to change");
+      const result = await fixer.apply(finding, tempDir);
+      expect(result.filesModified).toEqual([]);
+      expect(result.message).toContain("already in");
+      expect(await fs.readFile(path.join(tempDir, ".gitignore"), "utf-8")).toBe(content);
+    }
+  });
+
+  it("treats .env* as covering both .env and .env.*, adding only the negation", async () => {
+    await fs.writeFile(path.join(tempDir, ".gitignore"), ".env*\n");
+    const preview = await fixer.preview(finding, tempDir);
+    expect(preview.diff).toBe("+ !.env.example\n");
   });
 });

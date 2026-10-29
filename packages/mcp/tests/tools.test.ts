@@ -66,6 +66,20 @@ describe("MCP tool handlers", () => {
     expect(props).toHaveProperty("deep");
   });
 
+  it("advertises limit and an opt-in online option, in that order after includeTests", async () => {
+    const { tools } = await client.listTools();
+    const scan = tools.find((t) => t.name === "vibesafe_scan");
+    const props = (scan?.inputSchema as { properties?: Record<string, { description?: string }> })
+      .properties!;
+    const keys = Object.keys(props);
+    expect(keys.slice(keys.indexOf("includeTests"))).toEqual(["includeTests", "limit", "online"]);
+    expect(props.online!.description).toContain("Defaults to false");
+    expect(props.online!.description).toContain("names and versions");
+    const required = (scan?.inputSchema as { required?: string[] }).required ?? [];
+    expect(required).not.toContain("online");
+    expect(required).not.toContain("limit");
+  });
+
   describe("without a prior scan", () => {
     it("explain, repair_plan and fix return an error", async () => {
       for (const [name, args] of [
@@ -109,6 +123,37 @@ describe("MCP tool handlers", () => {
       const res = await call(client, "vibesafe_repair_plan");
       expect(res.isError).toBeFalsy();
       expect(JSON.parse(res.content[1]!.text).steps.length).toBeGreaterThan(0);
+    });
+
+    it("repair_plan points to explain and marks auto-fixable steps", async () => {
+      const res = await call(client, "vibesafe_repair_plan");
+      const text = res.content[0]!.text;
+      expect(text).toContain("vibesafe_explain");
+      const plan = JSON.parse(res.content[1]!.text) as { steps: { autoFixAvailable: boolean }[] };
+      if (plan.steps.some((s) => s.autoFixAvailable)) expect(text).toContain("[auto-fix]");
+    });
+
+    it("scan honours limit (default 10) and rejects values outside 1-200", async () => {
+      const all = await call(client, "vibesafe_scan", { path: FIXTURE, limit: 200 });
+      const total = JSON.parse(all.content[1]!.text).totalFindings as number;
+      expect(total).toBeGreaterThan(3);
+      expect(summaryOf(all).topFindings).toHaveLength(Math.min(total, 200));
+
+      const three = await call(client, "vibesafe_scan", { path: FIXTURE, limit: 3 });
+      expect(summaryOf(three).topFindings).toHaveLength(3);
+      expect(three.content[0]!.text).toContain("higher limit");
+
+      expect(findings).toHaveLength(Math.min(total, 10));
+
+      for (const limit of [0, 201, 2.5]) {
+        // Depending on the SDK version an invalid argument is a thrown protocol error or an
+        // isError result; either way no scan summary comes back.
+        const rejected = await call(client, "vibesafe_scan", { path: FIXTURE, limit }).then(
+          (r) => r.isError === true,
+          () => true,
+        );
+        expect(rejected, String(limit)).toBe(true);
+      }
     });
 
     it("fix errors for an unknown id", async () => {

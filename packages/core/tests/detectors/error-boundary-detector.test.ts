@@ -90,4 +90,52 @@ describe("ErrorBoundaryDetector", () => {
     expect(findings).toHaveLength(1);
     expect(findings[0].ruleId).toBe("structure/missing-error-boundary");
   });
+
+  describe("Next.js App Router", () => {
+    const layout = `export default function RootLayout({ children }) {
+  return <html><body>{children}</body></html>;
+}`;
+
+    it("advises app/error.tsx and app/global-error.tsx instead of wrapping a root component", async () => {
+      const findings = await detector.detect(
+        createContext({
+          "app/layout.tsx": layout,
+          "app/page.tsx": "export default () => <main />;",
+        }),
+      );
+      expect(findings).toHaveLength(1);
+      const f = findings[0]!;
+      expect(f.file).toBe("app/layout.tsx");
+      expect(f.plainEnglishProblem).toContain("App Router");
+      expect(f.fixSteps.join("\n")).toContain("app/error.tsx");
+      expect(f.fixSteps.join("\n")).toContain("app/global-error.tsx");
+      expect(f.aiFixPrompt).toContain("global-error.tsx");
+      expect(f.aiFixPrompt).not.toContain("wrap the application's root component");
+    });
+
+    it("uses the src/app directory when the app lives there", async () => {
+      const findings = await detector.detect(
+        createContext({ "src/app/layout.tsx": layout, "src/app/page.tsx": "x" }),
+      );
+      expect(findings[0]!.fixSteps[0]).toContain("src/app/error.tsx");
+    });
+
+    it("keeps the same finding id as before for a given project shape", async () => {
+      const [appRouter] = await detector.detect(createContext({ "app/layout.tsx": layout }));
+      const [plain] = await detector.detect(createContext({ "App.tsx": "<div />" }));
+      expect(appRouter!.id).toBe(plain!.id);
+    });
+
+    it("does not report when app/error.tsx exists", async () => {
+      const findings = await detector.detect(
+        createContext({ "app/layout.tsx": layout, "app/error.tsx": '"use client";' }),
+      );
+      expect(findings).toEqual([]);
+    });
+
+    it("keeps the component advice for non-Next React apps", async () => {
+      const findings = await detector.detect(createContext({ "src/App.tsx": "<div />" }));
+      expect(findings[0]!.fixSteps[1]).toContain("Wrap your application's root component");
+    });
+  });
 });
