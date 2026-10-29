@@ -1376,7 +1376,8 @@ export class SinkAnalyzer {
       if (/\.\.|\bisAbsolute\s*\(|\brelative\s*\(/.test(text)) return true;
       // a literal-prefix check passes `uploads/../x`; only a normalized value counts
       if (/\bstartsWith\s*\(\s*(?!["'`])/.test(text)) return true;
-      if (st !== undefined && this.startsWithOnResolved(st, code, name, cond.start)) return true;
+      if (st !== undefined && this.startsWithOnResolved(st, code, text, name, cond.start))
+        return true;
     }
     if (kind === "redirect") {
       const rootOnly = /startsWith\s*\(\s*(["'`])\/\1\s*\)/.test(text);
@@ -1400,14 +1401,27 @@ export class SinkAnalyzer {
   }
 
   /** `<name>.startsWith(<literal>)` where `name` is bound to path.resolve/normalize/realpath. */
-  private startsWithOnResolved(st: TaintState, code: string, name: string, at: number): boolean {
+  private startsWithOnResolved(
+    st: TaintState,
+    code: string,
+    text: string,
+    name: string,
+    at: number,
+  ): boolean {
     const recv = new RegExp(String.raw`(?<![.\w$])${escapeRe(name)}\s*\.\s*startsWith\s*\(`);
+    // inline: `path.resolve(root, name).startsWith("/srv/uploads/")`
+    if (
+      /\b(?:resolve|normalize|realpath(?:Sync)?)\s*\([^()]*\)\s*\.\s*startsWith\s*\(\s*["'`]/.test(
+        text,
+      )
+    )
+      return true;
     if (!recv.test(code)) return false;
     const b = this.visibleBinding(st, name, at);
     const init = b === undefined ? undefined : this.bindingInit(st, b);
     if (init === undefined || !init.exact) return false;
     const seg = this.f.src.code.slice(init.range.start, init.range.end);
-    return /^(?:await\s+)?(?:[\w$]+\s*\.\s*)?(?:resolve|normalize|realpath(?:Sync)?)\s*\(/.test(
+    return /^(?:await\s+)?(?:[\w$]+\s*\.\s*)*(?:resolve|normalize|realpath(?:Sync)?)\s*\(/.test(
       seg,
     );
   }

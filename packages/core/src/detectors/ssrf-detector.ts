@@ -67,7 +67,7 @@ export class SsrfDetector implements Detector {
     for (const part of splitTopLevel(f.src, { start: arg.start + 1, end: close }, ",")) {
       const text = code.slice(part.start, part.end);
       // a tainted `baseURL` controls the host; a tainted `url` does too unless it is provably relative
-      const m = /^(?:baseURL|url)s*:s*/.exec(text);
+      const m = /^\s*(?:baseURL|url)\s*:\s*/.exec(text);
       if (m !== null)
         out.push(trimRange(f.src, { start: part.start + m[0].length, end: part.end }));
       else if (/^(?:baseURL|url)$/.test(text.trim())) out.push(trimRange(f.src, part)); // shorthand

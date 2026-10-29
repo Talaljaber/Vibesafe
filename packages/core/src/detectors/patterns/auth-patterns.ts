@@ -192,10 +192,10 @@ export const OWNERSHIP_CHECK_RE =
 
 /** Names that are unambiguously a secret (suffix forms only), unlike `key` or `auth`. */
 export const UNAMBIGUOUS_SECRET_NAME_RE =
-  /^(?!(?:page|next|prev|previous|cursor|continuation|sync)[-_]?token$)(?:(?:secret|token|password|passwd|apikey|api[-_]key|x-[\w-]*-(?:key|token))$|.*(?:[-_]token$|[-_](?:secret|password)$|[a-z](?:Secret|Token|Password)$|[a-z_-](?:secret|password|api[-_]?key)$))/i;
+  /^(?!(?:next[-_]?)?(?:page|next|prev|previous|cursor|continuation|sync)[-_]?token$)(?:(?:secret|token|password|passwd|apikey|api[-_]key|x-[\w-]*-(?:key|token))$|.*(?:[-_]token$|[-_](?:secret|password)$|[a-z](?:Secret|Token|Password)$|[a-z_-](?:secret|password|api[-_]?key)$))/i;
 
 const EXIT_AFTER_RE =
-  /^[^;{}]*?\)\s*(?:\{\s*)?(?:return\b|throw\b|notFound\s*\(|redirect\s*\(|res\s*\.\s*(?:status|sendStatus)\b|next\s*\()/;
+  /^[^;{}]*?\)\s*(?:\{\s*)?(?:return\b|throw\b|notFound\s*\(|forbidden\s*\(|unauthorized\s*\(|redirect\s*\(|res\s*\.\s*(?:status|sendStatus)\b|next\s*\()/;
 const OWNERSHIP_HELPER_RE = /^[A-Za-z][\w$]*\s*\($/;
 
 /**
@@ -210,6 +210,13 @@ export function hasDenyingOwnershipCheck(code: string): boolean {
     if (OWNERSHIP_HELPER_RE.test(m[0])) return true;
     const after = re.lastIndex;
     if (EXIT_AFTER_RE.test(code.slice(after, after + 400))) return true;
+    // a ternary whose branch returns an error response
+    const tail = code.slice(after, after + 300);
+    if (
+      /^\s*\?/.test(tail) &&
+      /\b(?:40[134]|forbidden|unauthorized|notFound)\b/i.test(tail.split(/;/)[0] ?? "")
+    )
+      return true;
     const lineStart = code.lastIndexOf("\n", m.index) + 1;
     const bound = /\b(?:const|let|var)\s+([\w$]+)\s*(?::[^=;\n]+)?=[^=]*$/.exec(
       code.slice(lineStart, m.index + 1),

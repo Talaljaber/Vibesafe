@@ -226,6 +226,11 @@ function usesExpr(body: string, exprSrc: string): boolean {
         continue;
       // replying to the sender, state setters, serialising and analytics are not origin checks
       if (
+        /^(?:String|(?:\w+\.)*stringify)$/.test(call[1]!) &&
+        /^\s*\)\s*[!=]==?/.test(body.slice(re.lastIndex, re.lastIndex + 20))
+      )
+        return true;
+      if (
         /(?:^|\.)(?:postMessage|track|capture|stringify)$|^(?:String|set[A-Z][\w$]*)$/.test(
           call[1]!,
         )

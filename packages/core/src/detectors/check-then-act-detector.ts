@@ -49,7 +49,7 @@ const DERIVED_DECL_RE =
   /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=;\n]{0,80})?=\s*\(?\s*([A-Za-z_$][\w$]*)\s*[?!]?\.\s*([A-Za-z_$][\w$]*)\s*[-+](?![-+=])/g;
 /** Awaited reads that are request input or the caller's identity, not a stored record. */
 const NON_RECORD_INIT_RE =
-  /^\s*(?::[^=;]{0,120})?=\s*\(?\s*await\s+(?:[\w$.]*\.\s*(?:json|formData|text|arrayBuffer|blob)\s*\(\s*\)|(?:[\w$.]*\.)?(?:auth|getServerSession|getSession|currentUser|getCurrentUser|requireUser|requireAuth|requireSession|getAuth|validateRequest)\s*\(|[\w$.]*\.auth\s*\.\s*\w+\s*\()/;
+  /^\s*(?::[^=;]{0,120})?=\s*\(?\s*await\s+(?:[\w$.]*\.\s*(?:json|formData|text|arrayBuffer|blob)\s*\(\s*\)|(?:[\w$.]*\.)?(?:auth|getServerSession|getSession|validateRequest)\s*\(|[\w$.]*\.auth\s*\.\s*\w+\s*\()/;
 const WINDOW = 4000;
 const SQL_WRITE_RE =
   /\b([A-Za-z_][\w]*)\s*=\s*\$\{\s*([A-Za-z_$][\w$]*)\s*\??\.\s*([A-Za-z_$][\w$]*)\s*[-+](?![-+=])/g;
