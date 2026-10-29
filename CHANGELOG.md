@@ -48,10 +48,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Evidence is sanitized and truncated in every detector.
 - The error-boundary rule was renamed and dead code and exports were cleaned up.
 - All packages share one version (0.3.0), kept in sync by `scripts/sync-versions.mjs`.
-- GitHub Action: the build installs only the CLI and its workspace dependencies (`--config.dedupe-peer-dependents=false`) and caches its private pnpm store with `actions/cache`, keyed on the action's lockfile, OS and architecture; `packageManager` pins pnpm with its sha512 hash; a `uses: ./` self-test workflow runs the action on Ubuntu, Windows and macOS; CI reads the pnpm version from `packageManager` (#100).
+- GitHub Action: the build installs only the CLI and its workspace dependencies (`--config.dedupe-peer-dependents=false`) and caches its private pnpm store with `actions/cache`, keyed on the action's lockfile, pnpm version, OS and architecture; `packageManager` pins pnpm with its sha512 hash; a `uses: ./` self-test workflow runs the action on Ubuntu, Windows and macOS; CI reads the pnpm version from `packageManager` (#100).
+- `scan` prints the deep-scan notice when the config file turns on `deep`, not only for `--deep` (#99).
+- CI pins its third-party actions to full commit SHAs.
 
 ### Fixed
 
+- Auth and validation checks no longer flag signature-verified Stripe webhook routes (Next.js and Express); an Express route is exempt only with route-level Stripe evidence, so other webhook routes in the same file stay covered (#95, #98).
 - Scan timeout is enforced, lines are counted correctly and truncation produces a warning.
 - `fix --yes` and non-TTY handling, `--version`, and `targetFiles` handling in the VS Code extension.
 - The console.log fixer only comments out standalone statements; `.env.example` generation no longer copies secrets.
@@ -65,7 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Trusted commands in VS Code hover markdown are restricted.
 - MCP scans are limited to allowed roots and file writes are opt-in.
 - Git is run with a hardened configuration during history scans.
-- The GitHub Action runs the CLI from the action's own source rather than an npm package the project does not publish (`@vibesafe/cli` on npm belongs to an unrelated package). Its build ignores the scanned repository's npm config, uses the action's lockfile and skips dependency install scripts.
+- The GitHub Action runs the CLI from the action's own source rather than an npm package the project does not publish (`@vibesafe/cli` on npm belongs to an unrelated package, #96). Its build ignores the scanned repository's npm config, uses the action's lockfile and skips dependency install scripts.
 - Detector evidence is redacted so secrets are not echoed in reports.
 - Script config files are not executed unless explicitly trusted; the MCP server and VS Code extension never execute them.
 

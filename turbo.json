@@ -23,6 +23,24 @@
       "outputs": ["coverage/**"],
       "cache": true
     },
+    "@vibesafe/shared#test": {
+      "dependsOn": ["^build", "build"],
+      "outputs": ["coverage/**"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/*.md",
+        "$TURBO_ROOT$/*.yml",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/pnpm-lock.yaml",
+        "$TURBO_ROOT$/.gitattributes",
+        "$TURBO_ROOT$/.github/workflows/*.yml",
+        "$TURBO_ROOT$/examples/**",
+        "$TURBO_ROOT$/scripts/**",
+        "$TURBO_ROOT$/packages/*/package.json",
+        "$TURBO_ROOT$/packages/*/README.md",
+        "$TURBO_ROOT$/packages/*/src/**"
+      ]
+    },
     "test:watch": {
       "cache": false,
       "persistent": true
