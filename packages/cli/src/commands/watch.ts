@@ -91,7 +91,9 @@ export function isRelevantPath(p: string): boolean {
 /**
  * Scan options for every watch scan. The config file is re-read on each scan (so editing
  * `.vibesafe.config.json` takes effect on the next rescan), but git history is never scanned:
- * `deep` is forced off because rerunning a history scan on every save is too slow.
+ * `deep` is forced off because rerunning a history scan on every save is too slow. `online` is
+ * never passed (watch has no --online flag and config files cannot set it), so a watch loop
+ * never sends a network request per save.
  */
 export function buildWatchScanOptions(
   rootPath: string,
