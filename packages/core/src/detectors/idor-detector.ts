@@ -31,7 +31,11 @@ import {
   verifiesSignature,
   type ExpressRoute,
 } from "./utils/route-analyzer.js";
-import { ADMIN_CHECK_RE, IDENTITY_VALUE_RE, OWNERSHIP_CHECK_RE } from "./patterns/auth-patterns.js";
+import {
+  ADMIN_CHECK_RE,
+  IDENTITY_VALUE_RE,
+  hasDenyingOwnershipCheck,
+} from "./patterns/auth-patterns.js";
 
 const HANDLER_ROLES = new Set([
   "app-route-handler",
@@ -95,7 +99,7 @@ export class IdorDetector implements Detector {
           const body = src.code.slice(span.bodyStart, span.bodyEnd);
           const bodyText = src.text.slice(span.bodyStart, span.bodyEnd);
           if (verifiesSignature(body)) continue;
-          if (ADMIN_CHECK_RE.test(bodyText) || OWNERSHIP_CHECK_RE.test(body)) continue;
+          if (ADMIN_CHECK_RE.test(bodyText) || hasDenyingOwnershipCheck(body)) continue;
           const chains = extractQueryChains(src, span.bodyStart, span.bodyEnd);
           if (chains.length === 0) continue;
           let authed = spanAuthenticates(src, span, helpers) || REQ_IDENTITY_RE.test(body);

@@ -218,10 +218,23 @@ function usesExpr(body: string, exprSrc: string): boolean {
   const re = new RegExp(exprSrc, "g");
   for (let m = re.exec(body); m !== null; m = re.exec(body)) {
     const before = body.slice(Math.max(0, m.index - 200), m.index);
-    if (/\bswitch\s*\(\s*$/.test(before) || /\[\s*$/.test(before)) return true;
+    // a computed lookup `ALLOWED[e.origin]`, not an array literal `[e.origin]`
+    if (/\bswitch\s*\(\s*$/.test(before) || /[\w$)\]]\s*\[\s*$/.test(before)) return true;
     const call = /([A-Za-z_$][\w$.]*)\s*\(\s*(?:[^()]*,\s*)?$/.exec(before);
     if (call !== null && !/^(?:if|while|for|switch|return|typeof)$/.test(call[1]!)) {
       if (/^(?:console|logger|log)\b|\.(?:log|warn|error|info|debug|trace)$/i.test(call[1]!))
+        continue;
+      // replying to the sender, state setters, serialising and analytics are not origin checks
+      if (
+        /^(?:String|(?:\w+\.)*stringify)$/.test(call[1]!) &&
+        /^\s*\)\s*[!=]==?/.test(body.slice(re.lastIndex, re.lastIndex + 20))
+      )
+        return true;
+      if (
+        /(?:^|\.)(?:postMessage|track|capture|stringify)$|^(?:String|set[A-Z][\w$]*)$/.test(
+          call[1]!,
+        )
+      )
         continue;
       return true;
     }

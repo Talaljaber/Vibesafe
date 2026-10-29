@@ -602,7 +602,12 @@ export function findSecretComparisons(src: JsSource, from: number, to: number): 
         against = "env";
       }
       if (against === undefined) continue;
-      const denies = rejectsRequest(src, lineStart, op, m[0], name, against);
+      // `authorization !== "Bearer abc"`: the literal credential is the secret, whatever the exit
+      const authLiteral =
+        against === "literal" &&
+        /^authorization$/i.test(name) &&
+        /^(?:bearer|basic|token)\s+\S/i.test(lit?.[2] ?? "");
+      const denies = rejectsRequest(src, lineStart, op, m[0], name, against, authLiteral);
       out.push({
         offset: op,
         line: src.lineAt(op),
@@ -658,12 +663,13 @@ function rejectsRequest(
   operator: string,
   name: string,
   against: "env" | "literal",
+  authLiteral = false,
 ): boolean {
   const code = src.code;
   const prefix = code.slice(lineStart, op);
   const secretName =
     SECRET_PARAM_ANCHORED_RE.test(name) &&
-    (against === "env" || UNAMBIGUOUS_SECRET_NAME_RE.test(name));
+    (against === "env" || authLiteral || UNAMBIGUOUS_SECRET_NAME_RE.test(name));
   const neq = operator.startsWith("!");
   const check = (open: number, mismatchRejects: boolean): boolean => {
     const blk = blockAfterCondition(code, open);

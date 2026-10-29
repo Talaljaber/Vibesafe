@@ -893,10 +893,21 @@ export class SinkAnalyzer {
     if (this.safeMapExpr(st, r, at)) return [];
     const t = topLevelTernary(src, r);
     if (t === undefined) return st.exprTaints(r.start, r.end);
+    const cond = this.resolveCond(st, t.cond);
     const a = this.rangeHits(st, t.whenTrue, at).filter(
-      (h) => !this.condGuards(t.cond, this.hitName(h), "enter"),
+      (h) => !this.condGuards(cond, this.hitName(h), "enter", st),
     );
     return [...a, ...this.rangeHits(st, t.whenFalse, at)];
+  }
+
+  /** A ternary condition that is a lone boolean binding (`safe ? v : "/"`) stands for its initializer. */
+  private resolveCond(st: TaintState, cond: Range): Range {
+    const r = trimRange(this.f.src, cond);
+    if (!/^[A-Za-z_$][\w$]*$/.test(this.f.src.code.slice(r.start, r.end))) return cond;
+    const name = this.f.src.code.slice(r.start, r.end);
+    const b = this.visibleBinding(st, name, r.start);
+    const init = b === undefined ? undefined : this.bindingInit(st, b);
+    return init !== undefined && init.exact ? init.range : cond;
   }
 
   /**
@@ -1161,7 +1172,8 @@ export class SinkAnalyzer {
     const src = this.f.src;
     const code = src.code;
     const fseg = code.slice(first.start, first.end);
-    const map = /^[A-Za-z_$][\w$.]*\s*\.\s*map\s*\(/.exec(fseg);
+    const arrayFrom = /^Array\s*\.\s*from\s*\(/.exec(fseg);
+    const map = arrayFrom ?? /^[A-Za-z_$][\w$.]*\s*\.\s*map\s*\(/.exec(fseg);
     if (map === null) return false;
     const open = first.start + map[0].length - 1;
     const close = src.matchOf(open);
@@ -1169,7 +1181,9 @@ export class SinkAnalyzer {
     const tail = code.slice(close + 1, first.end);
     const joined = /^\s*\.\s*join\s*\(\s*(?:"[^"\\]*"|'[^'\\]*'|`[^`$\\]*`)?\s*\)\s*$/.test(tail);
     if (close !== first.end - 1 && !joined) return false;
-    const cbStart = nextNonWs(code, open + 1);
+    // `Array.from(items, cb)` / `Array.from({ length: n }, cb)`: the callback is the second argument
+    const cbRaw = arrayFrom === null ? open + 1 : (splitArgs(src, open, close)[1]?.start ?? -1);
+    const cbStart = cbRaw < 0 ? -1 : nextNonWs(code, cbRaw);
     const cb = this.f.spans.find((s) => s.start === cbStart);
     if (cb === undefined || !this.budget()) return false;
     const returns = this.returnRanges(cb);
@@ -1284,12 +1298,12 @@ export class SinkAnalyzer {
   private guarded(st: TaintState, name: string, at: number): boolean {
     for (const s of this.ifStatements(st)) {
       if (s.offset >= at) break;
-      if (s.cond.end <= at && s.exits && this.condGuards(s.cond, name, "exit")) return true;
+      if (s.cond.end <= at && s.exits && this.condGuards(s.cond, name, "exit", st)) return true;
       if (
         s.block !== undefined &&
         s.block.start < at &&
         at < s.block.end &&
-        this.condGuards(s.cond, name, "enter")
+        this.condGuards(s.cond, name, "enter", st)
       )
         return true;
     }
@@ -1302,7 +1316,12 @@ export class SinkAnalyzer {
    * (`!ALLOWED.includes(x)`); `enter`: the guarded block runs only when it passed.
    * Scheme-only regexes never guard SSRF; `startsWith("http")` never guards a redirect.
    */
-  condGuards(cond: Range, name: string | undefined, mode: "exit" | "enter"): boolean {
+  condGuards(
+    cond: Range,
+    name: string | undefined,
+    mode: "exit" | "enter",
+    st?: TaintState,
+  ): boolean {
     if (name === undefined) return false;
     const src = this.f.src;
     const code = src.code.slice(cond.start, cond.end);
@@ -1357,10 +1376,7 @@ export class SinkAnalyzer {
       if (/\.\.|\bisAbsolute\s*\(|\brelative\s*\(/.test(text)) return true;
       // a literal-prefix check passes `uploads/../x`; only a normalized value counts
       if (/\bstartsWith\s*\(\s*(?!["'`])/.test(text)) return true;
-      if (
-        /\bstartsWith\s*\(/.test(text) &&
-        /\b(?:resolve|normalize|realpath(?:Sync)?)\s*\(/.test(text)
-      )
+      if (st !== undefined && this.startsWithOnResolved(st, code, text, name, cond.start))
         return true;
     }
     if (kind === "redirect") {
@@ -1382,6 +1398,32 @@ export class SinkAnalyzer {
         return true;
     }
     return false;
+  }
+
+  /** `<name>.startsWith(<literal>)` where `name` is bound to path.resolve/normalize/realpath. */
+  private startsWithOnResolved(
+    st: TaintState,
+    code: string,
+    text: string,
+    name: string,
+    at: number,
+  ): boolean {
+    const recv = new RegExp(String.raw`(?<![.\w$])${escapeRe(name)}\s*\.\s*startsWith\s*\(`);
+    // inline: `path.resolve(root, name).startsWith("/srv/uploads/")`
+    if (
+      /\b(?:resolve|normalize|realpath(?:Sync)?)\s*\([^()]*\)\s*\.\s*startsWith\s*\(\s*["'`]/.test(
+        text,
+      )
+    )
+      return true;
+    if (!recv.test(code)) return false;
+    const b = this.visibleBinding(st, name, at);
+    const init = b === undefined ? undefined : this.bindingInit(st, b);
+    if (init === undefined || !init.exact) return false;
+    const seg = this.f.src.code.slice(init.range.start, init.range.end);
+    return /^(?:await\s+)?(?:[\w$]+\s*\.\s*)*(?:resolve|normalize|realpath(?:Sync)?)\s*\(/.test(
+      seg,
+    );
   }
 
   private namedRegexSource(name: string): string | undefined {
@@ -1527,7 +1569,12 @@ export class SinkAnalyzer {
 
     const t = topLevelTernary(src, r);
     if (t !== undefined) {
-      const a = this.condGuards(t.cond, this.firstName(t.whenTrue), "enter")
+      const a = this.condGuards(
+        this.resolveCond(st, t.cond),
+        this.firstName(t.whenTrue),
+        "enter",
+        st,
+      )
         ? undefined
         : this.pos(st, t.whenTrue, at, depth + 1);
       return this.strongest(a, this.pos(st, t.whenFalse, at, depth + 1));

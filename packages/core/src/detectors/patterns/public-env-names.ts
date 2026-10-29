@@ -12,7 +12,7 @@ const CREDENTIAL_SUFFIX = /_(?:API_?KEY|KEY|TOKEN|AUTH_TOKEN|ACCESS_TOKEN|SECRET
 const PUBLIC_DB_ENDPOINT = /(?:^|_)FIREBASE_(?:DATABASE|DB)_URL$/;
 const DB_URL =
   /(?:^|_)(?:DATABASE|DB|POSTGRES|POSTGRESQL|PG|MYSQL|MONGO|MONGODB)_(?:URL|URI|CONNECTION_STRING)$/;
-const ADMIN_KEY = /(?:ADMIN_(?:API_)?KEY|MASTER_KEY|SERVICE_KEY)$/;
+const ADMIN_KEY = /(?:^|_)(?:ADMIN_(?:API_)?KEY|MASTER_KEY|SERVICE_KEY)$/;
 
 /**
  * True when a public-prefixed variable name denotes a credential that must stay on the

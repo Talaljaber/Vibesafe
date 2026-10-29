@@ -8,6 +8,7 @@ import {
   type FunctionSpan,
 } from "./utils/js-functions.js";
 import type { JsSource } from "./utils/js-source.js";
+import { stripComments } from "./utils/strip-comments.js";
 import { calleeText, escapeRegExp, nextNonWs, serverSources } from "./utils/tooling-js.js";
 
 /**
@@ -43,9 +44,13 @@ const LOCK_RE =
   /\$transaction\b|\.transaction\s*\(|\btransaction\s*\(|\bwithTransaction\b|\bstartSession\b|\bFOR\s+UPDATE\b|\bBEGIN\b|\bSERIALIZABLE\b|\bLOCK\s+TABLE\b|pg_advisory/i;
 
 const OBJECT_WRITE_RE =
-  /(?<![\w$.])([A-Za-z_$][\w$]*)\s*:\s*([A-Za-z_$][\w$]*)\s*\??\.\s*([A-Za-z_$][\w$]*)\s*[-+](?![-+=])/g;
+  /(?<![\w$.])([A-Za-z_$][\w$]*)\s*:\s*([A-Za-z_$][\w$]*)\s*[?!]?\.\s*([A-Za-z_$][\w$]*)\s*[-+](?![-+=])/g;
 const DERIVED_DECL_RE =
-  /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=;\n]{0,80})?=\s*\(?\s*([A-Za-z_$][\w$]*)\s*\??\.\s*([A-Za-z_$][\w$]*)\s*[-+](?![-+=])/g;
+  /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=;\n]{0,80})?=\s*\(?\s*([A-Za-z_$][\w$]*)\s*[?!]?\.\s*([A-Za-z_$][\w$]*)\s*[-+](?![-+=])/g;
+/** Awaited reads that are request input or the caller's identity, not a stored record. */
+const NON_RECORD_INIT_RE =
+  /^\s*(?::[^=;]{0,120})?=\s*\(?\s*await\s+(?:[\w$.]*\.\s*(?:json|formData|text|arrayBuffer|blob)\s*\(\s*\)|(?:[\w$.]*\.)?(?:auth|getServerSession|getSession|validateRequest)\s*\(|[\w$.]*\.auth\s*\.\s*\w+\s*\()/;
+const WINDOW = 4000;
 const SQL_WRITE_RE =
   /\b([A-Za-z_][\w]*)\s*=\s*\$\{\s*([A-Za-z_$][\w$]*)\s*\??\.\s*([A-Za-z_$][\w$]*)\s*[-+](?![-+=])/g;
 const MUTATE_RE =
@@ -101,7 +106,7 @@ function chainEnd(src: JsSource, close: number): number {
 
 function fieldRe(obj: string, field: string): RegExp {
   return new RegExp(
-    String.raw`(?<![\w$.])${escapeRegExp(obj)}\s*\??\.\s*${escapeRegExp(field)}(?![\w$])`,
+    String.raw`(?<![\w$.])${escapeRegExp(obj)}\s*[?!]?\.\s*${escapeRegExp(field)}(?![\w$])`,
     "g",
   );
 }
@@ -140,8 +145,10 @@ function findWrites(src: JsSource): Write[] {
         (local === field ? String.raw`|(?<=[{,]\s*)${escapeRegExp(local)}(?=\s*[,}])` : ""),
       "g",
     );
+    // only the next WINDOW characters: the write belongs to the same function as the declaration
+    const windowEnd = Math.min(code.length, declEnd + WINDOW);
     use.lastIndex = declEnd;
-    for (let u = use.exec(code); u !== null; u = use.exec(code)) {
+    for (let u = use.exec(code); u !== null && u.index < windowEnd; u = use.exec(code)) {
       const call = updateCall(src, u.index);
       if (call === undefined) continue;
       out.push({
@@ -173,8 +180,8 @@ function findWrites(src: JsSource): Write[] {
     const obj = m[1]!;
     const save = new RegExp(String.raw`(?<![\w$.])${escapeRegExp(obj)}\s*\.\s*save\s*\(`, "g");
     save.lastIndex = m.index + m[0].length;
-    const s = save.exec(code);
-    if (s === null || s.index - m.index > 2000) continue;
+    const s = save.exec(code.slice(0, Math.min(code.length, m.index + 2000)));
+    if (s === null) continue;
     out.push({
       at: m.index,
       obj,
@@ -206,7 +213,8 @@ function awaitedRead(src: JsSource, span: FunctionSpan, obj: string, before: num
     }
     if (!patternBindings(code.slice(patStart, patEnd)).includes(obj)) continue;
     const rest = code.slice(patEnd, patEnd + 200);
-    if (/^\s*(?::[^=;]{0,120})?=\s*\(?\s*await\b/.test(rest)) found = m.index;
+    if (/^\s*(?::[^=;]{0,120})?=\s*\(?\s*await\b/.test(rest) && !NON_RECORD_INIT_RE.test(rest))
+      found = m.index;
   }
   return found;
 }
@@ -240,8 +248,9 @@ function compareAndSwap(src: JsSource, w: Write): boolean {
 }
 
 /** The write runs inside a transaction/lock call, or its function uses one. */
-function locked(src: JsSource, span: FunctionSpan, at: number): boolean {
-  if (LOCK_RE.test(src.text.slice(span.start, span.end))) return true;
+function locked(src: JsSource, noComments: string, span: FunctionSpan, at: number): boolean {
+  // SQL lives in strings, so test the text with comments blanked (a `BEGIN` in a comment is no lock)
+  if (LOCK_RE.test(noComments.slice(span.start, span.end))) return true;
   if (span.wrappers.some((w) => /transaction/i.test(w))) return true;
   let open = enclosingOpen(src, at);
   for (let guard = 0; guard < 40 && open >= 0; guard++) {
@@ -265,6 +274,7 @@ export class CheckThenActDetector implements Detector {
         const writes = findWrites(src);
         if (writes.length === 0) continue;
         const spans = extractFunctions(src, classification);
+        const noComments = stripComments(src.text);
         const lines = new Set<number>();
         for (const w of writes) {
           if (lines.size >= MAX_PER_FILE) break;
@@ -279,7 +289,7 @@ export class CheckThenActDetector implements Detector {
           }
           if (span === undefined || read < 0) continue;
           if (!checkedBetween(src, w.obj, w.field, read, w.at)) continue;
-          if (compareAndSwap(src, w) || locked(src, span, w.at)) continue;
+          if (compareAndSwap(src, w) || locked(src, noComments, span, w.at)) continue;
           lines.add(line);
           findings.push(this.finding(file, src, line));
         }

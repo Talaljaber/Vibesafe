@@ -14,6 +14,7 @@ import {
   type FunctionSpan,
 } from "./utils/js-functions.js";
 import type { JsSource } from "./utils/js-source.js";
+import { stripComments } from "./utils/strip-comments.js";
 import { analyzeTaint, type TaintHit, type TaintState } from "./utils/taint.js";
 import {
   calleeText,
@@ -326,7 +327,19 @@ function clientPrice(
     const at = start + m.index;
     const chainEnd = at + m[0].length;
     const after = nextNonWs(code, chainEnd);
-    if (code[after] === "(") continue; // a call, judged by its arguments
+    if (code[after] === "(") {
+      // `formData.get("price")` / `searchParams.get("amount")` reads a price field
+      const base = /^(.*)\.\s*get$/s.exec(m[0]);
+      const key = /^\(\s*(["'`])([^"'`]+)\1\s*\)/.exec(ctx.src.text.slice(after, after + 80));
+      if (base !== null && key !== null && PRICE_NAME_RE.test(key[2]!)) {
+        const hit = /formdata|searchparams/i.test(base[1]!)
+          ? ctx.state.exprTaint(at, at + base[1]!.length)
+          : undefined;
+        if (hit !== undefined && acceptHit(ctx, hit, 0))
+          return { direct: hit.path === "direct" && depth === 0 };
+      }
+      continue; // a call, judged by its arguments
+    }
     const before = prevNonWs(code, at - 1);
     if (code[after] === ":" && (code[before] === "{" || code[before] === ",")) continue; // key
     const props = [...m[2]!.matchAll(/[A-Za-z_$][\w$]*/g)].map((x) => x[0]);
@@ -384,7 +397,7 @@ export class ClientTrustedPriceDetector implements Detector {
     const findings: Finding[] = [];
     try {
       for (const { file, src, classification } of await serverSources(context, PREFILTER)) {
-        if (DONATION_RE.test(file)) continue;
+        let noComments: string | undefined;
         const sinks = findSinks(src);
         if (sinks.length === 0) continue;
         const handlers = handlerSpans(src, classification);
@@ -395,7 +408,9 @@ export class ClientTrustedPriceDetector implements Detector {
           if (lines.size >= MAX_PER_FILE) break;
           const handler = handlers.find((h) => h.start <= sink.key && sink.key < h.end);
           if (handler === undefined) continue;
-          if (DONATION_RE.test(src.text.slice(handler.start, handler.end))) continue;
+          // identifiers and strings of the handler; comments and the file path do not count
+          noComments ??= stripComments(src.text);
+          if (DONATION_RE.test(noComments.slice(handler.start, handler.end))) continue;
           const line = src.lineAt(sink.key);
           if (lines.has(line)) continue;
           const state = analyzeTaint(src, handler, { runtime: "server" });

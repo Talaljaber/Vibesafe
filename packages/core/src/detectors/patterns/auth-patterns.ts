@@ -192,7 +192,44 @@ export const OWNERSHIP_CHECK_RE =
 
 /** Names that are unambiguously a secret (suffix forms only), unlike `key` or `auth`. */
 export const UNAMBIGUOUS_SECRET_NAME_RE =
-  /^(?:secret|token|password|passwd|apikey|api[-_]key|x-[\w-]*-(?:key|token))$|[-_]token$|[-_](?:secret|password)$|[a-z](?:Secret|Token|Password)$|[a-z_-](?:secret|password|api[-_]?key)$/i;
+  /^(?!(?:next[-_]?)?(?:page|next|prev|previous|cursor|continuation|sync)[-_]?token$)(?:(?:secret|token|password|passwd|apikey|api[-_]key|x-[\w-]*-(?:key|token))$|.*(?:[-_]token$|[-_](?:secret|password)$|[a-z](?:Secret|Token|Password)$|[a-z_-](?:secret|password|api[-_]?key)$))/i;
+
+const EXIT_AFTER_RE =
+  /^[^;{}]*?\)\s*(?:\{\s*)?(?:return\b|throw\b|notFound\s*\(|forbidden\s*\(|unauthorized\s*\(|redirect\s*\(|res\s*\.\s*(?:status|sendStatus)\b|next\s*\()/;
+const OWNERSHIP_HELPER_RE = /^[A-Za-z][\w$]*\s*\($/;
+
+/**
+ * An ownership check that actually protects the handler: an ownership/permission helper call,
+ * or an owner comparison whose `if` (directly, or through a boolean local) exits with a
+ * return, throw or error response. A bare comparison that only computes a value does not count.
+ * Matched on masked code.
+ */
+export function hasDenyingOwnershipCheck(code: string): boolean {
+  const re = new RegExp(OWNERSHIP_CHECK_RE.source, "g");
+  for (let m = re.exec(code); m !== null; m = re.exec(code)) {
+    if (OWNERSHIP_HELPER_RE.test(m[0])) return true;
+    const after = re.lastIndex;
+    if (EXIT_AFTER_RE.test(code.slice(after, after + 400))) return true;
+    // a ternary whose branch returns an error response
+    const tail = code.slice(after, after + 300);
+    if (
+      /^\s*\?/.test(tail) &&
+      /\b(?:40[134]|forbidden|unauthorized|notFound)\b/i.test(tail.split(/;/)[0] ?? "")
+    )
+      return true;
+    const lineStart = code.lastIndexOf("\n", m.index) + 1;
+    const bound = /\b(?:const|let|var)\s+([\w$]+)\s*(?::[^=;\n]+)?=[^=]*$/.exec(
+      code.slice(lineStart, m.index + 1),
+    );
+    if (bound?.[1] === undefined) continue;
+    const id = bound[1].replace(/\$/g, "\\$&");
+    const use = new RegExp(String.raw`\bif\s*\(\s*!?\s*${id}\b`).exec(code.slice(after));
+    if (use === null) continue;
+    const from = after + use.index + 2;
+    if (EXIT_AFTER_RE.test(code.slice(from, from + 400))) return true;
+  }
+  return false;
+}
 
 /** Admin/staff checks: an admin-only handler reaching any row is by design. Matched on raw text. */
 export const ADMIN_CHECK_RE =
