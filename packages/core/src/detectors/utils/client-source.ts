@@ -1,4 +1,4 @@
-﻿import path from "node:path";
+import path from "node:path";
 import type { Finding, ProjectContext, ScanContext } from "@talaljaber/vibesafe-shared";
 import { classifyFile, isClientScope, isJsLike, type FileClassification } from "./file-kind.js";
 import {
@@ -93,6 +93,29 @@ function runtimeOf(cf: ClientFile): "client" | "server" {
   return cf.classification.runtime === "client" ? "client" : "server";
 }
 
+type TaintAnalysis = ReturnType<typeof analyzeTaint>;
+const TAINT_CACHE = new WeakMap<JsSource, Map<string, TaintAnalysis>>();
+
+/** One analysis per (span, runtime, seed): sinks in one component share it. */
+function cachedTaint(
+  src: JsSource,
+  span: FunctionSpan,
+  runtime: "client" | "server",
+  seed?: number,
+): TaintAnalysis {
+  let m = TAINT_CACHE.get(src);
+  if (m === undefined) {
+    m = new Map();
+    TAINT_CACHE.set(src, m);
+  }
+  const key = `${span.kind}:${span.start}:${span.end}:${runtime}:${seed ?? ""}`;
+  let a = m.get(key);
+  if (a === undefined) {
+    a = analyzeTaint(src, span, seed === undefined ? { runtime } : { runtime, seedParams: [seed] });
+    m.set(key, a);
+  }
+  return a;
+}
 const MAX_SEED_PARAMS = 4;
 const MAX_CALL_SITES = 10;
 const MAX_SEED_DEPTH = 2;
@@ -122,11 +145,11 @@ export function clientTaint(
   try {
     const runtime = runtimeOf(cf);
     const outer = outermostSpan(cf, start);
-    const hit = analyzeTaint(cf.src, outer, { runtime }).exprTaint(start, end);
+    const hit = cachedTaint(cf.src, outer, runtime).exprTaint(start, end);
     if (hit !== undefined) return hit;
     if (outer.kind !== "module") {
       // Module-level bindings read inside a function (`const code = location.hash` at the top).
-      const top = analyzeTaint(cf.src, moduleSpan(cf.src), { runtime }).exprTaint(start, end);
+      const top = cachedTaint(cf.src, moduleSpan(cf.src), runtime).exprTaint(start, end);
       if (top !== undefined) return top;
     }
     if (depth >= MAX_SEED_DEPTH) return undefined;
@@ -136,10 +159,7 @@ export function clientTaint(
       for (let idx = 0; idx < Math.min(fn.params.length, MAX_SEED_PARAMS); idx++) {
         if (budget.left <= 0) return undefined;
         budget.left--;
-        const seeded = analyzeTaint(cf.src, fn, { runtime, seedParams: [idx] }).exprTaint(
-          start,
-          end,
-        );
+        const seeded = cachedTaint(cf.src, fn, runtime, idx).exprTaint(start, end);
         if (seeded === undefined) continue;
         for (const call of callSites(cf.src, fn.name, fn).slice(0, MAX_CALL_SITES)) {
           const arg = call.args[idx];
@@ -377,11 +397,6 @@ export interface Declaration {
   destructured: boolean;
 }
 
-/**
- * Nearest `const|let|var` declaration of `name` before `before` (plain or destructuring),
- * within `scope` when given. The declaration backtrace used to tell local literals and
- * config objects from data. Undefined when the name is a parameter or not declared.
- */
 interface DeclIndex {
   /** Plain `const|let|var name = ...` declarations by name, in source order. */
   plain: Map<string, { index: number; nameOffset: number; initStart: number }[]>;
@@ -467,6 +482,7 @@ export function findDeclaration(
   }
   return best;
 }
+
 function skipWs(code: string, i: number): number {
   while (i < code.length && /\s/.test(code[i]!)) i++;
   return i;
@@ -585,20 +601,38 @@ export async function resolveImport(
  * hash or parameter read. The page URL cannot be a `javascript:` URL and a link or
  * redirect to it stays on the page, so such taint does not make a sink dangerous.
  */
-export function isSelfUrlTaint(src: JsSource, lead: ArgRange, via: string | undefined): boolean {
-  let text = src.text.slice(lead.start, lead.end);
-  if (via !== undefined) {
-    const decl = findDeclaration(src, via, lead.start);
-    if (decl !== undefined) text += " " + src.text.slice(decl.initStart, decl.initEnd);
-  }
-  return SELF_URL_RE.test(text) && !URL_PARAM_READ_RE.test(text);
+export function isSelfUrlTaint(src: JsSource, lead: ArgRange, _via?: string | undefined): boolean {
+  return operandsAreSelf(src, lead.start, lead.end, 0);
 }
 
-const SELF_URL_RE =
-  /\blocation\s*\.\s*(?:href|pathname|origin)\b|\brouter\s*\.\s*(?:asPath|pathname)\b|\bdocument\s*\.\s*(?:URL|documentURI|baseURI)\b/;
-const URL_PARAM_READ_RE =
-  /\.\s*(?:get|getAll)\s*\(|\brouter\s*\.\s*query\b|\buseParams\b|\buseSearchParams\b|\blocation\s*\.\s*(?:search|hash)\b|\breferrer\b|\bwindow\s*\.\s*name\b|\.\s*(?:search|hash)\b|\bquery\b/;
+/**
+ * Every leading operand is exactly the page address (optionally via `new URL(self)` and
+ * `.toString()`/`.href`), or a local whose initializer is. Any further step on the value
+ * (`.split`, `[1]`, a call wrapping it) means a part of the URL was extracted: not self.
+ */
+function operandsAreSelf(src: JsSource, start: number, end: number, depth: number): boolean {
+  if (depth > 2) return false;
+  const ops = leadingOperands(src, start, end);
+  if (ops.length === 0) return false;
+  return ops.every((op) => {
+    const text = src.code.slice(op.start, op.end).replace(/!+\s*$/, "").trim();
+    if (SELF_ONLY_RE.test(text)) return true;
+    if (!/^[A-Za-z_$][\w$]*$/.test(text)) return false;
+    const decl = findDeclaration(src, text, op.start);
+    return (
+      decl !== undefined &&
+      !decl.destructured &&
+      operandsAreSelf(src, decl.initStart, decl.initEnd, depth + 1)
+    );
+  });
+}
 
+const SELF_SRC =
+  String.raw`(?:(?:window|self)\s*\??\.\s*)?location\s*\??\.\s*(?:href|pathname|origin)|router\s*\??\.\s*(?:asPath|pathname)|document\s*\??\.\s*(?:URL|documentURI|baseURI)`;
+const TO_STRING = String.raw`(?:\s*\??\.\s*toString\s*\(\s*\))?`;
+const SELF_ONLY_RE = new RegExp(
+  String.raw`^(?:(?:${SELF_SRC})${TO_STRING}|new\s+URL\s*\(\s*(?:${SELF_SRC})\s*(?:,\s*[^()]*)?\)\s*(?:\??\.\s*href)?${TO_STRING})$`,
+);
 /** Major version of `react` from the project's dependencies, or undefined when unknown. */
 export function reactMajor(
   projectContext: Pick<ProjectContext, "dependencies" | "devDependencies"> | undefined,

@@ -1,4 +1,4 @@
-﻿import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vitest";
 import type { ScanContext } from "@talaljaber/vibesafe-shared";
 import { BrowserStorageDetector } from "../../src/detectors/browser-storage-detector";
 import { CodebaseMessDetector } from "../../src/detectors/codebase-mess-detector";
@@ -187,5 +187,18 @@ export function save(accessToken: string) {
 `,
     });
     expect(findings.map((f) => f.ruleId).sort()).toEqual([STORAGE, LOG]);
+  });
+});
+
+describe("round 2: CSRF tokens", () => {
+  it("does not flag a CSRF token in session storage", async () => {
+    const findings = await run({
+      "components/Form.tsx": `"use client";
+export function save(csrfToken: string) {
+  sessionStorage.setItem("csrf_token", csrfToken);
+}
+`,
+    });
+    expect(findings.filter((f) => f.ruleId === STORAGE)).toHaveLength(0);
   });
 });

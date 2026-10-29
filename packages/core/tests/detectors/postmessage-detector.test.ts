@@ -173,3 +173,58 @@ export function Frame() {
     expect(findings.filter((f) => f.ruleId === RULE)).toHaveLength(0);
   });
 });
+
+describe("round 2: origin checks", () => {
+  const wrap = (fn: string) => ({
+    "components/W.tsx": `"use client";
+import { useEffect } from "react";
+${fn}
+export function W() {
+  useEffect(() => {
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+  return null;
+}
+`,
+  });
+  it("accepts a helper named after the origin", async () => {
+    const findings = await run(
+      wrap(`function onMessage(event: MessageEvent) {
+  if (!isTrustedOrigin(event)) return;
+  window.location.href = event.data.url;
+}`),
+    );
+    expect(findings).toHaveLength(0);
+  });
+  it("accepts a same-file helper that reads the origin", async () => {
+    const findings = await run(
+      wrap(`function isValidMessage(ev: MessageEvent) {
+  return ev.origin === "https://app.example.com";
+}
+function onMessage(event: MessageEvent) {
+  if (!isValidMessage(event)) return;
+  window.location.href = event.data.url;
+}`),
+    );
+    expect(findings).toHaveLength(0);
+  });
+  it("accepts an allowlist membership check", async () => {
+    const findings = await run(
+      wrap(`function onMessage(event: MessageEvent) {
+  if (!ALLOWED.includes(event.origin)) return;
+  window.location.href = event.data.url;
+}`),
+    );
+    expect(findings).toHaveLength(0);
+  });
+  it("still flags a handler that only logs the origin", async () => {
+    const findings = await run(
+      wrap(`function onMessage(event: MessageEvent) {
+  console.log(event.origin);
+  window.location.href = event.data.url;
+}`),
+    );
+    expect(findings).toHaveLength(1);
+  });
+});

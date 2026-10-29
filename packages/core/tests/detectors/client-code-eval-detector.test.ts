@@ -242,3 +242,34 @@ export function Login() {
     expect(findings.filter((f) => f.ruleId === REDIRECT)).toHaveLength(1);
   });
 });
+
+describe("round 2: page URL parts versus the page address", () => {
+  const page = (body: string) => ({
+    "app/go/page.tsx": `"use client";
+import { useRouter } from "next/router";
+export default function Go() {
+  const router = useRouter();
+  function go(query: string) {
+    ${body}
+  }
+  return null;
+}
+`,
+  });
+  it.each([
+    'const next = location.href.split("next=")[1]; location.href = next;',
+    'location.assign(decodeURIComponent(location.href.split("redirect=")[1]));',
+    'router.push(router.asPath.split("returnTo=")[1]);',
+  ])("flags a redirect target extracted from the page URL: %s", async (body) => {
+    const findings = await run(page(body));
+    expect(findings.filter((f) => f.ruleId === REDIRECT)).toHaveLength(1);
+  });
+  it("ignores the page address with an appended query string", async () => {
+    const findings = await run(
+      page(
+        'const url = location.pathname + "?" + new URLSearchParams({ q: query }).toString(); router.push(url);',
+      ),
+    );
+    expect(findings.filter((f) => f.ruleId === REDIRECT)).toHaveLength(0);
+  });
+});

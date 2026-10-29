@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   Confidence,
   Detector,
   Finding,
@@ -161,6 +161,38 @@ function resolveHandler(
   return cf.spans.find((s) => s.start === at);
 }
 
+/**
+ * True when `body` compares or looks up `<param>.origin`, or hands the event to an
+ * origin-named helper or a same-file function that reads `.origin`.
+ */
+function checksOrigin(cf: ClientFile, body: string, param: string, depth = 0): boolean {
+  const esc = param.replace(/\$/g, "\\$");
+  const origin = String.raw`(?<![\w$.])${esc}\s*\??\.\s*origin\b`;
+  const checks = [
+    String.raw`${origin}\s*(?:[!=]==?|\.\s*(?:startsWith|endsWith|includes|match)\b)`,
+    String.raw`[!=]==?\s*${origin}`,
+    String.raw`\.\s*(?:includes|has|indexOf|test|some)\s*\(\s*${origin}`,
+  ];
+  if (new RegExp(checks.join("|")).test(body)) return true;
+  const call = new RegExp(
+    String.raw`([A-Za-z_$][\w$.]*)\s*\(\s*(?:[^()]*,\s*)?${esc}\s*[,)]`,
+    "g",
+  );
+  for (let m = call.exec(body); m !== null; m = call.exec(body)) {
+    const callee = m[1]!;
+    if (/origin/i.test(callee)) return true;
+    if (depth > 0 || callee.includes(".")) continue;
+    const fn = resolveHandler(cf, 0, 0, callee);
+    const p = fn?.params[0];
+    if (fn === undefined || p === undefined || p.names.length !== 1 || p.pattern !== p.names[0]) {
+      continue;
+    }
+    const inner = cf.src.code.slice(fn.bodyStart, fn.bodyEnd);
+    const pn = p.names[0]!.replace(/\$/g, "\\$");
+    if (new RegExp(String.raw`(?<![\w$.])${pn}\s*\??\.\s*origin\b`).test(inner)) return true;
+  }
+  return false;
+}
 /** Verdict for a handler, or undefined when it checks the origin or ignores the data. */
 function judgeHandler(
   cf: ClientFile,
@@ -175,7 +207,7 @@ function judgeHandler(
   if (simple) {
     // The sender's origin is read off the event itself (`e.origin`, `const { origin } = e`).
     const esc = p0.names[0]!.replace(/\$/g, "\\$");
-    if (new RegExp(String.raw`(?<![\w$.])${esc}\s*\??\.\s*origin\b`).test(body)) return undefined;
+    if (checksOrigin(cf, body, p0.names[0]!)) return undefined;
     if (new RegExp(String.raw`\{[^}]*\borigin\b[^}]*\}\s*=\s*${esc}(?![\w$])`).test(body))
       return undefined;
     // `(e) => handleMessage(e)`: judge the same-file function it delegates to.

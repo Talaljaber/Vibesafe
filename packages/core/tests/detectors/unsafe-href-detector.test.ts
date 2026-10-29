@@ -156,3 +156,40 @@ export function Back() {
     expect(findings.filter((f) => f.ruleId === RULE)).toHaveLength(1);
   });
 });
+
+describe("round 2: page URL parts as href", () => {
+  it("flags a value extracted from location.href", async () => {
+    const findings = await run({
+      "app/r/page.tsx": `"use client";
+export default function R() {
+  const target = location.href.split("url=")[1];
+  return <a href={target}>go</a>;
+}
+`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+  it("ignores the page address itself", async () => {
+    const findings = await run({
+      "app/r/page.tsx": `"use client";
+export default function R() {
+  const here = location.pathname + "?x=1";
+  return <a href={here}>here</a>;
+}
+`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+  it("stays fast with many prop-fed sinks in one component", async () => {
+    const links = Array.from({ length: 300 }, (_, i) => `<a href={items[${i}].website_url}>x</a>`);
+    const t0 = Date.now();
+    await run({
+      "components/List.tsx": `"use client";
+export function List({ items }: { items: any[] }) {
+  return <div>${links.join("")}</div>;
+}
+`,
+    });
+    expect(Date.now() - t0).toBeLessThan(1000);
+  });
+});
