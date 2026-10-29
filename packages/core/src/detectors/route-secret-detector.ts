@@ -11,7 +11,7 @@ import { makeFinding } from "./utils/finding.js";
 import { classifyFile, isJsLike, isServerScope } from "./utils/file-kind.js";
 import { getJsSource, type JsSource } from "./utils/js-source.js";
 import { findSecretComparisons, type SecretComparison } from "./utils/route-analyzer.js";
-import { SECRET_PARAM_NAME_RE } from "./patterns/auth-patterns.js";
+import { SECRET_PARAM_ANCHORED_RE } from "./patterns/auth-patterns.js";
 
 const PREFILTER_RE = /[!=]==?/;
 const REQUEST_HINT_RE = /\b(?:searchParams|query|headers?|cookies)\b/;
@@ -61,7 +61,7 @@ export class RouteSecretDetector implements Detector {
                 ruleId: "auth/hardcoded-route-secret",
                 title: "Route protected by a hardcoded secret in source",
                 severity: "high",
-                confidence: SECRET_PARAM_NAME_RE.test(c.name) ? "high" : "medium",
+                confidence: SECRET_PARAM_ANCHORED_RE.test(c.name) ? "high" : "medium",
                 file,
                 line: c.line,
                 evidence,

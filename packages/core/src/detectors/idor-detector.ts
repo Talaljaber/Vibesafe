@@ -88,8 +88,10 @@ export class IdorDetector implements Detector {
             : [];
         const adminFile = ADMIN_PATH_RE.test(file.replace(/\\/g, "/"));
         let count = 0;
+        let overflow = 0;
+        let overflowLine = 0;
         for (const span of spans) {
-          if (count >= MAX_PER_FILE || adminFile) break;
+          if (adminFile) break;
           const body = src.code.slice(span.bodyStart, span.bodyEnd);
           const bodyText = src.text.slice(span.bodyStart, span.bodyEnd);
           if (verifiesSignature(body)) continue;
@@ -131,6 +133,11 @@ export class IdorDetector implements Detector {
               }
             }
             if (scoped || target === undefined) continue;
+            if (count >= MAX_PER_FILE) {
+              overflow++;
+              if (overflowLine === 0) overflowLine = target.filter.line;
+              continue;
+            }
             // Ownership can still be enforced where a per-handler scan cannot see it (a helper in
             // another file, a database trigger), so this rule stays at medium confidence.
             const action =
@@ -161,6 +168,29 @@ export class IdorDetector implements Detector {
             );
             count++;
           }
+        }
+        if (overflow > 0) {
+          findings.push(
+            makeFinding({
+              category: "authorization",
+              ruleId: "authorization/idor-unscoped-lookup",
+              title: `${overflow} more records accessed by a caller-supplied id without an ownership check`,
+              severity: "high",
+              confidence: "medium",
+              file,
+              line: overflowLine,
+              evidence: src.lineText(overflowLine),
+              discriminator: "summary",
+              plainEnglishProblem: `This file has ${overflow} more handlers or queries that use a caller-supplied id without an ownership filter. Only the first ${MAX_PER_FILE} are listed individually.`,
+              whyItMatters:
+                "Any logged-in user can change the id in the request and read or modify another user's or tenant's records (an insecure direct object reference).",
+              fixSteps: [
+                "Add the owner or tenant filter to each of these queries, or check the loaded row's owner before using it.",
+              ],
+              aiFixPrompt:
+                "Many handlers in this file read, update or delete records by a request-supplied id without restricting the query to the signed-in user's records. Add an ownership or tenant filter to every such query so another user's id behaves like a missing record (404).",
+            }),
+          );
         }
       } catch {
         // detectors never throw

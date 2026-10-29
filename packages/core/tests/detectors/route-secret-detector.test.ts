@@ -17,7 +17,7 @@ describe("RouteSecretDetector: auth/hardcoded-route-secret", () => {
     const f = await run({
       "app/api/cron/cleanup/route.ts": [
         "export async function GET(req: NextRequest) {",
-        '  if (req.nextUrl.searchParams.get("key") !== "cron-cleanup") {',
+        '  if (req.nextUrl.searchParams.get("key") !== "nightly-job") {',
         "    return unauthorized();",
         "  }",
         "}",
@@ -30,7 +30,7 @@ describe("RouteSecretDetector: auth/hardcoded-route-secret", () => {
       confidence: "high",
       line: 2,
     });
-    expect(f[0]!.evidence).not.toContain("cron-cleanup");
+    expect(f[0]!.evidence).not.toContain("nightly-job");
     expectRubric(f);
   });
 
@@ -125,5 +125,38 @@ describe("RouteSecretDetector: auth/non-constant-time-compare", () => {
     const b = await run(files);
     expect(a).toHaveLength(1);
     expect(b.map((x) => x.id)).toEqual(a.map((x) => x.id));
+  });
+});
+
+describe("RouteSecretDetector: review round 1", () => {
+  it("does not treat a Bearer prefix concatenated with an env secret as hardcoded", async () => {
+    const f = await run({
+      "app/api/cron/route.ts": [
+        "export async function GET(req: Request) {",
+        '  const header = req.headers.get("authorization");',
+        '  if (header !== "Bearer " + process.env.CRON_SECRET) {',
+        "    return new Response(null, { status: 401 });",
+        "  }",
+        "}",
+      ].join("\n"),
+    });
+    expect(f.filter((x) => x.ruleId === "auth/hardcoded-route-secret")).toEqual([]);
+  });
+
+  it("does not flag enum-style comparisons in redirect branches", async () => {
+    const f = await run({
+      "app/auth/confirm/route.ts": [
+        "export async function GET(request: Request) {",
+        "  const { searchParams } = new URL(request.url);",
+        '  if (searchParams.get("token_type") === "recovery") {',
+        '    return NextResponse.redirect(new URL("/reset", request.url));',
+        "  }",
+        '  if (request.headers.get("x-auth-provider") === "google") {',
+        '    return NextResponse.redirect(new URL("/g", request.url));',
+        "  }",
+        "}",
+      ].join("\n"),
+    });
+    expect(f).toEqual([]);
   });
 });

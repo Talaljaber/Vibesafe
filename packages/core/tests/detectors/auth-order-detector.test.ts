@@ -16,7 +16,7 @@ describe("AuthOrderDetector", () => {
   it("flags a service-role write that runs before the session check", async () => {
     const f = await run({
       "app/api/invoices/[id]/route.ts": [
-        'import { adminDb } from "@/lib/server/db";',
+        'import { adminDb } from "@/lib/db/admin";',
         "export async function DELETE(_req: Request, { params }: Ctx) {",
         "  const { data: invoice } = await adminDb",
         '    .from("invoices")',

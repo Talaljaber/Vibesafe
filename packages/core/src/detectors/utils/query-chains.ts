@@ -614,7 +614,7 @@ const REQUEST_TEXT_RE =
   /\b(?:params|searchParams|query)\b|\b(?:req|request)\s*\.\s*(?:body|query|params)\b/;
 
 function declarationOf(src: JsSource, name: string, before: number): string | undefined {
-  const esc = name.replace(/\$/g, "\$");
+  const esc = name.replace(/\$/g, "\\$&");
   const re = new RegExp(
     String.raw`\b(?:const|let|var)\s+(?:\{[^}]*\b${esc}\b[^}]*\}|\[[^\]]*\b${esc}\b[^\]]*\]|${esc})\s*(?::[^=;\n]+)?=\s*([^;\n]+)`,
     "g",

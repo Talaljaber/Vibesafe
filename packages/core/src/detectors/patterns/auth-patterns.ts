@@ -188,7 +188,7 @@ export const IDENTITY_NAME_RE =
  * Matched on masked code.
  */
 export const OWNERSHIP_CHECK_RE =
-  /\.\s*(?:(?:org|organi[sz]ation|tenant|team|workspace|account|user|owner|author|creator|member)_?[iI]d|created_?[bB]y|owner)\s*(?:!==|===|!=|==)|(?:!==|===|!=|==)\s*[\w$.?]+\.\s*(?:org|organi[sz]ation|tenant|team|workspace|account|user|owner|author|creator|created_?by|member)_?[iI]d\b|\b(?:assert|check|verify|ensure|require)\w*(?:Owner|Ownership|Access|Permission|Member)\w*\s*\(|\bcan(?:Access|Edit|View|Read|Update|Delete|Manage)?\s*\(|\bauthorize\w*\s*\(|\bhasPermission\s*\(/;
+  /\.\s*(?:(?:org|organi[sz]ation|tenant|team|workspace|account|user|owner|author|creator|member|customer|shop|store|client|project)_?[iI]d|created_?[bB]y|owner)\s*(?:!==|===|!=|==)|(?:!==|===|!=|==)\s*[\w$.?]+\.\s*(?:org|organi[sz]ation|tenant|team|workspace|account|user|owner|author|creator|created_?by|member|customer|shop|store|client|project)_?[iI]d\b|\b(?:assert|check|verify|ensure|require)\w*(?:Owner|Ownership|Access|Permission|Member)\w*\s*\(|\bcan(?:Access|Edit|View|Read|Update|Delete|Manage)?\s*\(|\bauthorize\w*\s*\(|\bhasPermission\s*\(/;
 
 /** Admin/staff checks: an admin-only handler reaching any row is by design. Matched on raw text. */
 export const ADMIN_CHECK_RE =
@@ -197,3 +197,10 @@ export const ADMIN_CHECK_RE =
 /** Request parameter or header names that carry a shared secret (`key`, `token`, `x-cron-secret`). */
 export const SECRET_PARAM_NAME_RE =
   /^(?:key|secret|token|auth|authorization|password|passwd|pass|pwd|passcode|signature|sig|cron|apikey|api[-_]key|access[-_]?(?:key|token)|admin[-_]?(?:key|token|secret|password)|x-[\w-]*(?:key|secret|token|auth|signature|password)[\w-]*)$|secret|token|api[-_]?key|password/i;
+
+/**
+ * Request parameter or header names that are themselves a secret (the name ends in
+ * secret/token/key/password); excludes enum-like names such as `token_type` or `x-auth-provider`.
+ */
+export const SECRET_PARAM_ANCHORED_RE =
+  /^(?:key|secret|token|auth|authorization|password|passwd|pass|pwd|passcode|signature|sig|cron|apikey|api[-_]key|x-auth|access[-_]?(?:key|token)|admin[-_]?(?:key|token|secret|password)|x-[\w-]*(?:key|secret|token|signature|password))$|[-_](?:secret|token|key|password|passcode)$|[a-z](?:Secret|Token|Key|Password)$/i;

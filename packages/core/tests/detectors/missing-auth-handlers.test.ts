@@ -192,7 +192,7 @@ describe("MissingAuthDetector: request-secret checks", () => {
 describe("MissingAuthDetector: unauthenticated tenant reads", () => {
   const read = (pre: string, filter: string) =>
     [
-      'import { adminDb } from "@/lib/server/db";',
+      'import { adminDb } from "@/lib/db/admin";',
       "export async function GET(req: Request) {",
       pre,
       '  const orgId = new URL(req.url).searchParams.get("orgId");',
@@ -235,7 +235,7 @@ describe("MissingAuthDetector: unauthenticated tenant reads", () => {
       [],
     );
     const rls = read("", '.eq("org_id", orgId)')
-      .replace('import { adminDb } from "@/lib/server/db";', "")
+      .replace('import { adminDb } from "@/lib/db/admin";', "")
       .replace("adminDb", "(await createClient())");
     expect(await run({ "app/api/reports/route.ts": rls })).toEqual([]);
   });

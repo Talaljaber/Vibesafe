@@ -14,7 +14,7 @@ const run = (files: Record<string, string>) => new IdorDetector().detect(ctx(fil
 
 const route = (body: string, sig = "_req: Request, { params }: Ctx"): string =>
   [
-    'import { adminDb } from "@/lib/server/db";',
+    'import { adminDb } from "@/lib/db/admin";',
     'import { getSession } from "@/lib/server/auth";',
     `export async function GET(${sig}) {`,
     "  const session = await getSession();",
@@ -144,5 +144,25 @@ describe("IdorDetector", () => {
     expect(a).toHaveLength(1);
     expect(a[0]!.confidence).toBe("medium");
     expect(b.map((x) => x.id)).toEqual(a.map((x) => x.id));
+  });
+});
+
+describe("IdorDetector: review round 1", () => {
+  it("treats <row>.customerId compared with the session as an ownership check", async () => {
+    const f = await run({
+      "app/api/orders/[id]/route.ts": route(
+        '  const { data: order } = await adminDb.from("orders").select("*").eq("id", params.id).maybeSingle();\n  if (order.customerId !== session.customerId) return notFound();\n  return Response.json(order);',
+      ),
+    });
+    expect(f).toEqual([]);
+  });
+
+  it("emits one summary finding after the per-file cap", async () => {
+    const q = (i: number): string =>
+      `  const r${i} = await adminDb.from("orders").select("*").eq("id", params.id).maybeSingle();`;
+    const body = Array.from({ length: 28 }, (_, i) => q(i)).join("\n");
+    const f = await run({ "app/api/orders/[id]/route.ts": route(body) });
+    expect(f).toHaveLength(26);
+    expect(f.filter((x) => x.title.includes("3 more"))).toHaveLength(1);
   });
 });

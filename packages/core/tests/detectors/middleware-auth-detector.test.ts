@@ -148,3 +148,46 @@ describe("MiddlewareAuthDetector: auth/middleware-matcher-gap", () => {
     expect(b.map((x) => x.id)).toEqual(a.map((x) => x.id));
   });
 });
+
+describe("MiddlewareAuthDetector: route-group guards", () => {
+  const mw = [
+    "export async function middleware(req) { const s = await getToken({ req }); if (!s) return NextResponse.redirect('/login'); }",
+    "export const config = { matcher: ['/dashboard/:path*'] };",
+  ].join("\n");
+  const page = "export default function P() { return null; }";
+
+  it("accepts a guarded layout inside a route group for the section", async () => {
+    const f = await run({
+      "middleware.ts": mw,
+      "app/(admin)/admin/layout.tsx":
+        "export default async function L({ children }) { const s = await getServerSession(); if (s?.user.role !== 'admin') redirect('/'); return children; }",
+      "app/(admin)/admin/page.tsx": page,
+      "app/dashboard/page.tsx": page,
+    });
+    expect(f).toEqual([]);
+  });
+
+  it("accepts a route-group layout that wraps the section and a requireAdmin helper", async () => {
+    const f = await run({
+      "middleware.ts": mw,
+      "app/(app)/layout.tsx":
+        "export default async function L({ children }) { await requireUser(); return children; }",
+      "app/(app)/settings/page.tsx": page,
+      "app/(staff)/admin/page.tsx":
+        "export default async function P() { await requireAdmin(); return null; }",
+      "app/dashboard/page.tsx": page,
+    });
+    expect(f).toEqual([]);
+  });
+
+  it("still reports an unguarded group section and ignores a guard in an unrelated group", async () => {
+    const f = await run({
+      "middleware.ts": mw,
+      "app/(marketing)/layout.tsx":
+        "export default async function L({ children }) { await requireUser(); return children; }",
+      "app/(app)/settings/page.tsx": page,
+      "app/dashboard/page.tsx": page,
+    });
+    expect(f.map((x) => x.ruleId)).toEqual(["auth/middleware-matcher-gap"]);
+  });
+});

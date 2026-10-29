@@ -10,7 +10,7 @@ import {
   PUBLIC_ROUTE_PATH_RE,
   SIGNATURE_VERIFY_PATTERNS,
   PUBLIC_HANDLER_PATTERNS,
-  SECRET_PARAM_NAME_RE,
+  SECRET_PARAM_ANCHORED_RE,
 } from "../patterns/auth-patterns.js";
 import { maskCode } from "./js-source.js";
 import type { JsSource } from "./js-source.js";
@@ -426,7 +426,7 @@ export function spanAuthenticates(
   const body = src.code.slice(span.bodyStart, span.bodyEnd);
   return (
     firstAuthCheck(body, helpers) !== undefined ||
-    hasSecretComparison(src, span.bodyStart, span.bodyEnd)
+    hasDenyingSecretComparison(src, span.bodyStart, span.bodyEnd)
   );
 }
 
@@ -441,6 +441,8 @@ export interface SecretComparison {
   against: "literal" | "env";
   /** The name looks like a secret, or the failing branch answers 401/403. */
   secretLike: boolean;
+  /** The comparison is an `if (...)` whose branch rejects the request (return/throw 401/403). */
+  denies: boolean;
   /** File range of the compared literal or env expression. */
   valueStart: number;
   valueEnd: number;
@@ -493,13 +495,52 @@ function isEnvSide(src: JsSource, text: string, before: number): boolean {
   ).test(src.text.slice(0, before));
 }
 
+/**
+ * When the compared operand is part of a `+` concatenation, the whole concatenation's range and
+ * its parts; otherwise undefined.
+ */
+function concatenation(
+  src: JsSource,
+  code: string,
+  operandIsRight: boolean,
+  start: number,
+  end: number,
+  lineStart: number,
+  lineEnd: number,
+  op: number,
+): { start: number; end: number; parts: string[] } | undefined {
+  let s = start;
+  let e = end;
+  if (operandIsRight) {
+    if (!/^\s*\+/.test(code.slice(end, lineEnd))) return undefined;
+    let depth = 0;
+    for (e = end; e < lineEnd; e++) {
+      const ch = code[e];
+      if (ch === "(" || ch === "[") depth++;
+      else if (ch === ")" || ch === "]") {
+        if (depth === 0) break;
+        depth--;
+      } else if (depth === 0 && "{;?&|".includes(ch ?? "")) break;
+    }
+  } else {
+    if (!/\+\s*$/.test(code.slice(lineStart, start))) return undefined;
+    s = Math.max(lineStart, code.lastIndexOf("(", op) + 1, code.lastIndexOf("&", start) + 1);
+    if (s > start) s = lineStart;
+  }
+  const parts = src.text
+    .slice(s, e)
+    .split("+")
+    .map((p) => p.trim());
+  return { start: s, end: e, parts };
+}
+
 const TRIVIAL_LITERAL_RE = /^(?:|undefined|null|true|false|0|1)$/;
 const DENY_RE = /\b(?:401|403|unauthori[sz]ed|forbidden|Unauthori[sz]ed|Forbidden)\b/;
 
 /**
  * Comparisons (`===`, `!==`, `==`, `!=`) in `[from, to)` of a request query parameter or
  * header with a string literal or an environment variable: `searchParams.get("key") !==
- * "cron-cleanup"`, `req.headers["x-api-key"] === process.env.API_KEY`, or a local bound from
+ * "nightly-job"`, `req.headers["x-api-key"] === process.env.API_KEY`, or a local bound from
  * either. `secretLike` is false for enum-style comparisons (`get("dir") === "asc"`) unless the
  * failing branch answers 401/403.
  */
@@ -535,7 +576,25 @@ export function findSecretComparisons(src: JsSource, from: number, to: number): 
       if (name === undefined) continue;
       const lit = /^(["'`])([^"'`]*)\1$/.exec(otherText.trim());
       let against: "literal" | "env" | undefined;
-      if (lit && !otherText.includes("${")) {
+      let vStart = otherStart;
+      let vEnd = otherStart + otherText.length;
+      const concat = concatenation(
+        src,
+        code,
+        otherStart === rStart,
+        otherStart,
+        vEnd,
+        lineStart,
+        lineEnd,
+        op,
+      );
+      if (concat) {
+        // `"Bearer " + process.env.X`: a prefix literal is not the secret; only an env part counts
+        if (!concat.parts.some((part) => isEnvSide(src, part, op))) continue;
+        against = "env";
+        vStart = concat.start;
+        vEnd = concat.end;
+      } else if (lit && !otherText.includes("${")) {
         if (TRIVIAL_LITERAL_RE.test(lit[2]!.trim())) continue;
         against = "literal";
       } else if (isEnvSide(src, otherText, op)) {
@@ -554,14 +613,21 @@ export function findSecretComparisons(src: JsSource, from: number, to: number): 
         line: src.lineAt(op),
         name,
         against,
-        secretLike: SECRET_PARAM_NAME_RE.test(name) || denies,
-        valueStart: otherStart,
-        valueEnd: otherStart + otherText.length,
+        secretLike: SECRET_PARAM_ANCHORED_RE.test(name) || denies,
+        denies,
+        valueStart: vStart,
+        valueEnd: vEnd,
       });
       break;
     }
   }
   return out;
+}
+
+/** True when `[from, to)` has a secret comparison that rejects the request when it fails. */
+function hasDenyingSecretComparison(src: JsSource, from: number, to: number): boolean {
+  if (!/[!=]==?/.test(src.code.slice(from, to))) return false;
+  return findSecretComparisons(src, from, to).some((c) => c.secretLike && c.denies);
 }
 
 /** True when `[from, to)` compares a secret-like request value with a literal or env var. */

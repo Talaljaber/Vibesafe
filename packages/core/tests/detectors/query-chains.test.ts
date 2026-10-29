@@ -69,7 +69,7 @@ describe("extractQueryChains: Supabase", () => {
   it("classifies service-role, RLS and unknown clients", () => {
     const src = createJsSource(
       [
-        'import { adminDb } from "@/lib/server/db";',
+        'import { adminDb } from "@/lib/db/admin";',
         'import { sb } from "@/lib/supabase";',
         "const admin = createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY!);",
         "const userClient = createServerClient(url, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { cookies });",

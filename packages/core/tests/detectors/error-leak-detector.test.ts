@@ -108,3 +108,35 @@ describe("ErrorLeakDetector", () => {
     expect(b.map((x) => x.id)).toEqual(a.map((x) => x.id));
   });
 });
+
+describe("ErrorLeakDetector: review round 1", () => {
+  it("does not flag Joi validation messages or non-error .stack fields", async () => {
+    const f = await run({
+      "app/api/items/route.ts": [
+        'import { NextResponse } from "next/server";',
+        "export async function POST(req: Request) {",
+        "  const { error } = schema.validate(await req.json());",
+        "  if (error) return NextResponse.json({ message: error.details[0].message }, { status: 400 });",
+        "  if (error) return NextResponse.json({ errors: error.details.map((d) => d.message) });",
+        "  return NextResponse.json({ stack: project.stack });",
+        "}",
+      ].join("\n"),
+    });
+    const rules = f.map((x) => [x.confidence, x.line]);
+    expect(rules).toEqual([["medium", 6]]);
+  });
+
+  it("keeps high confidence for catch-bound errors", async () => {
+    const f = await run({
+      "app/api/x/route.ts": [
+        'import { NextResponse } from "next/server";',
+        "export async function GET() {",
+        "  try { await go(); } catch (boom) {",
+        "    return NextResponse.json({ stack: boom.stack });",
+        "  }",
+        "}",
+      ].join("\n"),
+    });
+    expect(f.map((x) => x.confidence)).toEqual(["high"]);
+  });
+});

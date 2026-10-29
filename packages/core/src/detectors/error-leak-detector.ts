@@ -14,13 +14,56 @@ import { getJsSource } from "./utils/js-source.js";
 const RESPONSE_CALL_RE =
   /\b(?:(?:NextResponse|Response)\s*\.\s*json|new\s+(?:NextResponse|Response)|(?:res|response|reply|ctx|c)\s*(?:\.\s*status\s*\([^()]*\))?\s*\.\s*(?:json|send|end))\s*\(/g;
 /** `err.stack` read in the response payload. */
-const STACK_READ_RE = /[\w$)\]]\s*\??\.\s*stack\b/;
+const STACK_READ_RE = /([\w$)\]]+)\s*\??\.\s*stack\b/;
 /** Raw PostgREST/Postgres error internals: `details: e.details`, `hint: error.hint`. */
-const DB_DETAIL_RE = /[\w$)\]]\s*\??\.\s*(?:details|hint)\b/;
+const DB_DETAIL_RE =
+  /([\w$]*)\s*\??\.\s*(?:details|hint)\b(?!\s*(?:\[|\??\.\s*(?:map|forEach|flatMap|filter|join)\b))/g;
+/** Receivers that are errors: `err`, `error`, `e`, `ex`, `dbError`. */
+const ERROR_LIKE_RE = /^(?:e|err|ex|exc|exception|error|\w*(?:Error|Err))$/;
 /** Development-only guards around the leak. */
 const DEV_GUARD_RE = /\bNODE_ENV\b|\bisDev\w*\b|\bisProd\w*\b|\b(?:dev|debug)Mode\b|\bIS_DEV\b/;
 const PREFILTER_RE = /\.\s*(?:stack|details|hint)\b/;
 const MAX_PER_FILE = 25;
+
+interface Hit {
+  index: number;
+  0: string;
+  errorLike: boolean;
+}
+
+/** The catch-clause parameter in scope at `at` (nearest preceding `catch (x)`). */
+function catchParam(code: string, at: number): string | undefined {
+  const window = code.slice(Math.max(0, at - 3000), at);
+  let last: string | undefined;
+  for (const m of window.matchAll(/\bcatch\s*\(\s*([\w$]+)/g)) last = m[1];
+  return last;
+}
+
+function firstStack(code: string, args: string, base: number): Hit | undefined {
+  const m = STACK_READ_RE.exec(args);
+  STACK_READ_RE.lastIndex = 0;
+  if (!m) return undefined;
+  const name = m[1] ?? "";
+  const errorLike = ERROR_LIKE_RE.test(name) || (name !== "" && name === catchParam(code, base));
+  return { index: m.index, 0: m[0], errorLike };
+}
+
+/** Validation libraries (Joi, Yup, Zod) put user-facing messages in `error.details`. */
+function firstDetail(code: string, args: string, base: number): Hit | undefined {
+  for (const m of args.matchAll(DB_DETAIL_RE)) {
+    const recv = m[1] ?? "";
+    if (recv !== "") {
+      const esc = recv.replace(/\$/g, "\$&");
+      const before = code.slice(Math.max(0, base - 3000), base);
+      const bound = new RegExp(
+        String.raw`\b(?:const|let|var)\s+(?:\{[^}]*\b${esc}\b[^}]*\}|${esc})\s*(?::[^=;\n]+)?=[^;]*?\.\s*(?:validate|validateAsync|validateSync)\s*\(`,
+      );
+      if (bound.test(before)) continue;
+    }
+    return { index: m.index, 0: m[0], errorLike: false };
+  }
+  return undefined;
+}
 
 export class ErrorLeakDetector implements Detector {
   id = "error-leak-detector";
@@ -51,8 +94,8 @@ export class ErrorLeakDetector implements Detector {
           const close = src.matchOf(open);
           if (close <= open || close - open > 4000) continue;
           const args = code.slice(open + 1, close);
-          const stack = STACK_READ_RE.exec(args);
-          const detail = stack ? null : DB_DETAIL_RE.exec(args);
+          const stack = firstStack(code, args, open + 1);
+          const detail = stack ? null : firstDetail(code, args, open + 1);
           const hit = stack ?? detail;
           if (!hit) continue;
           const lineStart = src.lines.lineStart(Math.max(1, src.lineAt(m.index) - 3));
@@ -66,7 +109,7 @@ export class ErrorLeakDetector implements Detector {
                 ? "Error stack trace returned to the client"
                 : "Raw database error details returned to the client",
               severity: "medium",
-              confidence: stack ? "high" : "medium",
+              confidence: stack?.errorLike ? "high" : "medium",
               file,
               line,
               evidence: src.lineText(line),

@@ -82,8 +82,10 @@ export class MassAssignmentDetector implements Detector {
         if (!isServerScope(cls) || cls.testOrFixture || cls.generated) continue;
         const src = await getJsSource(context, file);
         let count = 0;
+        let overflow = 0;
+        let overflowLine = 0;
         for (const span of handlerSpans(src, cls)) {
-          if (!HANDLER_ROLES.has(span.role) || count >= MAX_PER_FILE) continue;
+          if (!HANDLER_ROLES.has(span.role)) continue;
           const chains = extractQueryChains(src, span.bodyStart, span.bodyEnd).filter(
             (c) => c.payload !== undefined && c.verb !== "select" && c.verb !== "delete",
           );
@@ -112,6 +114,11 @@ export class MassAssignmentDetector implements Detector {
               hit = wholeBody(state, payload);
             }
             if (hit === undefined) continue;
+            if (count >= MAX_PER_FILE) {
+              overflow++;
+              if (overflowLine === 0) overflowLine = src.lineAt(anchor);
+              continue;
+            }
             const sensitive = chain.table !== undefined && SENSITIVE_MODEL_RE.test(chain.table);
             const confident =
               sensitive && hit.path !== "indirect" && !span.truncated && !overridden;
@@ -142,6 +149,29 @@ export class MassAssignmentDetector implements Detector {
             );
             count++;
           }
+        }
+        if (overflow > 0) {
+          findings.push(
+            makeFinding({
+              category: "authorization",
+              ruleId: "authorization/mass-assignment",
+              title: `${overflow} more request bodies written straight into the database`,
+              severity: "high",
+              confidence: "medium",
+              file,
+              line: overflowLine,
+              evidence: src.lineText(overflowLine),
+              discriminator: "summary",
+              plainEnglishProblem: `This file has ${overflow} more places that write a request body whole into the database. Only the first ${MAX_PER_FILE} are listed individually.`,
+              whyItMatters:
+                "Callers can set any column (role, org_id, user_id, is_admin) by adding extra JSON fields.",
+              fixSteps: [
+                "Copy only the allowed fields into each write, or parse the body with a strict schema without privilege or ownership fields.",
+              ],
+              aiFixPrompt:
+                "Many handlers in this file write the request body whole into database inserts/updates. Replace each with an explicit allowlist of user-editable fields and set ownership columns from the session.",
+            }),
+          );
         }
       } catch {
         // detectors never throw

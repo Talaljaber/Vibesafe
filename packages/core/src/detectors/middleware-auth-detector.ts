@@ -11,7 +11,11 @@ import { makeFinding } from "./utils/finding.js";
 import { classifyPath, isJsLike } from "./utils/file-kind.js";
 import { getJsSource, type JsSource } from "./utils/js-source.js";
 import { hasUseClientDirective } from "./utils/file-classifier.js";
-import { AUTH_CHECK_PATTERNS, MIDDLEWARE_AUTH_PATTERNS } from "./patterns/auth-patterns.js";
+import {
+  AUTH_CHECK_PATTERNS,
+  HANDLER_AUTH_PATTERNS,
+  MIDDLEWARE_AUTH_PATTERNS,
+} from "./patterns/auth-patterns.js";
 
 /** Cookie reads in masked code: `req.cookies.get(`, `.has(`, `.getAll()`, `cookies().get(`. */
 const COOKIE_ACCESS_RE = /\bcookies\s*(?:\(\s*\))?\s*\.\s*(?:get|has|getAll)\s*\(/g;
@@ -192,18 +196,47 @@ export class MiddlewareAuthDetector implements Detector {
     return segments;
   }
 
-  /** The section's own layout/page is a server component that checks the session. */
+  /**
+   * The section's own page/layout, a layout in a route group wrapping it, or a layout of the
+   * section inside a route group, is a server component that checks the session.
+   */
   private async segmentGuardsItself(
     context: ScanContext,
     root: string,
     segment: string,
   ): Promise<boolean> {
-    for (const name of ["layout", "page"]) {
-      for (const ext of PAGE_EXTS) {
-        const text = await context.readFile(`${root}app/${segment}/${name}.${ext}`);
-        if (!text || hasUseClientDirective(text)) continue;
-        if (AUTH_CHECK_PATTERNS.some((re) => re.test(text))) return true;
-      }
+    const parsed: { file: string; dirs: string[]; stripped: string[]; kind: string }[] = [];
+    for (const f of context.files) {
+      const norm = f.replace(/\\/g, "/");
+      const m = /^(?:src\/)?app\/((?:[^/]+\/)*)(page|layout)\.[cm]?[jt]sx?$/.exec(norm);
+      if (!m || (root === "src/") !== norm.startsWith("src/")) continue;
+      const dirs = m[1]!.split("/").filter(Boolean);
+      parsed.push({
+        file: f,
+        dirs,
+        stripped: dirs.filter((d) => !/^\(.*\)$/.test(d)),
+        kind: m[2]!,
+      });
+    }
+    const sectionDirs = parsed.filter((p) => p.stripped[0] === segment).map((p) => p.dirs);
+    const guards = async (file: string): Promise<boolean> => {
+      const text = await context.readFile(file);
+      if (!text || hasUseClientDirective(text)) return false;
+      return (
+        AUTH_CHECK_PATTERNS.some((re) => re.test(text)) ||
+        HANDLER_AUTH_PATTERNS.some((re) => re.test(text))
+      );
+    };
+    for (const p of parsed) {
+      const inSection = p.stripped.length === 1 && p.stripped[0] === segment;
+      // layouts above the section only count when the section lives under the same route group
+      const wraps =
+        p.kind === "layout" &&
+        p.stripped.length === 0 &&
+        p.dirs.length > 0 &&
+        sectionDirs.some((d) => p.dirs.every((x, k) => d[k] === x));
+      if (!(inSection || wraps)) continue;
+      if (await guards(p.file)) return true;
     }
     return false;
   }
