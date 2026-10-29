@@ -174,6 +174,28 @@ function checksOrigin(cf: ClientFile, body: string, param: string, depth = 0): b
     String.raw`\.\s*(?:includes|has|indexOf|test|some)\s*\(\s*${origin}`,
   ];
   if (new RegExp(checks.join("|")).test(body)) return true;
+  if (usesExpr(body, origin)) return true;
+  // `const o = e.origin; if (o !== X) ...`
+  const local = new RegExp(
+    String.raw`\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*${origin}\s*[;,\n)]`,
+    "g",
+  );
+  for (let m = local.exec(body); m !== null; m = local.exec(body)) {
+    const v = m[1]!.replace(/\$/g, "\\$");
+    const rest = body.slice(m.index + m[0].length);
+    const ve = String.raw`(?<![\w$.])${v}(?![\w$])`;
+    if (
+      new RegExp(
+        [
+          String.raw`${ve}\s*(?:[!=]==?|\.\s*(?:startsWith|endsWith|includes|match)\b)`,
+          String.raw`[!=]==?\s*${ve}`,
+        ].join("|"),
+      ).test(rest) ||
+      usesExpr(rest, ve)
+    ) {
+      return true;
+    }
+  }
   const call = new RegExp(String.raw`([A-Za-z_$][\w$.]*)\s*\(\s*(?:[^()]*,\s*)?${esc}\s*[,)]`, "g");
   for (let m = call.exec(body); m !== null; m = call.exec(body)) {
     const callee = m[1]!;
@@ -190,6 +212,23 @@ function checksOrigin(cf: ClientFile, body: string, param: string, depth = 0): b
   }
   return false;
 }
+
+/** True when the expression is a call argument (not a logger), a computed key or a switch value. */
+function usesExpr(body: string, exprSrc: string): boolean {
+  const re = new RegExp(exprSrc, "g");
+  for (let m = re.exec(body); m !== null; m = re.exec(body)) {
+    const before = body.slice(Math.max(0, m.index - 200), m.index);
+    if (/\bswitch\s*\(\s*$/.test(before) || /\[\s*$/.test(before)) return true;
+    const call = /([A-Za-z_$][\w$.]*)\s*\(\s*(?:[^()]*,\s*)?$/.exec(before);
+    if (call !== null && !/^(?:if|while|for|switch|return|typeof)$/.test(call[1]!)) {
+      if (/^(?:console|logger|log)\b|\.(?:log|warn|error|info|debug|trace)$/i.test(call[1]!))
+        continue;
+      return true;
+    }
+  }
+  return false;
+}
+
 /** Verdict for a handler, or undefined when it checks the origin or ignores the data. */
 function judgeHandler(
   cf: ClientFile,

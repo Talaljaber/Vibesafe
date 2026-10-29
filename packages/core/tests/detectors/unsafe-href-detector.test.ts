@@ -190,6 +190,43 @@ export function List({ items }: { items: any[] }) {
 }
 `,
     });
-    expect(Date.now() - t0).toBeLessThan(4000);
+    expect(Date.now() - t0).toBeLessThan(1500);
+  });
+});
+
+describe("round 3: Next URL objects", () => {
+  const page = (jsx: string) => ({
+    "components/L.tsx": `"use client";
+import Link from "next/link";
+import { useRouter } from "next/router";
+import { useSearchParams } from "next/navigation";
+export function L() {
+  const router = useRouter();
+  const sp = useSearchParams();
+  return ${jsx};
+}
+`,
+  });
+  it("ignores spread router.query in query", async () => {
+    expect(
+      await run(
+        page(
+          `<Link href={{ pathname: router.pathname, query: { ...router.query, page: 2 } }}>x</Link>`,
+        ),
+        "18.2.0",
+      ),
+    ).toHaveLength(0);
+  });
+  it("ignores a search param in query", async () => {
+    expect(
+      await run(
+        page(`<Link href={{ pathname: "/search", query: { q: sp.get("q") } }}>x</Link>`),
+        "18.2.0",
+      ),
+    ).toHaveLength(0);
+  });
+  it("flags a tainted pathname", async () => {
+    const f = await run(page(`<Link href={{ pathname: sp.get("to") }}>x</Link>`), "18.2.0");
+    expect(f).toHaveLength(1);
   });
 });

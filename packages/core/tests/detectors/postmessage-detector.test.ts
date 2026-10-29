@@ -228,3 +228,50 @@ function onMessage(event: MessageEvent) {
     expect(findings).toHaveLength(1);
   });
 });
+
+describe("round 3: origin checks and bare listeners", () => {
+  const handler = (body: string, head = "") => ({
+    "components/W.tsx": `"use client";
+${head}
+export function W() {
+  useEffect(() => {
+    window.addEventListener("message", (e) => {
+${body}
+      window.location.href = e.data.url;
+    });
+  }, []);
+  return null;
+}
+`,
+  });
+  const clean: [string, string, string?][] = [
+    ["local origin compared", "const origin = e.origin;\nif (origin !== TRUSTED) return;"],
+    ["helper call", "if (!isTrustedOrigin(e.origin)) return;"],
+    ["helper call 2", "if (!isAllowed(e.origin)) return;"],
+    ["computed lookup", "if (!TRUSTED[e.origin]) return;"],
+    ["switch", "switch (e.origin) { case A: break; default: return; }"],
+    ["URL parse", "if (new URL(e.origin).hostname !== HOST) return;"],
+  ];
+  for (const [name, body] of clean) {
+    it(`does not flag: ${name}`, async () => {
+      expect(await run(handler(body))).toHaveLength(0);
+    });
+  }
+  it("still flags console.log(e.origin)", async () => {
+    const f = await run(handler("console.log(e.origin);"));
+    expect(f).toHaveLength(1);
+  });
+  it("flags a bare addEventListener in a tsx component", async () => {
+    const f = await run({
+      "components/B.tsx": `"use client";
+export function B() {
+  useEffect(() => {
+    addEventListener("message", (e) => eval(e.data.code));
+  }, []);
+  return null;
+}
+`,
+    });
+    expect(f).toHaveLength(1);
+  });
+});

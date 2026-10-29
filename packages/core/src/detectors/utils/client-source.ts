@@ -259,6 +259,24 @@ export function leadingOperands(src: JsSource, start: number, end: number, depth
   if (code[s] === "(" && src.matchOf(s) === r.end - 1) {
     return leadingOperands(src, s + 1, r.end - 1, depth + 1);
   }
+  // Next.js URL object `{ pathname, query, hash }`: only `pathname`/`href` carry the target
+  // (the framework URL-encodes `query` values), so judge just those properties.
+  if (code[s] === "{" && src.matchOf(s) === r.end - 1) {
+    const props: ArgRange[] = [];
+    for (const p of callArgs(src, s)) {
+      const key = /^(?:(pathname|href)|["'](?:pathname|href)["'])\s*(:|$|,)/.exec(
+        src.text.slice(p.start, p.end),
+      );
+      if (key === null) continue;
+      if (key[2] === ":") {
+        const colon = src.text.indexOf(":", p.start);
+        props.push(...leadingOperands(src, colon + 1, p.end, depth + 1));
+      } else if (key[1] !== undefined) {
+        props.push({ start: p.start, end: p.start + key[1].length });
+      }
+    }
+    return props;
+  }
   // Top-level ternary: either branch may be the value.
   let q = -1;
   for (let i = s; i < r.end; i++) {

@@ -273,3 +273,25 @@ export default function Go() {
     expect(findings.filter((f) => f.ruleId === REDIRECT)).toHaveLength(0);
   });
 });
+
+describe("round 3: router.push URL objects", () => {
+  const page = (call: string) => ({
+    "components/R.tsx": `"use client";
+import { useRouter } from "next/router";
+export function R() {
+  const router = useRouter();
+  return <button onClick={() => ${call}}>Go</button>;
+}
+`,
+  });
+  it("ignores a redirect key inside query", async () => {
+    const f = await run(
+      page(`router.push({ pathname: "/login", query: { next: router.query.next } })`),
+    );
+    expect(f.filter((x) => x.ruleId === REDIRECT)).toHaveLength(0);
+  });
+  it("flags a tainted pathname", async () => {
+    const f = await run(page(`router.push({ pathname: router.query.next })`));
+    expect(f.filter((x) => x.ruleId === REDIRECT)).toHaveLength(1);
+  });
+});
