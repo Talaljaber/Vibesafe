@@ -1,0 +1,9 @@
+{
+  "name": "checkout-app",
+  "private": true,
+  "dependencies": {
+    "next": "15.2.3",
+    "stripe": "17.0.0",
+    "@prisma/client": "6.0.0"
+  }
+}
