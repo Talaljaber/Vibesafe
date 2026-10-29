@@ -141,3 +141,29 @@ describe("GitignoreEnvFixer", () => {
     expect(preview.diff).toBe("+ !.env.example\n");
   });
 });
+
+describe("GitignoreEnvFixer for security_config/gitignore-env-variants", () => {
+  const ruleId = "security_config/gitignore-env-variants";
+  const fixer = new GitignoreEnvFixer(ruleId);
+
+  it("handles the variants rule and appends the wildcard and negation", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "vibesafe-test-"));
+    try {
+      await fs.writeFile(path.join(dir, ".gitignore"), ".env\n");
+      const finding = { ruleId } as Finding;
+      expect(fixer.canFix(finding)).toBe(true);
+      const preview = await fixer.preview(finding, dir);
+      expect(preview.diff).toContain(".env.*");
+      expect(preview.diff).toContain("!.env.example");
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves through the default fix registry", async () => {
+    const { createDefaultFixRegistry } = await import("../../src/fixers/auto-fix-registry.js");
+    const reg = createDefaultFixRegistry();
+    expect(reg.getFixer(ruleId)).toBeDefined();
+    expect(reg.getFixer("secret/env-not-ignored")).toBeDefined();
+  });
+});

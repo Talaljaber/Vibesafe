@@ -38,6 +38,7 @@ import { ConsoleLogFixer } from "./console-log-fixer.js";
 export function createDefaultFixRegistry(): AutoFixRegistry {
   const registry = new AutoFixRegistry();
   registry.register(new GitignoreEnvFixer());
+  registry.register(new GitignoreEnvFixer("security_config/gitignore-env-variants"));
   registry.register(new EnvExampleFixer());
   registry.register(new ConsoleLogFixer());
   return registry;
