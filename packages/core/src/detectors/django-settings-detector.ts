@@ -45,9 +45,16 @@ interface DjangoRule {
  *  - Settings split across modules via `from .base import *` are scanned per file; "missing"
  *    transport settings are judged across all non-dev settings modules of the project.
  *  - Only a top-level `if DEBUG:` block is recognised as dev-only; other conditionals are not.
+ *    Assignments inside it do not count as configuring a setting for the "missing" rules.
+ *  - A conditional expression (`False if DEBUG else True`) is treated like an env-driven value:
+ *    the insecure-value rules do not judge which branch production takes.
  * Bracketed, backslash-continued and multi-line triple-quoted values are joined into one
  * logical statement (see utils/python-source.ts).
  */
+
+/** Appended after an insecure value: `X = False if DEBUG else True` depends on a condition. */
+const NOT_CONDITIONAL = String.raw`(?!\s*if\b)`;
+
 const RULES: DjangoRule[] = [
   {
     id: "security_config/django-debug-true",
@@ -107,7 +114,9 @@ const RULES: DjangoRule[] = [
     severity: "medium",
     scope: "settings",
     skipInDebugBlock: true,
-    regex: /^\s*(?:SESSION_COOKIE_SECURE|CSRF_COOKIE_SECURE)\s*=\s*False\b/,
+    regex: new RegExp(
+      String.raw`^\s*(?:SESSION_COOKIE_SECURE|CSRF_COOKIE_SECURE)\s*=\s*False\b` + NOT_CONDITIONAL,
+    ),
     problem: "A session or CSRF cookie is explicitly allowed to travel over plain HTTP.",
     why: "Cookies without the Secure flag can be intercepted on unencrypted connections, letting attackers hijack sessions.",
     fixSteps: [
@@ -125,7 +134,7 @@ const RULES: DjangoRule[] = [
     scope: "settings",
     prodOnly: true,
     skipInDebugBlock: true,
-    regex: /^\s*SECURE_SSL_REDIRECT\s*=\s*False\b/,
+    regex: new RegExp(String.raw`^\s*SECURE_SSL_REDIRECT\s*=\s*False\b` + NOT_CONDITIONAL),
     problem: "SECURE_SSL_REDIRECT is set to False, so Django serves pages over plain HTTP.",
     why: "Visitors who type your address or follow an http:// link stay on an unencrypted connection, where logins and cookies can be read or changed by anyone on the network.",
     fixSteps: [
@@ -143,7 +152,7 @@ const RULES: DjangoRule[] = [
     scope: "settings",
     prodOnly: true,
     skipInDebugBlock: true,
-    regex: /^\s*SECURE_HSTS_SECONDS\s*=\s*0+(?![\d.])/,
+    regex: new RegExp(String.raw`^\s*SECURE_HSTS_SECONDS\s*=\s*0+(?![\d.])` + NOT_CONDITIONAL),
     problem:
       "SECURE_HSTS_SECONDS is 0, so browsers are never told to always use HTTPS for your site.",
     why: "Without HSTS, an attacker on the same network can downgrade a visitor's first request to plain HTTP and intercept it.",
@@ -162,7 +171,7 @@ const RULES: DjangoRule[] = [
     scope: "settings",
     prodOnly: true,
     skipInDebugBlock: true,
-    regex: /^\s*SESSION_COOKIE_HTTPONLY\s*=\s*False\b/,
+    regex: new RegExp(String.raw`^\s*SESSION_COOKIE_HTTPONLY\s*=\s*False\b` + NOT_CONDITIONAL),
     problem:
       "SESSION_COOKIE_HTTPONLY is False, so scripts running in the page can read the session cookie.",
     why: "If any script injection (XSS) gets through, the attacker can steal the session cookie and log in as the user.",
@@ -356,9 +365,11 @@ export class DjangoSettingsDetector implements Detector {
         const { stmt, end } = joinStatement(lines, i);
         if (end > continuedUntil) continuedUntil = end;
 
+        const inDevBlock = inDebugBlock && first.indent > 0;
         if (settings && !isContinuation) {
+          // A value set only for DEBUG does not configure the setting for production.
           const name = ASSIGNMENT_RE.exec(stmt)?.[1];
-          if (name) assigned.add(name);
+          if (name && !inDevBlock) assigned.add(name);
           const secret = this.matchSecretKey(stmt);
           if (secret) {
             findings.push(this.secretKeyFinding(filePath, i + 1, secret));
@@ -372,7 +383,7 @@ export class DjangoSettingsDetector implements Detector {
           // arguments are not mistaken for assignments); view rules read the physical line.
           if (rule.scope === "settings" && isContinuation) continue;
           if (rule.prodOnly && devOnly) continue;
-          if (rule.skipInDebugBlock && inDebugBlock && first.indent > 0) continue;
+          if (rule.skipInDebugBlock && inDevBlock) continue;
           const m = rule.regex.exec(rule.scope === "settings" ? stmt : line);
           if (!m || (rule.check && !rule.check(m))) continue;
           findings.push(this.ruleFinding(rule, filePath, i + 1, line));

@@ -119,6 +119,35 @@ describe("Django transport and cookie settings", () => {
       ["security_config/django-ssl-redirect-off", 11],
     ]);
   });
+
+  it("does not judge conditional values, but still flags a plain insecure value", async () => {
+    const conditional = await run({
+      "mysite/settings.py":
+        BASE +
+        "SECURE_SSL_REDIRECT = False if DEBUG else True\n" +
+        "SECURE_HSTS_SECONDS = 0 if DEBUG else 31536000\n" +
+        "SESSION_COOKIE_HTTPONLY = False if DEBUG else True\n" +
+        "SESSION_COOKIE_SECURE = False  if DEBUG else True\n" +
+        "CSRF_COOKIE_SECURE = (False if DEBUG else True)\n",
+    });
+    expect(conditional).toHaveLength(0);
+
+    const plain = await run({
+      "mysite/settings.py":
+        BASE +
+        "SECURE_SSL_REDIRECT = False  # TODO\n" +
+        "SECURE_HSTS_SECONDS = 0\n" +
+        "SESSION_COOKIE_HTTPONLY = False\n" +
+        "CSRF_COOKIE_SECURE = False\n" +
+        "SECURE_SSL_REDIRECT = True if PROD else False\n",
+    });
+    expect(ruleIds(plain)).toEqual([
+      "security_config/django-ssl-redirect-off",
+      "security_config/django-hsts-off",
+      "security_config/django-session-cookie-httponly-off",
+      "security_config/django-insecure-cookie",
+    ]);
+  });
 });
 
 describe("Django missing HTTPS settings", () => {
@@ -158,6 +187,25 @@ describe("Django missing HTTPS settings", () => {
       "mysite/settings.py": core + "if not DEBUG:\n    SECURE_SSL_REDIRECT = True\n",
     });
     expect(ruleIds(inIfBlock)).toEqual(["security_config/django-hsts-missing"]);
+  });
+
+  it("does not count a setting assigned only inside `if DEBUG:` as configured", async () => {
+    const debugOnly = await run({
+      "mysite/settings.py":
+        core + "if DEBUG:\n    SECURE_SSL_REDIRECT = False\n    SECURE_HSTS_SECONDS = 0\n",
+    });
+    expect(ruleIds(debugOnly)).toEqual([
+      "security_config/django-ssl-redirect-missing",
+      "security_config/django-hsts-missing",
+    ]);
+
+    const withElse = await run({
+      "mysite/settings.py":
+        core +
+        "if DEBUG:\n    SECURE_SSL_REDIRECT = False\nelse:\n    SECURE_SSL_REDIRECT = True\n" +
+        "SECURE_HSTS_SECONDS = 3600\n",
+    });
+    expect(withElse).toHaveLength(0);
   });
 
   it("does not report missing settings for partial or dev-only settings modules", async () => {
