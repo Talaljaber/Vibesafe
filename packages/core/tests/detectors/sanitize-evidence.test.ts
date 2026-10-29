@@ -34,6 +34,22 @@ describe("sanitizeEvidence", () => {
     expect(out).toContain('"supe...e123"');
   });
 
+  it("redacts the password of a database URL even when it equals the user name", () => {
+    const out = sanitizeEvidence(
+      'DATABASE_URL="postgres://Xk9prodQ2v7:Xk9prodQ2v7@db.acme-prod.io/app"',
+    );
+    expect(out).toContain("postgres://Xk9prodQ2v7:");
+    expect(out).toContain("@db.acme-prod.io/app");
+    expect(out.match(/Xk9prodQ2v7/g)).toHaveLength(1);
+  });
+
+  it("redacts URL credentials with an empty user", () => {
+    const pw = "Xk9prodQ2v7";
+    const out = sanitizeEvidence(`const r = "redis://:${pw}@cache.acme-prod.io:6379";`);
+    expect(out).not.toContain("Xk9prodQ2v7");
+    expect(out).toContain("cache.acme-prod.io");
+  });
+
   it("truncates long lines", () => {
     expect(sanitizeEvidence("x".repeat(5000)).length).toBeLessThanOrEqual(201);
   });

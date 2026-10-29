@@ -11,6 +11,16 @@ export interface SecretPattern {
   validate?: ((match: string) => boolean) | undefined;
   /** Capture group holding the secret value; when set, only that group is redacted in evidence. */
   valueGroup?: number | undefined;
+  /** Pattern-specific wording; the secret detector's generic text is used when absent. */
+  advice?: SecretAdvice | undefined;
+}
+
+/** Finding text for a secret pattern whose risk or fix differs from a plain API key. */
+export interface SecretAdvice {
+  problem: string;
+  why: string;
+  fixSteps: string[];
+  aiFixPrompt: string;
 }
 
 /** Decodes a JWT payload (base64url) and returns its `role` claim, or undefined if unreadable. */
@@ -76,6 +86,45 @@ export function isLikelyAwsSecretValue(value: string): boolean {
   if (value.length !== 40 || isPlaceholderValue(value)) return false;
   if (!/[A-Za-z]/.test(value) || !/[0-9/+]/.test(value)) return false;
   return new Set(value).size >= 15 && shannonEntropy(value) >= 3.5;
+}
+
+/**
+ * `scheme://user:password@host` for database and broker URLs. Group 2 is the user, group 3
+ * the password (the redacted value), group 4 the host (a hostname or bracketed IPv6).
+ */
+const DATABASE_URL_RE =
+  /\b(postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|rediss?|amqps?):\/\/([^\s:/@'"`]*):([^\s@'"`/]+)@([A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\])/i;
+
+/** Well-known default or documentation passwords that are not a leaked credential. */
+const DEFAULT_DB_PASSWORD_RE =
+  /^(?:postgres|postgresql|password|passw(?:or)?d|pass|pwd|root|changeme|change_me|example|secret|admin|test|guest|mysql|redis|user|dbpass|db_?password|mypassword|my_password|your[-_]?password.*|\*+|x+|\.{3}|…)$/i;
+
+/** Hosts that never point at a shared or production database. */
+function isLocalOrPlaceholderHost(host: string): boolean {
+  const h = host.toLowerCase().replace(/\.$/, "");
+  if (h.startsWith("[")) return true; // bracketed IPv6 literal (in practice ::1 in dev configs)
+  if (!h.includes(".")) return true; // single-label hosts (localhost, db, postgres): local or compose
+  if (/^(?:127\.\d+\.\d+\.\d+|0\.0\.0\.0|host\.docker\.internal)$/.test(h)) return true;
+  if (/\.(?:localhost|local|test|invalid|example|internal\.example)$/.test(h)) return true;
+  return /example|your[-_]?(?:db|host|server|project)|placeholder|hostname/.test(h);
+}
+
+/**
+ * True for a `scheme://user:password@host` URL with a real-looking password and a
+ * non-local, non-placeholder host. Interpolated (`${...}`, `$VAR`, `%s`, `{{...}}`) and
+ * placeholder (`<password>`, `changeme`, `postgres`) parts never count.
+ */
+export function isLikelyDatabaseUrl(match: string): boolean {
+  const m = DATABASE_URL_RE.exec(match);
+  if (!m) return false;
+  const user = m[2] ?? "";
+  const pass = m[3] ?? "";
+  const host = m[4] ?? "";
+  const all = `${user}:${pass}@${host}`;
+  if (/\$[{A-Za-z_]|\{\{|%[s(]|[<>]/.test(all)) return false;
+  if (pass.length < 4 || pass === user) return false;
+  if (DEFAULT_DB_PASSWORD_RE.test(pass) || isPlaceholderValue(pass)) return false;
+  return !isLocalOrPlaceholderHost(host);
 }
 
 export const SECRET_PATTERNS: SecretPattern[] = [
@@ -204,6 +253,31 @@ export const SECRET_PATTERNS: SecretPattern[] = [
     regex: /[0-9a-f]{32}-us[0-9]{1,2}/,
     severity: "critical",
     confidence: "high",
+  },
+  {
+    id: "sec-database-url",
+    name: "Database URL with Password",
+    // postgres(ql) / mysql / mariadb / mongodb(+srv) / redis(s) / amqp(s) with user:pass@host.
+    // Local, single-label (compose service) and placeholder hosts and default or
+    // interpolated passwords are excluded by the validator.
+    regex: DATABASE_URL_RE,
+    validate: isLikelyDatabaseUrl,
+    valueGroup: 3,
+    severity: "high",
+    confidence: "high",
+    advice: {
+      problem:
+        "A database or broker connection string with a real-looking password and a remote host is written directly in this file.",
+      why: "Anyone who can read the repository, a build log or a bundle that includes this file can connect to that database with these credentials and read or change every row, bypassing your application's access checks.",
+      fixSteps: [
+        "Rotate the database password now; the committed one must be treated as leaked (it stays in git history).",
+        "Remove the URL from the file and read it from an environment variable such as DATABASE_URL, with no hardcoded fallback.",
+        "Fail fast at startup when the variable is missing instead of falling back to a literal.",
+        "Store the real value in your hosting provider's secret settings or an untracked .env file.",
+      ],
+      aiFixPrompt:
+        "This file hardcodes a database connection string that contains a password. Remove the literal URL, read it from process.env.DATABASE_URL (or the matching environment variable) with no hardcoded fallback, and throw a clear error at startup when it is missing. Do not print or log the URL. Remind me to rotate the leaked database password.",
+    },
   },
   {
     id: "sec-generic-password",
