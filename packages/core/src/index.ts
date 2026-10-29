@@ -69,6 +69,64 @@ export {
   isClientScope,
 } from "./detectors/utils/file-kind.js";
 export type { FileKind, FileRuntime, FileClassification } from "./detectors/utils/file-kind.js";
+export {
+  createJsSource,
+  getJsSource,
+  createLineIndex,
+  findMatchingBrace,
+  isJsxPath,
+  lineAt,
+  lineText,
+  maskCode,
+  matchOf,
+} from "./detectors/utils/js-source.js";
+export type { JsSource, JsSourceOptions, LineIndex } from "./detectors/utils/js-source.js";
+export {
+  calleeBefore,
+  enclosingFunction,
+  enclosingOpen,
+  expressionEnd,
+  extractFunctions,
+  handlerSpans,
+  moduleSpan,
+  patternBindings,
+  skipTypeForward,
+} from "./detectors/utils/js-functions.js";
+export type {
+  FunctionKind,
+  FunctionParam,
+  FunctionRole,
+  FunctionSpan,
+} from "./detectors/utils/js-functions.js";
+export { analyzeTaint, capSeverityForTrust, taintConfidence } from "./detectors/utils/taint.js";
+export type {
+  TaintBinding,
+  TaintGuard,
+  TaintHit,
+  TaintOptions,
+  TaintPath,
+  TaintState,
+} from "./detectors/utils/taint.js";
+export {
+  CLIENT_SOURCES,
+  PAGE_PROPS_SOURCE,
+  PARAMETER_SOURCE,
+  PASS_THROUGH_CALLS,
+  ROUTE_PARAMS_SOURCE,
+  SCRIPT_SOURCES,
+  SERVER_ACTION_SOURCE,
+  SERVER_SOURCES,
+  TAINT_CLEANERS,
+  requestMemberSource,
+  sourcesForRuntime,
+} from "./detectors/patterns/taint-sources.js";
+export type {
+  CleanerKind,
+  TaintCleaner,
+  TaintRuntime,
+  TaintSource,
+  TaintTrust,
+} from "./detectors/patterns/taint-sources.js";
 
 // Fixers
 export * from "./fixers/index.js";
