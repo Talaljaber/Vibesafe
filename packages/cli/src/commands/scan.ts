@@ -41,6 +41,8 @@ export interface ScanOptions {
   /** commander sets this to false for --no-config. */
   config?: boolean;
   trustConfig?: boolean;
+  /** --online: opt in to the OSV advisory lookup (sends package names and versions only). */
+  online?: boolean;
 }
 
 // Re-exported for existing importers; the implementation lives in scan-options.ts.
@@ -104,6 +106,14 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
     console.log(
       chalk.yellow(
         "Deep scan enabled: also inspecting git history for leaked secrets, this can take longer on large repos.\n",
+      ),
+    );
+  }
+
+  if (!options.json && options.online === true) {
+    console.log(
+      chalk.yellow(
+        "Online advisory lookup enabled: package names and versions (nothing else) are sent to api.osv.dev.\n",
       ),
     );
   }

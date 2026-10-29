@@ -27,9 +27,18 @@ export function registerRepairPlanTool(server: McpServer, state: ScanState): voi
         ...plan.steps.map(
           (s) =>
             `${s.order}. [${s.severity.toUpperCase()}] ${s.title} (${s.findingId})` +
-            (s.file ? ` — ${s.file}${s.line ? `:${s.line}` : ""}` : ""),
+            (s.file ? ` — ${s.file}${s.line ? `:${s.line}` : ""}` : "") +
+            (s.autoFixAvailable ? " [auto-fix]" : ""),
         ),
       ];
+      if (plan.steps.length > 0) {
+        lines.push(
+          "",
+          "Work through the steps in order. Call vibesafe_explain with a finding ID for its fix steps and " +
+            "AI fix prompt; steps marked [auto-fix] can be applied with vibesafe_fix. Re-run vibesafe_scan " +
+            "afterwards to confirm.",
+        );
+      }
 
       return {
         content: [

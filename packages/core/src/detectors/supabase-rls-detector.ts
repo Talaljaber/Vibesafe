@@ -10,6 +10,10 @@ import type { Detector, Finding, ScanContext, Severity } from "@talaljaber/vibes
 import { CATEGORY_PREFIX, createFindingId } from "@talaljaber/vibesafe-shared";
 import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
 import { isClientFile } from "./utils/file-classifier.js";
+import { stripSqlNoise } from "./utils/sql-source.js";
+
+/** @internal Re-exported for existing tests; lives in utils/sql-source.ts. */
+export { stripSqlNoise };
 
 const IDENT = String.raw`(?:"(?:[^"]|"")+"|[A-Za-z_][\w$]*)`;
 const QUAL = String.raw`(?:(${IDENT})\s*\.\s*)?(${IDENT})`;
@@ -44,82 +48,6 @@ const QUAL_G = new RegExp(QUAL, "g");
 const SUPABASE_IMPORT_RE = /@supabase\/(?:supabase-js|ssr|auth-helpers[\w-]*)/;
 const SUPABASE_ENV_RE = /(?:NEXT_PUBLIC|VITE|REACT_APP|EXPO_PUBLIC|NUXT_PUBLIC)_SUPABASE_/;
 const JS_FILE_RE = /\.(?:[cm]?[jt]sx?)$/;
-
-/** Replaces comments and string/dollar-quoted bodies with spaces, preserving offsets and newlines. */
-/** @internal Exported for tests only. */
-export function stripSqlNoise(sql: string): string {
-  const out: string[] = [];
-  const blank = (s: string) => s.replace(/[^\n]/g, " ");
-  let i = 0;
-  while (i < sql.length) {
-    const c = sql[i]!;
-    const next = sql[i + 1];
-    if (c === "-" && next === "-") {
-      let j = i;
-      while (j < sql.length && sql[j] !== "\n") j++;
-      out.push(blank(sql.slice(i, j)));
-      i = j;
-    } else if (c === "/" && next === "*") {
-      let depth = 1;
-      let j = i + 2;
-      while (j < sql.length && depth > 0) {
-        if (sql[j] === "/" && sql[j + 1] === "*") {
-          depth++;
-          j += 2;
-        } else if (sql[j] === "*" && sql[j + 1] === "/") {
-          depth--;
-          j += 2;
-        } else j++;
-      }
-      out.push(blank(sql.slice(i, j)));
-      i = j;
-    } else if (c === "'") {
-      let j = i + 1;
-      while (j < sql.length) {
-        if (sql[j] === "'") {
-          if (sql[j + 1] === "'") {
-            j += 2;
-            continue;
-          }
-          break;
-        }
-        j++;
-      }
-      out.push("'" + blank(sql.slice(i + 1, j)) + (j < sql.length ? "'" : ""));
-      i = j + 1;
-    } else if (c === '"') {
-      let j = i + 1;
-      while (j < sql.length) {
-        if (sql[j] === '"') {
-          if (sql[j + 1] === '"') {
-            j += 2;
-            continue;
-          }
-          break;
-        }
-        j++;
-      }
-      out.push(sql.slice(i, j + 1));
-      i = j + 1;
-    } else if (c === "$" && !/[\w$]/.test(sql[i - 1] ?? "")) {
-      const m = /^\$([A-Za-z_]\w*)?\$/.exec(sql.slice(i, i + 64));
-      if (m) {
-        const tag = m[0];
-        const end = sql.indexOf(tag, i + tag.length);
-        const stop = end === -1 ? sql.length : end + tag.length;
-        out.push(blank(sql.slice(i, stop)));
-        i = stop;
-      } else {
-        out.push(c);
-        i++;
-      }
-    } else {
-      out.push(c);
-      i++;
-    }
-  }
-  return out.join("");
-}
 
 function normalizeIdent(raw: string): string {
   return raw.startsWith('"') ? raw.slice(1, -1).replace(/""/g, '"') : raw.toLowerCase();
@@ -266,7 +194,7 @@ export class SupabaseRlsDetector implements Detector {
 
     const inSupabaseDir = (f: string) => f.replace(/\\/g, "/").split("/").includes("supabase");
     let usage: { used: boolean; client: boolean } | undefined;
-    const getUsage = async () => (usage ??= await this.detectSupabaseUsage(context));
+    const getUsage = async () => (usage ??= await detectSupabaseUsage(context));
 
     const findings: Finding[] = [];
     const tables = new Map<string, TableState>();
@@ -516,30 +444,31 @@ export class SupabaseRlsDetector implements Detector {
       tags: ["supabase", "rls"],
     };
   }
+}
 
-  /** Whether the project uses Supabase in code, and whether that code runs in the browser. */
-  private async detectSupabaseUsage(
-    context: ScanContext,
-  ): Promise<{ used: boolean; client: boolean }> {
-    let used = false;
-    for (const file of context.files) {
-      if (!JS_FILE_RE.test(file)) continue;
-      const content = await context.readFile(file);
-      const hasImport = SUPABASE_IMPORT_RE.test(content);
-      const hasEnv = SUPABASE_ENV_RE.test(content);
-      if (!hasImport && !hasEnv) continue;
-      used = true;
-      const serverOnly = /(?:^|\/)(?:server|api|functions|scripts)\//.test(
-        file.replace(/\\/g, "/"),
-      );
-      if (
-        isClientFile(file, content) ||
-        /createBrowserClient\s*\(/.test(content) ||
-        (hasEnv && !serverOnly)
-      ) {
-        return { used, client: true };
-      }
+/**
+ * Whether the project uses Supabase in code, and whether that code runs in the
+ * browser. Shared with the Supabase policy detector.
+ */
+export async function detectSupabaseUsage(
+  context: ScanContext,
+): Promise<{ used: boolean; client: boolean }> {
+  let used = false;
+  for (const file of context.files) {
+    if (!JS_FILE_RE.test(file)) continue;
+    const content = await context.readFile(file);
+    const hasImport = SUPABASE_IMPORT_RE.test(content);
+    const hasEnv = SUPABASE_ENV_RE.test(content);
+    if (!hasImport && !hasEnv) continue;
+    used = true;
+    const serverOnly = /(?:^|\/)(?:server|api|functions|scripts)\//.test(file.replace(/\\/g, "/"));
+    if (
+      isClientFile(file, content) ||
+      /createBrowserClient\s*\(/.test(content) ||
+      (hasEnv && !serverOnly)
+    ) {
+      return { used, client: true };
     }
-    return { used, client: false };
   }
+  return { used, client: false };
 }

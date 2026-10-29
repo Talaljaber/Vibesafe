@@ -67,16 +67,22 @@ export class SecretDetector implements Detector {
               file: filePath,
               line: i + 1,
               evidence: sanitizeEvidence(match[0]),
-              plainEnglishProblem: `We found what looks like a ${pattern.name} written directly in your code.`,
-              whyItMatters: `If you deploy this, anyone who can see this file can extract the key and use your account, potentially running up large bills or accessing private data.`,
-              fixSteps: [
+              plainEnglishProblem:
+                pattern.advice?.problem ??
+                `We found what looks like a ${pattern.name} written directly in your code.`,
+              whyItMatters:
+                pattern.advice?.why ??
+                `If you deploy this, anyone who can see this file can extract the key and use your account, potentially running up large bills or accessing private data.`,
+              fixSteps: pattern.advice?.fixSteps ?? [
                 `Remove the key from this file.`,
                 `Move the key to a .env file (e.g., \`MY_KEY=your_key_here\`).`,
                 `Update this file to use \`process.env.MY_KEY\` instead.`,
                 `Ensure your .env file is added to your .gitignore.`,
               ],
               autoFixAvailable: false,
-              aiFixPrompt: `I have a hardcoded secret in this file. Please modify the code to read this value from an environment variable instead, and show me what I need to add to my .env file.`,
+              aiFixPrompt:
+                pattern.advice?.aiFixPrompt ??
+                `I have a hardcoded secret in this file. Please modify the code to read this value from an environment variable instead, and show me what I need to add to my .env file.`,
             });
           }
         }

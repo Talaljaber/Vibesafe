@@ -10,6 +10,8 @@ import type { ScanResult } from "@talaljaber/vibesafe-shared";
  */
 
 export const DEFAULT_TOP_FINDINGS_LIMIT = 10;
+/** Upper bound for the vibesafe_scan `limit` argument. */
+export const MAX_TOP_FINDINGS_LIMIT = 200;
 
 export interface TopFinding {
   id: string;
@@ -46,7 +48,10 @@ export function summarizeScanResult(
   result: ScanResult,
   limit: number = DEFAULT_TOP_FINDINGS_LIMIT,
 ): ScanSummaryPayload {
-  const top = result.findings.slice(0, limit);
+  const n = Number.isFinite(limit)
+    ? Math.min(MAX_TOP_FINDINGS_LIMIT, Math.max(1, Math.floor(limit)))
+    : DEFAULT_TOP_FINDINGS_LIMIT;
+  const top = result.findings.slice(0, n);
 
   return {
     score: result.score,
@@ -91,7 +96,10 @@ export function formatScanSummaryText(payload: ScanSummaryPayload): string {
       lines.push(`- [${f.severity.toUpperCase()}] ${f.id} — ${f.title} (${f.location})`);
     }
     if (payload.truncatedCount > 0) {
-      lines.push(`...and ${payload.truncatedCount} more finding(s) not shown.`);
+      lines.push(
+        `...and ${payload.truncatedCount} more finding(s) not shown. Call vibesafe_scan again with a ` +
+          `higher limit (up to ${MAX_TOP_FINDINGS_LIMIT}), or vibesafe_repair_plan for every finding in fix order.`,
+      );
     }
   }
 

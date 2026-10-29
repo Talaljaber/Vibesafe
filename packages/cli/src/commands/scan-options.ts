@@ -12,6 +12,11 @@ export interface ScanFlagOptions {
   config?: boolean | undefined;
   /** --trust-config: allow executing .ts/.js config files. */
   trustConfig?: boolean | undefined;
+  /**
+   * --online (scan only): allow the OSV advisory lookup, which sends package names and
+   * versions to api.osv.dev. Never read from a config file.
+   */
+  online?: boolean | undefined;
 }
 
 /**
@@ -25,5 +30,6 @@ export function buildScanOptions(rootPath: string, options: ScanFlagOptions) {
     ...(options.includeTests !== undefined ? { includeTests: options.includeTests } : {}),
     ...(options.config === false ? { useConfigFile: false } : {}),
     ...(options.trustConfig ? { trustConfigScripts: true } : {}),
+    ...(options.online === true ? { online: true } : {}),
   };
 }

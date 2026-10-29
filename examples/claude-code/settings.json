@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|MultiEdit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx --no-install vibesafe scan \"$CLAUDE_PROJECT_DIR\" --format markdown >&2 || exit 2",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
+}
