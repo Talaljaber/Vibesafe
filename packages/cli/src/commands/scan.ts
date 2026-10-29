@@ -1,6 +1,6 @@
 import path from "path";
 import chalk from "chalk";
-import { ScannerPipeline, createDefaultRegistry } from "@vibesafe/core";
+import { ScannerPipeline, createDefaultRegistry, loadUserConfig } from "@vibesafe/core";
 import { printScanResult } from "../ui/printer.js";
 import { confirm } from "@inquirer/prompts";
 import cliProgress from "cli-progress";
@@ -46,6 +46,27 @@ export interface ScanOptions {
 // Re-exported for existing importers; the implementation lives in scan-options.ts.
 export { buildScanOptions };
 
+/**
+ * Whether the scan will inspect git history: the --deep / --no-deep flag when given, otherwise
+ * the config file's `deep` value (unless --no-config). The config is read with the same trust
+ * setting the pipeline uses, so an untrusted script config is never executed here (with
+ * --trust-config a script config is evaluated here and again by the scan, as a rescan would). A
+ * config that fails to load resolves to false; the scan itself then reports the load error.
+ */
+export async function resolveEffectiveDeep(
+  rootPath: string,
+  options: Pick<ScanOptions, "deep" | "config" | "trustConfig">,
+): Promise<boolean> {
+  if (options.deep !== undefined) return options.deep;
+  if (options.config === false) return false;
+  try {
+    const loaded = await loadUserConfig(rootPath, { allowScripts: options.trustConfig === true });
+    return loaded?.scanConfig.deep === true;
+  } catch {
+    return false;
+  }
+}
+
 export async function runScan(targetDir: string, options: ScanOptions = {}) {
   const rootPath = path.resolve(process.cwd(), targetDir);
 
@@ -79,7 +100,7 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
     console.log(chalk.gray("\nStarting VibeSafe scan...\n"));
   }
 
-  if (options.deep && !options.json) {
+  if (!options.json && (await resolveEffectiveDeep(rootPath, options))) {
     console.log(
       chalk.yellow(
         "Deep scan enabled: also inspecting git history for leaked secrets, this can take longer on large repos.\n",
