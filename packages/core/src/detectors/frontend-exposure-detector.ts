@@ -79,6 +79,19 @@ function firebaseAdminLines(content: string): number[] {
   return [...found];
 }
 
+/**
+ * Public-by-design keys: Supabase anon keys and publishable keys (Stripe, Clerk, ...) are
+ * meant to ship to browsers, so a public prefix on them is not an exposure. A name that
+ * also says SERVICE_ROLE is never treated as public.
+ */
+const PUBLIC_BY_DESIGN_REGEX = /(?:^|_)(?:ANON|PUBLISHABLE)(?:_|$)/i;
+const NEVER_PUBLIC_REGEX = /SERVICE_ROLE/i;
+
+function isPublicSecretName(name: string): boolean {
+  if (!PUBLIC_SECRET_REGEX.test(name)) return false;
+  return !PUBLIC_BY_DESIGN_REGEX.test(name) || NEVER_PUBLIC_REGEX.test(name);
+}
+
 function hasPublicPrefix(name: string): boolean {
   return PUBLIC_PREFIXES.some((p) => name.startsWith(p));
 }
@@ -129,10 +142,7 @@ export class FrontendExposureDetector implements Detector {
           const line = lines[i] ?? "";
           if (line.trim().startsWith("#")) continue;
           const name = /^\s*(?:export\s+)?([A-Za-z0-9_]+)\s*=/.exec(line)?.[1];
-          if (
-            name &&
-            (PUBLIC_SECRET_REGEX.test(name.toUpperCase()) || isServerOnlyPublicName(name))
-          ) {
+          if (name && (isPublicSecretName(name.toUpperCase()) || isServerOnlyPublicName(name))) {
             findings.push(this.publicSecretFinding(filePath, i + 1, name, name));
           }
         }
@@ -171,7 +181,7 @@ export class FrontendExposureDetector implements Detector {
 
         // 2. Public-prefixed variables with secret-looking names
         const match = PUBLIC_SECRET_REGEX.exec(line);
-        if (match?.[0]) {
+        if (match?.[0] && isPublicSecretName(match[0])) {
           findings.push(this.publicSecretFinding(filePath, i + 1, match[0], match[0]));
         } else {
           // Provider keys, DB URLs and admin keys under a public prefix (no "SECRET" in the name)
@@ -187,7 +197,10 @@ export class FrontendExposureDetector implements Detector {
       }
 
       // 3. Follow relative / "@/" imports one level and inspect the imported module
-      const noBlock = content.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "));
+      // Type-only imports are erased at build time and never bring server code to the browser.
+      const noBlock = content
+        .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
+        .replace(TYPE_ONLY_IMPORT_REGEX, (m) => m.replace(/[^\n]/g, " "));
       IMPORT_REGEX.lastIndex = 0;
       let m: RegExpExecArray | null;
       REQUIRE_REGEX.lastIndex = 0;

@@ -35,9 +35,9 @@ describe("GitignoreEnvDetector", () => {
     });
   });
 
-  it("is high when an unignored variant file exists", async () => {
+  it("stays silent when an unignored variant file exists (env-not-ignored covers it)", async () => {
     const f = await run("node_modules\n.env\n", { deps: ["next"], extra: [".env.local"] });
-    expect(f[0]?.severity).toBe("high");
+    expect(f).toHaveLength(0);
   });
 
   it("handles a root-anchored /.env with vite", async () => {

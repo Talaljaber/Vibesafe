@@ -73,19 +73,21 @@ export class GitignoreEnvDetector implements Detector {
         ...(context.projectContext?.devDependencies ?? {}),
       };
       const frameworkLoadsVariants = FRAMEWORKS.some((d) => d in deps);
-      if (!variantPresent && !frameworkLoadsVariants) return [];
+      // An unignored variant file already gets secret/env-not-ignored (critical); reporting the
+      // same cause on .gitignore too would double-count it.
+      if (variantPresent || !frameworkLoadsVariants) return [];
 
       return [
         makeFinding({
           category: "security_config",
           ruleId: "security_config/gitignore-env-variants",
           title: ".gitignore ignores .env but not .env.local and other variants",
-          severity: variantPresent ? "high" : "medium",
+          severity: "medium",
           confidence: "high",
           file: ".gitignore",
           line: anchor + 1,
           evidence: lines[anchor] ?? "",
-          discriminator: variantPresent ? "variant-present" : "framework",
+          discriminator: "framework",
           autoFixAvailable: true,
           plainEnglishProblem:
             "`.gitignore` ignores `.env` but not `.env.local` / `.env.*.local`, which Next.js/Vite load and which usually hold the real keys.",

@@ -340,6 +340,66 @@ describe("FrontendExposureDetector", () => {
     );
     expect(findings).toHaveLength(1);
   });
+
+  describe("public-by-design keys (anon / publishable)", () => {
+    it("does not flag anon or publishable names, in .env files or client code", async () => {
+      const findings = await detector.detect(
+        createContext({
+          ".env.local": [
+            "NEXT_PUBLIC_SUPABASE_URL=https://abc.supabase.co",
+            "NEXT_PUBLIC_SUPABASE_ANON_KEY=public-anon",
+            "NEXT_PUBLIC_ANON_PRIVATE_KEY=public-anon",
+            "VITE_STRIPE_PUBLISHABLE_PRIVATE_KEY=pk_test_x",
+          ].join("\n"),
+          "lib/client/supabase.ts": `"use client";
+import { createBrowserClient } from "@supabase/ssr";
+export const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+);
+const legacy = process.env.NEXT_PUBLIC_ANON_PRIVATE_KEY;
+`,
+        }),
+      );
+      expect(findings).toEqual([]);
+    });
+
+    it("still flags secret names, and anon names that also say SERVICE_ROLE", async () => {
+      const findings = await detector.detect(
+        createContext({
+          ".env": [
+            "NEXT_PUBLIC_STRIPE_SECRET_KEY=sk_test_x",
+            "NEXT_PUBLIC_SUPABASE_ANON_SERVICE_ROLE_KEY=x",
+          ].join("\n"),
+          "components/Pay.tsx": `"use client";
+const key = process.env.NEXT_PUBLIC_PAYMENTS_PRIVATE_KEY;
+`,
+        }),
+      );
+      expect(findings.map((f) => `${f.file}:${f.line}:${f.ruleId}`)).toEqual([
+        ".env:1:frontend_exposure/public-secret-var",
+        ".env:2:frontend_exposure/public-secret-var",
+        "components/Pay.tsx:2:frontend_exposure/public-secret-var",
+      ]);
+    });
+
+    it("does not follow import type into server modules", async () => {
+      const findings = await detector.detect(
+        createContext({
+          "components/ItemEditor.tsx": `"use client";
+import type { getSession } from "@/lib/server/auth";
+type Session = Awaited<ReturnType<typeof getSession>>;
+export function ItemEditor({ session }: { session: Session }) { return null; }
+`,
+          "lib/server/auth.ts": `import { createClient } from "@supabase/supabase-js";
+const admin = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+export async function getSession() { return admin.auth.getSession(); }
+`,
+        }),
+      );
+      expect(findings).toEqual([]);
+    });
+  });
 });
 
 describe("FrontendExposureDetector: provider keys under a public prefix", () => {
@@ -388,5 +448,24 @@ describe("FrontendExposureDetector: provider keys under a public prefix", () => 
       await run({ "app/a.tsx": `"use client";\n// process.env.NEXT_PUBLIC_OPENAI_API_KEY\n` }),
     ).toEqual([]);
     expect(await run({ ".env.example": "NEXT_PUBLIC_OPENAI_API_KEY=\n" })).toEqual([]);
+  });
+
+  it("does not flag the public Firebase databaseURL in an env file or client config", async () => {
+    const f = await run({
+      ".env":
+        "NEXT_PUBLIC_FIREBASE_DATABASE_URL=https://x.firebaseio.com\nVITE_FIREBASE_DATABASE_URL=https://x.firebaseio.com\n",
+      "lib/firebase.ts": `"use client";\nexport const firebaseConfig = { databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL };\n`,
+    });
+    expect(rules(f)).toEqual([]);
+  });
+
+  it("flags a public admin key and a public database url", async () => {
+    const f = await run({
+      ".env": "NEXT_PUBLIC_ADMIN_KEY=abc\nNEXT_PUBLIC_DATABASE_URL=postgres://x\n",
+    });
+    expect(rules(f)).toEqual([
+      "frontend_exposure/public-secret-var",
+      "frontend_exposure/public-secret-var",
+    ]);
   });
 });

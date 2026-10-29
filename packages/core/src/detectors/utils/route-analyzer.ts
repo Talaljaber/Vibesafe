@@ -5,8 +5,17 @@ import {
   MIDDLEWARE_AUTH_PATTERNS,
   EXPRESS_AUTH_PATTERNS,
   EXPRESS_HANDLER_AUTH_PATTERNS,
+  HANDLER_AUTH_PATTERNS,
+  AUTH_WRAPPER_RE,
+  PUBLIC_ROUTE_PATH_RE,
+  SIGNATURE_VERIFY_PATTERNS,
+  PUBLIC_HANDLER_PATTERNS,
+  SECRET_PARAM_ANCHORED_RE,
+  UNAMBIGUOUS_SECRET_NAME_RE,
 } from "../patterns/auth-patterns.js";
 import { maskCode } from "./js-source.js";
+import type { JsSource } from "./js-source.js";
+import type { FunctionSpan } from "./js-functions.js";
 
 const APP_ROUTE_RE = /(?:^|\/)(?:src\/)?app\/(?:.+\/)?route\.(?:ts|js|mjs)$/;
 const PAGES_API_RE = /(?:^|\/)(?:src\/)?pages\/api\/.+\.(?:ts|js|mjs|tsx|jsx)$/;
@@ -324,4 +333,370 @@ export function isCoveredByExpressUse(fileContent: string, route: ExpressRoute):
     if (m[1] !== route.receiver && /^(?:app|server)$/i.test(m[1]!) && covers) return true;
   }
   return false;
+}
+
+// ---------------------------------------------------------------------------
+// Per-handler authentication (additive helpers)
+// ---------------------------------------------------------------------------
+
+/**
+ * URL path of a Next.js App Router route or Pages API file: `app/api/orders/[id]/route.ts`
+ * gives `/api/orders/[id]` (route groups `(x)` and parallel slots `@x` dropped),
+ * `pages/api/health.ts` gives `/api/health`. Undefined for other files.
+ */
+export function nextRoutePath(filePath: string): string | undefined {
+  const p = filePath.replace(/\\/g, "/");
+  const app = /(?:^|\/)(?:src\/)?app\/(?:(.*)\/)?route\.(?:ts|js|mjs)$/.exec(p);
+  if (app) {
+    const segs = (app[1] ?? "")
+      .split("/")
+      .filter((x) => x !== "" && !/^\(.*\)$/.test(x) && !x.startsWith("@"));
+    return `/${segs.join("/")}`;
+  }
+  const pages = /(?:^|\/)(?:src\/)?pages\/(api(?:\/.+)?)\.(?:ts|js|mjs|tsx|jsx)$/.exec(p);
+  if (pages) return `/${pages[1]!.replace(/\/index$/, "")}`;
+  return undefined;
+}
+
+/** Sign-in/sign-up, password reset, OAuth/auth callbacks, the Auth.js catch-all, health probes. */
+export function isPublicRoutePath(routePath: string): boolean {
+  return PUBLIC_ROUTE_PATH_RE.test(routePath);
+}
+
+/** True when a wrapper callee (`withAuth`, `auth`, `lib.withSession`) authenticates. */
+export function isAuthWrapper(callee: string): boolean {
+  return AUTH_WRAPPER_RE.test(callee.split(".").pop() ?? callee);
+}
+
+/** True when masked code verifies a webhook signature (`stripe.webhooks.constructEvent(...)`). */
+export function verifiesSignature(code: string): boolean {
+  return SIGNATURE_VERIFY_PATTERNS.some((re) => re.test(code));
+}
+
+/** True when masked code is public by design (Stripe Checkout session creation, OAuth code exchange). */
+export function isPublicByDesignCode(code: string): boolean {
+  return PUBLIC_HANDLER_PATTERNS.some((re) => re.test(code));
+}
+
+/**
+ * Offset (relative to `code`) of the first authentication check in masked code: a known
+ * auth call ({@link AUTH_CHECK_PATTERNS}, {@link HANDLER_AUTH_PATTERNS}) or a call to one of
+ * `helpers` (same-file functions that authenticate).
+ */
+export function firstAuthCheck(code: string, helpers: ReadonlySet<string>): number | undefined {
+  let best: number | undefined;
+  for (const re of [...AUTH_CHECK_PATTERNS, ...HANDLER_AUTH_PATTERNS]) {
+    const m = re.exec(code);
+    if (m && (best === undefined || m.index < best)) best = m.index;
+  }
+  for (const name of helpers) {
+    const re = new RegExp(String.raw`(?<![.\w$])${name.replace(/\$/g, "\\$")}\s*\(`);
+    const m = re.exec(code);
+    if (m && (best === undefined || m.index < best)) best = m.index;
+  }
+  return best;
+}
+
+/**
+ * Names of same-file functions whose body authenticates (directly or through another such
+ * helper, two levels deep), e.g. `async function requireStaff() { await getSession() ... }`.
+ */
+export function localAuthHelpers(src: JsSource, spans: readonly FunctionSpan[]): Set<string> {
+  const helpers = new Set<string>();
+  for (let round = 0; round < 2; round++) {
+    for (const s of spans) {
+      if (s.name === undefined || helpers.has(s.name) || !/^[A-Za-z_$][\w$]*$/.test(s.name))
+        continue;
+      if (firstAuthCheck(src.code.slice(s.bodyStart, s.bodyEnd), helpers) !== undefined)
+        helpers.add(s.name);
+    }
+  }
+  return helpers;
+}
+
+/**
+ * True when the handler is wrapped by an auth wrapper, or its body performs an auth check,
+ * calls a same-file auth helper or compares a request secret with a literal or env var.
+ */
+export function spanAuthenticates(
+  src: JsSource,
+  span: FunctionSpan,
+  helpers: ReadonlySet<string>,
+): boolean {
+  if (span.wrappers.some(isAuthWrapper)) return true;
+  const body = src.code.slice(span.bodyStart, span.bodyEnd);
+  return (
+    firstAuthCheck(body, helpers) !== undefined ||
+    hasDenyingSecretComparison(src, span.bodyStart, span.bodyEnd)
+  );
+}
+
+/** A comparison of a request query/header value with a shared secret. */
+export interface SecretComparison {
+  /** Offset of the comparison operator and its 1-indexed line. */
+  offset: number;
+  line: number;
+  /** Query parameter or header name (`key`, `authorization`, `x-cron-secret`). */
+  name: string;
+  /** `literal`: compared with a string literal; `env`: with `process.env.*` (or a template of it). */
+  against: "literal" | "env";
+  /** The name looks like a secret, or the failing branch answers 401/403. */
+  secretLike: boolean;
+  /** The comparison is an `if (...)` whose branch rejects the request (return/throw 401/403). */
+  denies: boolean;
+  /** File range of the compared literal or env expression. */
+  valueStart: number;
+  valueEnd: number;
+}
+
+const SC_OPERAND = String.raw`(?:await\s+)?[A-Za-z_$][\w$]*(?:\s*(?:\?\.|\.)\s*[A-Za-z_$][\w$]*|\s*\((?:[^()]|\([^()]*\))*\)|\s*\[[^\]]*\])*`;
+const SC_STRING = String.raw`"[^"\n]*"|'[^'\n]*'|` + "`[^`\\n]*`";
+const SC_LEFT_RE = new RegExp(String.raw`(${SC_OPERAND}|${SC_STRING})\s*$`);
+const SC_RIGHT_RE = new RegExp(String.raw`^\s*(${SC_OPERAND}|${SC_STRING})`);
+const REQUEST_SECRET_RES: readonly RegExp[] = [
+  /\b(?:searchParams|query|headers\s*\(\s*\)|headers)\s*\.\s*get\s*\(\s*["'`]([\w-]+)["'`]\s*\)/,
+  /\b(?:req|request)\s*\.\s*(?:query|headers|cookies)\s*(?:\?\.|\.)\s*([\w$]+)/,
+  /\b(?:req|request)\s*\.\s*(?:query|headers|cookies)\s*\[\s*["'`]([\w-]+)["'`]\s*\]/,
+  /\b(?:req|request)\s*\.\s*(?:header|get)\s*\(\s*["'`]([\w-]+)["'`]\s*\)/,
+];
+
+function requestSecretName(text: string): string | undefined {
+  for (const re of REQUEST_SECRET_RES) {
+    const m = re.exec(text);
+    if (m) return m[1];
+  }
+  return undefined;
+}
+
+/** Resolves `x` in `x === "..."` to the request query/header name it was bound from, if any. */
+function boundRequestName(src: JsSource, name: string, before: number): string | undefined {
+  const esc = name.replace(/\$/g, "\\$");
+  const window = src.text.slice(Math.max(0, before - 4000), before);
+  let found: string | undefined;
+  const direct = new RegExp(
+    String.raw`\b(?:const|let|var)\s+${esc}\s*(?::[^=;\n]+)?=\s*([^;\n]+)`,
+    "g",
+  );
+  for (const m of window.matchAll(direct)) found = requestSecretName(m[1]!);
+  if (found !== undefined) return found;
+  const destructured = new RegExp(
+    String.raw`\b(?:const|let|var)\s*\{[^}]*\b${esc}\b[^}]*\}\s*=\s*(?:await\s+)?(?:req|request)\s*\.\s*(?:query|headers)\b`,
+  );
+  return destructured.test(window) ? name : undefined;
+}
+
+function isEnvSide(src: JsSource, text: string, before: number): boolean {
+  if (/\bprocess\s*\.\s*env\b|\bimport\s*\.\s*meta\s*\.\s*env\b|\bDeno\s*\.\s*env\b/.test(text))
+    return true;
+  const id = /^[A-Za-z_$][\w$]*$/.exec(text.trim());
+  if (!id) return false;
+  const esc = id[0].replace(/\$/g, "\\$");
+  return new RegExp(
+    String.raw`\b(?:const|let|var)\s+${esc}\s*(?::[^=;\n]+)?=[^;\n]*\bprocess\s*\.\s*env\b`,
+  ).test(src.text.slice(0, before));
+}
+
+/**
+ * When the compared operand is part of a `+` concatenation, the whole concatenation's range and
+ * its parts; otherwise undefined.
+ */
+function concatenation(
+  src: JsSource,
+  code: string,
+  operandIsRight: boolean,
+  start: number,
+  end: number,
+  lineStart: number,
+  lineEnd: number,
+  op: number,
+): { start: number; end: number; parts: string[] } | undefined {
+  let s = start;
+  let e = end;
+  if (operandIsRight) {
+    if (!/^\s*\+/.test(code.slice(end, lineEnd))) return undefined;
+    let depth = 0;
+    for (e = end; e < lineEnd; e++) {
+      const ch = code[e];
+      if (ch === "(" || ch === "[") depth++;
+      else if (ch === ")" || ch === "]") {
+        if (depth === 0) break;
+        depth--;
+      } else if (depth === 0 && "{;?&|".includes(ch ?? "")) break;
+    }
+  } else {
+    if (!/\+\s*$/.test(code.slice(lineStart, start))) return undefined;
+    s = Math.max(lineStart, code.lastIndexOf("(", op) + 1, code.lastIndexOf("&", start) + 1);
+    if (s > start) s = lineStart;
+  }
+  const parts = src.text
+    .slice(s, e)
+    .split("+")
+    .map((p) => p.trim());
+  return { start: s, end: e, parts };
+}
+
+const TRIVIAL_LITERAL_RE = /^(?:|undefined|null|true|false|0|1)$/;
+const DENY_RE = /\b(?:401|403|unauthori[sz]ed|forbidden|Unauthori[sz]ed|Forbidden)\b/;
+
+/**
+ * Comparisons (`===`, `!==`, `==`, `!=`) in `[from, to)` of a request query parameter or
+ * header with a string literal or an environment variable: `searchParams.get("key") !==
+ * "nightly-job"`, `req.headers["x-api-key"] === process.env.API_KEY`, or a local bound from
+ * either. `secretLike` is false for enum-style comparisons (`get("dir") === "asc"`) unless the
+ * failing branch answers 401/403.
+ */
+export function findSecretComparisons(src: JsSource, from: number, to: number): SecretComparison[] {
+  const out: SecretComparison[] = [];
+  const code = src.code;
+  const re = /[!=]==?/g;
+  re.lastIndex = from;
+  for (let m = re.exec(code); m && m.index < to; m = re.exec(code)) {
+    const op = m.index;
+    if (m[0] === "!" || m[0] === "=") continue;
+    const prev = code[op - 1];
+    if (prev === "=" || prev === "!" || prev === "<" || prev === ">") continue;
+    if (code[op + m[0].length] === "=" || code[op + m[0].length] === ">") continue;
+    const lineStart = code.lastIndexOf("\n", op - 1) + 1;
+    let lineEnd = code.indexOf("\n", op);
+    if (lineEnd < 0) lineEnd = code.length;
+    if (op - lineStart > 400 || lineEnd - op > 400) continue;
+    const left = SC_LEFT_RE.exec(code.slice(lineStart, op));
+    const right = SC_RIGHT_RE.exec(code.slice(op + m[0].length, lineEnd));
+    if (!left || !right) continue;
+    const lStart = lineStart + left.index;
+    const lText = src.text.slice(lStart, lStart + left[1]!.length);
+    const rStart = op + m[0].length + right[0].length - right[1]!.length;
+    const rText = src.text.slice(rStart, rStart + right[1]!.length);
+    for (const [reqText, otherText, otherStart] of [
+      [lText, rText, rStart],
+      [rText, lText, lStart],
+    ] as const) {
+      let name = requestSecretName(reqText);
+      if (name === undefined && /^[A-Za-z_$][\w$]*$/.test(reqText.trim()))
+        name = boundRequestName(src, reqText.trim(), op);
+      if (name === undefined) continue;
+      const lit = /^(["'`])([^"'`]*)\1$/.exec(otherText.trim());
+      let against: "literal" | "env" | undefined;
+      let vStart = otherStart;
+      let vEnd = otherStart + otherText.length;
+      const concat = concatenation(
+        src,
+        code,
+        otherStart === rStart,
+        otherStart,
+        vEnd,
+        lineStart,
+        lineEnd,
+        op,
+      );
+      if (concat) {
+        // `"Bearer " + process.env.X`: a prefix literal is not the secret; only an env part counts
+        if (!concat.parts.some((part) => isEnvSide(src, part, op))) continue;
+        against = "env";
+        vStart = concat.start;
+        vEnd = concat.end;
+      } else if (lit && !otherText.includes("${")) {
+        if (TRIVIAL_LITERAL_RE.test(lit[2]!.trim())) continue;
+        against = "literal";
+      } else if (isEnvSide(src, otherText, op)) {
+        against = "env";
+      }
+      if (against === undefined) continue;
+      const denies = rejectsRequest(src, lineStart, op, m[0], name, against);
+      out.push({
+        offset: op,
+        line: src.lineAt(op),
+        name,
+        against,
+        secretLike: SECRET_PARAM_ANCHORED_RE.test(name) || denies,
+        denies,
+        valueStart: vStart,
+        valueEnd: vEnd,
+      });
+      break;
+    }
+  }
+  return out;
+}
+
+/** The statement or `{ ... }` block following the condition whose `(` is at `open`. */
+function blockAfterCondition(
+  code: string,
+  open: number,
+): { start: number; end: number } | undefined {
+  let depth = 0;
+  let i = open;
+  for (; i < code.length && i < open + 600; i++) {
+    if (code[i] === "(") depth++;
+    else if (code[i] === ")" && --depth === 0) break;
+  }
+  if (depth !== 0) return undefined;
+  let s = i + 1;
+  while (s < code.length && /\s/.test(code[s] ?? "")) s++;
+  if (code[s] === "{") {
+    let d = 0;
+    for (let j = s; j < code.length && j < s + 1500; j++) {
+      if (code[j] === "{") d++;
+      else if (code[j] === "}" && --d === 0) return { start: s, end: j + 1 };
+    }
+    return undefined;
+  }
+  const semi = code.indexOf(";", s);
+  const e = semi < 0 || semi - s > 400 ? Math.min(code.length, s + 400) : semi + 1;
+  return { start: s, end: e };
+}
+
+/**
+ * True when the comparison at `op` sits in an `if` (directly, or through a boolean local) whose
+ * consequent rejects the request: a return/throw that answers 401/403/unauthorized, or, for a
+ * secret-named parameter, any return/throw taken when the values differ.
+ */
+function rejectsRequest(
+  src: JsSource,
+  lineStart: number,
+  op: number,
+  operator: string,
+  name: string,
+  against: "env" | "literal",
+): boolean {
+  const code = src.code;
+  const prefix = code.slice(lineStart, op);
+  const secretName =
+    SECRET_PARAM_ANCHORED_RE.test(name) &&
+    (against === "env" || UNAMBIGUOUS_SECRET_NAME_RE.test(name));
+  const neq = operator.startsWith("!");
+  const check = (open: number, mismatchRejects: boolean): boolean => {
+    const blk = blockAfterCondition(code, open);
+    if (!blk || !/\b(?:return|throw)\b/.test(code.slice(blk.start, blk.end))) return false;
+    if (DENY_RE.test(src.text.slice(blk.start, blk.end))) return true;
+    return secretName && mismatchRejects;
+  };
+  let ifMatch: RegExpExecArray | undefined;
+  for (const m of prefix.matchAll(/\bif\s*\(/g)) ifMatch = m;
+  if (ifMatch) {
+    const open = lineStart + ifMatch.index + ifMatch[0].length - 1;
+    return check(open, neq !== /!\s*\(/.test(code.slice(open, op)));
+  }
+  // `const ok = req.headers.get("x") === secret; if (!ok) return 401`
+  const bound = /\b(?:const|let|var)\s+([\w$]+)\s*(?::[^=;\n]+)?=[^=]*$/.exec(prefix);
+  if (!bound?.[1]) return false;
+  const id = bound[1].replace(/\$/g, "\\$&");
+  const use = new RegExp(String.raw`\bif\s*\(\s*(!?)\s*${id}\s*(===\s*false)?\s*\)`).exec(
+    code.slice(op, op + 2500),
+  );
+  if (!use) return false;
+  const negated = use[1] === "!" || use[2] !== undefined;
+  return check(op + use.index + use[0].indexOf("("), neq !== negated);
+}
+
+/** True when `[from, to)` has a secret comparison that rejects the request when it fails. */
+function hasDenyingSecretComparison(src: JsSource, from: number, to: number): boolean {
+  if (!/[!=]==?/.test(src.code.slice(from, to))) return false;
+  return findSecretComparisons(src, from, to).some((c) => c.secretLike && c.denies);
+}
+
+/** True when `[from, to)` compares a secret-like request value with a literal or env var. */
+export function hasSecretComparison(src: JsSource, from: number, to: number): boolean {
+  if (!/[!=]==?/.test(src.code.slice(from, to))) return false;
+  return findSecretComparisons(src, from, to).some((c) => c.secretLike);
 }
