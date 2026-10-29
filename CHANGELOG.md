@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Express apps without helmet and Next.js apps without security headers (`security_config/missing-helmet`, `security_config/missing-security-headers`, #87).
   - Supabase tables without Row Level Security and policies that let everyone write (`authorization/supabase-missing-rls`, `authorization/supabase-permissive-policy`, #89).
   - Django/Python MVP: Django project detection, Python test discovery and insecure Django settings (`DEBUG`, `SECRET_KEY`, `ALLOWED_HOSTS`, CORS, cookies, `csrf_exempt`) (`security_config/django-*`, `secret/django-secret-key*`, #92).
+  - Django views and DRF views that change data without authentication, and DRF write views with `permission_classes = [AllowAny]`; honours `DEFAULT_PERMISSION_CLASSES`, `LoginRequiredMiddleware` and `login_required(...)` in `urls.py` (`auth/django-view-missing-auth`, `auth/django-drf-allow-any`, #104).
+  - Django HTTPS and cookie settings: `SECURE_SSL_REDIRECT` off or missing, `SECURE_HSTS_SECONDS` 0 or missing, `SESSION_COOKIE_HTTPONLY = False`, `X_FRAME_OPTIONS = "ALLOW..."` and a malformed `SECURE_PROXY_SSL_HEADER`, in non-dev settings modules only; a value set only inside `if DEBUG:` does not count as configured (`security_config/django-ssl-redirect-*`, `security_config/django-hsts-*`, #104).
+  - Offline Python dependency checks for `requirements*.txt`, `requirements/*.txt`, `pyproject.toml` (PEP 621 and Poetry) and `Pipfile`: unpinned security-critical packages and a short static list of end-of-life or insecure versions (`dependency/python-unpinned`, `dependency/python-insecure-version`, #104).
   - `dangerouslySetInnerHTML` with dynamic content (`xss/dangerously-set-inner-html`, #25). Thanks to @i-am-paradox.
   - Hardcoded localhost URLs (`code_quality/hardcoded-localhost`, #21). Thanks to @AlexMnrs.
   - Missing React error boundary (`structure/missing-error-boundary`, #22). Thanks to @kamakshi-mehta.
@@ -42,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Python manifests `requirements*.txt`, `requirements/*.txt` and `Pipfile` are now discovered and watched; Django cookie and CORS allow-all settings inside a top-level `if DEBUG:` block are no longer reported, nor are conditional cookie and HTTPS values such as `False if DEBUG else True` (#104).
 - Finding ids are deterministic (`PREFIX-<10 hex>`) and the `CATEGORY_PREFIX` map is authoritative.
 - Secret severity is per pattern; frontend exposure follows imports and supports all public env prefixes; auth, authorization and validation detectors are more precise about routes, middleware and line numbers.
 - Dependency and error-boundary detectors use the root `package.json`; the git history scan streams its output and works from subdirectories.
@@ -55,6 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Django settings continued with a backslash or written as multi-line triple-quoted strings (for example a multi-line `SECRET_KEY`) are now checked (#104).
 - Auth and validation checks no longer flag signature-verified Stripe webhook routes (Next.js and Express); an Express route is exempt only with route-level Stripe evidence, so other webhook routes in the same file stay covered (#95, #98).
 - Scan timeout is enforced, lines are counted correctly and truncation produces a warning.
 - `fix --yes` and non-TTY handling, `--version`, and `targetFiles` handling in the VS Code extension.
