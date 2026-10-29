@@ -13,6 +13,7 @@ import {
   capPerRule,
   findSinkCalls,
   loadSinkFile,
+  callKey,
   sinkAnchor,
   splitTopLevel,
   staticText,
@@ -51,6 +52,9 @@ const POSTGREST_AI_PROMPT =
  * calls and are never sinks. Allowlist lookups (`SORT_COLUMNS.get(x)`), literal ternaries,
  * numeric values and placeholder lists built from indexes are not taint.
  */
+/** A statement verb: clause words alone (`where x`) are also ordinary English. */
+const SQL_VERB_RE = /\b(?:select|insert|update|delete|merge|create|drop|alter|truncate)\b/i;
+
 export class SqlInjectionDetector implements Detector {
   id = "sql-injection-detector";
   name = "SQL Injection";
@@ -81,7 +85,11 @@ export class SqlInjectionDetector implements Detector {
             if (finding !== undefined) out.push(finding);
             continue;
           }
-          if (call.pattern.requiresSqlText === true && !SQL_TEXT_RE.test(text)) continue;
+          if (
+            call.pattern.requiresSqlText === true &&
+            !(SQL_TEXT_RE.test(text) && SQL_VERB_RE.test(text))
+          )
+            continue;
           const finding =
             this.inputFinding(f, sql, call, arg) ?? this.parameterFinding(f, sql, call, arg);
           if (finding !== undefined) out.push(finding);
@@ -155,7 +163,7 @@ export class SqlInjectionDetector implements Detector {
       line: anchor.line,
       endLine: anchor.endLine,
       evidence: anchor.evidence,
-      discriminator: `${call.start}`,
+      discriminator: callKey(f.src, call.start, call.callee),
       plainEnglishProblem: `Data from the ${t.hit.source.label} is pasted into the text of a SQL query instead of being sent as a bind parameter. An attacker can close the quote and append their own SQL (for example \`' OR 1=1 --\` or a UNION SELECT).`,
       whyItMatters:
         "SQL injection lets an attacker read or change any table the database user can reach: other customers' records, password hashes, API keys. A server-side database connection usually bypasses row-level security, so one injectable query exposes everything.",
@@ -195,7 +203,7 @@ export class SqlInjectionDetector implements Detector {
       line: anchor.line,
       endLine: anchor.endLine,
       evidence: anchor.evidence,
-      discriminator: `${call.start}`,
+      discriminator: callKey(f.src, call.start, call.callee),
       plainEnglishProblem:
         "This exported function pastes one of its parameters into the text of a raw SQL query. Whether that is exploitable depends on the callers: as soon as one of them passes request data, it is SQL injection.",
       whyItMatters:
@@ -225,7 +233,7 @@ export class SqlInjectionDetector implements Detector {
       line: anchor.line,
       endLine: anchor.endLine,
       evidence: anchor.evidence,
-      discriminator: `${call.start}`,
+      discriminator: callKey(f.src, call.start, call.callee),
       plainEnglishProblem: `Data from the ${t.hit.source.label} is pasted into a PostgREST filter string (\`.or(...)\`). Commas, dots and parentheses in the input add filter conditions of the attacker's choosing.`,
       whyItMatters:
         "Injected filter conditions can widen a search to rows the query was meant to exclude. Row-level security still applies, but with a service-role client or permissive policies this leaks other users' data.",

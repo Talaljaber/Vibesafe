@@ -967,15 +967,26 @@ export class SinkAnalyzer {
       }
       return { hit: h, weak: schemaWeak };
     }
-    const b = this.visibleBinding(st, h.via, h.offset);
+    let b = this.visibleBinding(st, h.via, h.offset);
     if (b === undefined) return { hit: h, weak: schemaWeak };
-    const init = this.bindingInit(st, b);
-    if (init === undefined) return { hit: h, weak: schemaWeak }; // parameter, inherited, unknown shape
-    if (this.isSafeInit(st, init, at)) return undefined;
-    if (depth >= MAX_DEPTH) return { hit: h, weak: schemaWeak };
-    const sub = this.effective(st, init.range, at, depth + 1);
-    if (sub.length === 0 && init.exact) return undefined;
-    return { hit: h, weak: schemaWeak || (sub.length > 0 && sub.every((s) => s.weak)) };
+    // Walk the appends (`+=`, `push`) back to the assignment that starts the value: the hit
+    // stays only when one of them carries taint, so `params.push(q); sql += ` AND a = $${params.length}``
+    // and `where.push(`a = $${n}`)` are clean.
+    const subs: EffectiveHit[] = [];
+    for (let guard = 0; guard < 24; guard++) {
+      const init = this.bindingInit(st, b);
+      if (init === undefined) return { hit: h, weak: schemaWeak }; // parameter, inherited, unknown shape
+      if (!this.isSafeInit(st, init, at)) {
+        if (depth >= MAX_DEPTH) return { hit: h, weak: schemaWeak };
+        subs.push(...this.effective(st, init.range, at, depth + 1));
+      }
+      if (init.exact) break;
+      const prev = this.visibleBinding(st, h.via, b.offset);
+      if (prev === undefined) break;
+      b = prev;
+    }
+    if (subs.length === 0) return undefined;
+    return { hit: h, weak: schemaWeak || subs.every((s) => s.weak) };
   }
 
   private cleanedForKind(h: TaintHit): boolean {
@@ -1140,12 +1151,22 @@ export class SinkAnalyzer {
     }
     // `items.map((x, i) => `($${i + 1})`)`: the callback's result does not carry the element
     const map = /^[A-Za-z_$][\w$.]*\s*\.\s*map\s*\(/.exec(fseg);
-    if (map !== null && first.end === r.end) {
+    if (map !== null) {
       const open = first.start + map[0].length - 1;
       const close = src.matchOf(open);
+      // an optional `.join("<literal>")` after the map: the joined text is still placeholders
+      const tail = code.slice(close + 1, first.end);
+      const joined = /^\s*\.\s*join\s*\(\s*(?:"[^"\\]*"|'[^'\\]*'|`[^`$\\]*`)?\s*\)\s*$/.test(tail);
+      if (close !== first.end - 1 && !joined) return false;
       const cbStart = nextNonWs(code, open + 1);
       const cb = this.f.spans.find((s) => s.start === cbStart);
-      if (close === r.end - 1 && cb !== undefined && cb.params.length > 0 && this.budget()) {
+      if (
+        close >= 0 &&
+        first.end === r.end &&
+        cb !== undefined &&
+        cb.params.length > 0 &&
+        this.budget()
+      ) {
         const seeded = analyzeTaint(src, cb, { runtime: this.f.runtime, seedParams: [0] });
         const returns = this.returnRanges(cb);
         if (
@@ -1331,7 +1352,8 @@ export class SinkAnalyzer {
       } else if (!/^is(?:NaN|Array|String|Object)$/i.test(fn)) return true;
     }
     if (kind === "path") {
-      if (/\.\.|\bstartsWith\s*\(|\bisAbsolute\s*\(|\brelative\s*\(/.test(text)) return true;
+      if (/\.\.|\bstartsWith\s*\(\s*(?!["'`]\/["'`])|\bisAbsolute\s*\(|\brelative\s*\(/.test(text))
+        return true;
     }
     if (kind === "redirect") {
       const rootOnly = /startsWith\s*\(\s*(["'`])\/\1\s*\)/.test(text);
@@ -1547,6 +1569,13 @@ export class SinkAnalyzer {
     const toStr = /\.\s*(?:toString|href)\s*(?:\(\s*\))?$/.exec(seg);
     if (toStr !== null && toStr.index > 0)
       return this.pos(st, { start: r.start, end: r.start + toStr.index }, at, depth + 1);
+    // request path members always start with `/` or `?`, so they cannot change the host
+    if (
+      /^(?:(?:req|request)\s*\.\s*(?:nextUrl\s*\.\s*)?(?:pathname|path|url|originalUrl|search)|[A-Za-z_$][\w$]*\s*\.\s*nextUrl\s*\.\s*(?:pathname|search))$/.test(
+        seg,
+      )
+    )
+      return "url-path";
     const originMember = /^([A-Za-z_$][\w$]*)\s*\.\s*(?:origin|host|hostname|protocol)$/.exec(seg);
     if (originMember !== null) {
       const p = this.pos(
@@ -1672,6 +1701,12 @@ export function capPerRule(
     out.push(summarize(ruleId, list.slice(MAX_FINDINGS_PER_RULE_PER_FILE)));
   }
   return out;
+}
+
+/** Stable finding discriminator: column within the line plus callee, so edits elsewhere in the file keep the id. */
+export function callKey(src: JsSource, offset: number, callee: string): string {
+  const lineStart = src.code.lastIndexOf("\n", offset - 1) + 1;
+  return `${offset - lineStart}:${callee}`;
 }
 
 /** Evidence line and anchor for a sink: the line of the first tainted offset inside the call, else the call line. */

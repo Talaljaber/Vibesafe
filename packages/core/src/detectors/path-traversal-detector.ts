@@ -6,6 +6,7 @@ import {
   capPerRule,
   findSinkCalls,
   loadSinkFile,
+  callKey,
   sinkAnchor,
   sinkArgs,
   type SinkCall,
@@ -68,7 +69,7 @@ export class PathTraversalDetector implements Detector {
         line: anchor.line,
         endLine: anchor.endLine,
         evidence: anchor.evidence,
-        discriminator: `${call.start}`,
+        discriminator: callKey(f.src, call.start, call.callee),
         plainEnglishProblem: `A file path is built from the ${t.hit.source.label} and used to access the filesystem. Values such as \`../../.env\` or \`../<other-tenant>/file\` step out of the folder you meant to serve.`,
         whyItMatters:
           "Path traversal lets anyone read (or overwrite) files the server can access: environment files with secrets, source code, or other customers' uploads.",

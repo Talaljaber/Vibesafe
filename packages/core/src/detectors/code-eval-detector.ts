@@ -6,6 +6,7 @@ import {
   capPerRule,
   findSinkCalls,
   loadSinkFile,
+  callKey,
   sinkAnchor,
   sinkArgs,
   type ArgTaint,
@@ -87,7 +88,7 @@ export class CodeEvalDetector implements Detector {
       line: anchor.line,
       endLine: anchor.endLine,
       evidence: anchor.evidence,
-      discriminator: `${call.start}`,
+      discriminator: callKey(f.src, call.start, call.callee),
       plainEnglishProblem: `Data from the ${t.hit.source.label} is turned into JavaScript and executed on the server (eval, new Function or vm). Whoever controls that value can run any code they like.`,
       whyItMatters:
         "This is remote code execution: an attacker can read your environment secrets (database URL, service-role and payment keys), run shell commands through child_process, and reach every tenant's data.",

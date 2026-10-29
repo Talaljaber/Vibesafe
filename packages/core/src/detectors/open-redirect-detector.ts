@@ -12,6 +12,7 @@ import {
   type Range,
   type SinkCall,
   type SinkFile,
+  callKey,
 } from "./utils/sinks.js";
 
 const AI_PROMPT =
@@ -117,7 +118,7 @@ export class OpenRedirectDetector implements Detector {
       file: f.file,
       line: callLine,
       evidence: f.src.lineText(callLine).trim(),
-      discriminator: `${at}`,
+      discriminator: callKey(f.src, at, call?.callee ?? ""),
       plainEnglishProblem: whole
         ? `The redirect target comes from the ${t.hit.source.label} and can be any URL, so a link to your site can bounce users to an attacker's page.`
         : `The redirect target is your origin followed by a value from the ${t.hit.source.label} with no leading \`/\` enforced, so a value like \`@evil.com\` or \`.evil.com\` sends users to another host.`,

@@ -6,7 +6,11 @@ import {
   capPerRule,
   findSinkCalls,
   loadSinkFile,
+  callKey,
   sinkAnchor,
+  splitTopLevel,
+  trimRange,
+  type Range,
   type SinkCall,
   type SinkFile,
 } from "./utils/sinks.js";
@@ -51,9 +55,27 @@ export class SsrfDetector implements Detector {
     return findings;
   }
 
-  private check(f: SinkFile, an: SinkAnalyzer, call: SinkCall): Finding | undefined {
+  /** The URL argument: the first argument, or the `url` property of a config object (`axios({ url })`). */
+  private urlArgument(f: SinkFile, call: SinkCall): Range | undefined {
     const arg = call.args[0];
-    if (arg === undefined || f.src.code[arg.start] === "{") return undefined;
+    if (arg === undefined) return undefined;
+    const code = f.src.code;
+    if (code[arg.start] !== "{") return arg;
+    const close = f.src.matchOf(arg.start);
+    if (close < 0) return undefined;
+    for (const part of splitTopLevel(f.src, { start: arg.start + 1, end: close }, ",")) {
+      const text = code.slice(part.start, part.end);
+      const m = /^url\s*:\s*/.exec(text);
+      if (m !== null) return trimRange(f.src, { start: part.start + m[0].length, end: part.end });
+      // shorthand `{ url }`
+      if (/^url$/.test(text.trim())) return trimRange(f.src, part);
+    }
+    return undefined;
+  }
+
+  private check(f: SinkFile, an: SinkAnalyzer, call: SinkCall): Finding | undefined {
+    const arg = this.urlArgument(f, call);
+    if (arg === undefined) return undefined;
     const t = an.argTaint(arg, call.start);
     if (t === undefined) return undefined;
     const position = an.position(t.state, arg, call.start);
@@ -70,7 +92,7 @@ export class SsrfDetector implements Detector {
       line: anchor.line,
       endLine: anchor.endLine,
       evidence: anchor.evidence,
-      discriminator: `${call.start}`,
+      discriminator: callKey(f.src, call.start, call.callee),
       plainEnglishProblem: whole
         ? `The server makes an HTTP request to a URL taken from the ${t.hit.source.label}, with no allowlist of destinations. An attacker can point it at internal services, localhost or the cloud metadata endpoint.`
         : `The server makes an HTTP request to a URL whose host part comes from the ${t.hit.source.label}, so an attacker can redirect the request to a host of their choice (for example with \`@evil.com\` or an internal hostname).`,

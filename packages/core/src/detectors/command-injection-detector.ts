@@ -6,6 +6,7 @@ import {
   capPerRule,
   findSinkCalls,
   loadSinkFile,
+  callKey,
   sinkAnchor,
   splitTopLevel,
   type ArgTaint,
@@ -110,7 +111,7 @@ export class CommandInjectionDetector implements Detector {
       line: anchor.line,
       endLine: anchor.endLine,
       evidence: anchor.evidence,
-      discriminator: `${call.start}`,
+      discriminator: callKey(f.src, call.start, call.callee),
       plainEnglishProblem: `Data from the ${t.hit.source.label} is pasted into a command that a shell parses. Quotes do not help: \`$(...)\`, backticks or a closing quote inside the value run extra commands on the machine.`,
       whyItMatters: fromArgv
         ? "Whoever controls the argument (a CI job, a cron entry, a teammate pasting a URL or file name) gets arbitrary command execution with this script's permissions and environment secrets."
