@@ -7,12 +7,17 @@
 import type { Detector } from "@talaljaber/vibesafe-shared";
 import type { PrecedenceRule } from "../../scanner/precedence.js";
 import type { FileKind } from "../utils/file-kind.js";
+import { SupabasePolicyDetector } from "../supabase-policy-detector.js";
+
+export { SupabasePolicyDetector } from "../supabase-policy-detector.js";
 
 /** Fresh instances of this group's detectors, registered after the built-in ones. */
-export const supabaseDetectors = (): Detector[] => [];
+export const supabaseDetectors = (): Detector[] => [new SupabasePolicyDetector()];
 
 /** Cross-owner precedence rules declared by this group (see scanner/precedence.ts). */
 export const supabasePrecedence: readonly PrecedenceRule[] = [];
 
 /** Detector id -> non-JS file kinds it legitimately reports on (used by non-js-files.test.ts). */
-export const supabaseNonJsExempt: Readonly<Record<string, readonly FileKind[]>> = {};
+export const supabaseNonJsExempt: Readonly<Record<string, readonly FileKind[]>> = {
+  "supabase-policy-detector": ["sql"],
+};
