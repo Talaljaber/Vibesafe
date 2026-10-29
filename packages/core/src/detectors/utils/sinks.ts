@@ -890,6 +890,7 @@ export class SinkAnalyzer {
     const plus = splitTopLevel(src, r, "+");
     if (plus.length > 1) return plus.flatMap((p) => this.rangeHits(st, p, at));
     if (this.isBooleanOrNumeric(r)) return [];
+    if (this.safeMapExpr(st, r, at)) return [];
     const t = topLevelTernary(src, r);
     if (t === undefined) return st.exprTaints(r.start, r.end);
     const a = this.rangeHits(st, t.whenTrue, at).filter(
@@ -1149,36 +1150,37 @@ export class SinkAnalyzer {
       const open = first.start + lookup[0].length - 1;
       if (src.matchOf(open) === first.end - 1) return true;
     }
-    // `items.map((x, i) => `($${i + 1})`)`: the callback's result does not carry the element
-    const map = /^[A-Za-z_$][\w$.]*\s*\.\s*map\s*\(/.exec(fseg);
-    if (map !== null) {
-      const open = first.start + map[0].length - 1;
-      const close = src.matchOf(open);
-      // an optional `.join("<literal>")` after the map: the joined text is still placeholders
-      const tail = code.slice(close + 1, first.end);
-      const joined = /^\s*\.\s*join\s*\(\s*(?:"[^"\\]*"|'[^'\\]*'|`[^`$\\]*`)?\s*\)\s*$/.test(tail);
-      if (close !== first.end - 1 && !joined) return false;
-      const cbStart = nextNonWs(code, open + 1);
-      const cb = this.f.spans.find((s) => s.start === cbStart);
-      if (
-        close >= 0 &&
-        first.end === r.end &&
-        cb !== undefined &&
-        cb.params.length > 0 &&
-        this.budget()
-      ) {
-        const seeded = analyzeTaint(src, cb, { runtime: this.f.runtime, seedParams: [0] });
-        const returns = this.returnRanges(cb);
-        if (
-          returns.length > 0 &&
-          returns.every((x) => this.effective(seeded, x, at, MAX_DEPTH).length === 0)
-        )
-          return !this.closureTaintIn(st, returns, at);
-      }
-    }
-    return false;
+    return first.end === r.end && this.safeMapExpr(st, first, at);
   }
 
+  /**
+   * `items.map((x, i) => `$${i + 1}`)` with an optional literal `.join(",")`: the callback's
+   * result does not carry the element, so the expression is placeholders only.
+   */
+  private safeMapExpr(st: TaintState, first: Range, at: number): boolean {
+    const src = this.f.src;
+    const code = src.code;
+    const fseg = code.slice(first.start, first.end);
+    const map = /^[A-Za-z_$][\w$.]*\s*\.\s*map\s*\(/.exec(fseg);
+    if (map === null) return false;
+    const open = first.start + map[0].length - 1;
+    const close = src.matchOf(open);
+    if (close < 0) return false;
+    const tail = code.slice(close + 1, first.end);
+    const joined = /^\s*\.\s*join\s*\(\s*(?:"[^"\\]*"|'[^'\\]*'|`[^`$\\]*`)?\s*\)\s*$/.test(tail);
+    if (close !== first.end - 1 && !joined) return false;
+    const cbStart = nextNonWs(code, open + 1);
+    const cb = this.f.spans.find((s) => s.start === cbStart);
+    if (cb === undefined || !this.budget()) return false;
+    const returns = this.returnRanges(cb);
+    if (returns.length === 0) return false;
+    if (cb.params.length > 0) {
+      const seeded = analyzeTaint(src, cb, { runtime: this.f.runtime, seedParams: [0] });
+      if (!returns.every((x) => this.effective(seeded, x, at, MAX_DEPTH).length === 0))
+        return false;
+    }
+    return !this.closureTaintIn(st, returns, at);
+  }
   /** Whether any of `ranges` uses a tainted binding of the enclosing analysis. */
   private closureTaintIn(st: TaintState, ranges: Range[], at: number): boolean {
     return ranges.some((r) => this.effective(st, r, at, MAX_DEPTH).length > 0);
@@ -1352,7 +1354,13 @@ export class SinkAnalyzer {
       } else if (!/^is(?:NaN|Array|String|Object)$/i.test(fn)) return true;
     }
     if (kind === "path") {
-      if (/\.\.|\bstartsWith\s*\(\s*(?!["'`]\/["'`])|\bisAbsolute\s*\(|\brelative\s*\(/.test(text))
+      if (/\.\.|\bisAbsolute\s*\(|\brelative\s*\(/.test(text)) return true;
+      // a literal-prefix check passes `uploads/../x`; only a normalized value counts
+      if (/\bstartsWith\s*\(\s*(?!["'`])/.test(text)) return true;
+      if (
+        /\bstartsWith\s*\(/.test(text) &&
+        /\b(?:resolve|normalize|realpath(?:Sync)?)\s*\(/.test(text)
+      )
         return true;
     }
     if (kind === "redirect") {

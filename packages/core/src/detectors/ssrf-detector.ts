@@ -63,14 +63,19 @@ export class SsrfDetector implements Detector {
     if (code[arg.start] !== "{") return arg;
     const close = f.src.matchOf(arg.start);
     if (close < 0) return undefined;
+    let url: Range | undefined;
     for (const part of splitTopLevel(f.src, { start: arg.start + 1, end: close }, ",")) {
       const text = code.slice(part.start, part.end);
+      // `baseURL` controls the host, so it wins over `url`
+      const b = /^baseURL\s*:\s*/.exec(text);
+      if (b !== null) return trimRange(f.src, { start: part.start + b[0].length, end: part.end });
+      if (/^baseURL$/.test(text.trim())) return trimRange(f.src, part);
       const m = /^url\s*:\s*/.exec(text);
-      if (m !== null) return trimRange(f.src, { start: part.start + m[0].length, end: part.end });
+      if (m !== null) url ??= trimRange(f.src, { start: part.start + m[0].length, end: part.end });
       // shorthand `{ url }`
-      if (/^url$/.test(text.trim())) return trimRange(f.src, part);
+      else if (/^url$/.test(text.trim())) url ??= trimRange(f.src, part);
     }
-    return undefined;
+    return url;
   }
 
   private check(f: SinkFile, an: SinkAnalyzer, call: SinkCall): Finding | undefined {

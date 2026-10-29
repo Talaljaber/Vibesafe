@@ -124,7 +124,23 @@ export class SqlInjectionDetector implements Detector {
   private queryText(f: SinkFile, arg: Range, before: number): string {
     const code = f.src.code;
     const seg = code.slice(arg.start, arg.end);
-    if (!/^[A-Za-z_$][\w$]*$/.test(seg)) return staticText(f.src, arg);
+    if (!/^[A-Za-z_$][\w$]*$/.test(seg)) {
+      // identifiers inside the argument (`BASE + ` WHERE ...``) contribute their declared text
+      const own = staticText(f.src, arg);
+      const names = new Set(seg.match(/(?<![\w$.])[A-Za-z_$][\w$]*(?![\w$(])/g) ?? []);
+      const extra: string[] = [];
+      for (const n of [...names].slice(0, 6)) {
+        if (/^(?:const|let|var|new|await|typeof)$/.test(n)) continue;
+        const sub = this.declaredText(f, n, before);
+        if (sub !== "") extra.push(sub);
+      }
+      return [own, ...extra].join(" ");
+    }
+    return this.declaredText(f, seg, before);
+  }
+
+  private declaredText(f: SinkFile, seg: string, before: number): string {
+    const code = f.src.code;
     const parts: string[] = [];
     const name = seg.replace(/\$/g, "\\$");
     const re = new RegExp(
