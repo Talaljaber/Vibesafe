@@ -2,9 +2,14 @@ import type { Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared
 import { classifyEnvFileName, redactSecret } from "@talaljaber/vibesafe-shared";
 import ignore from "ignore";
 import path from "node:path";
-import { SECRET_PATTERNS, matchSecretPattern } from "./patterns/secret-patterns.js";
 import { classifyPath, isTestOrFixturePath } from "./utils/file-kind.js";
 import { makeFinding } from "./utils/finding.js";
+import {
+  capFindingsPerRule,
+  credentialNameKind,
+  hasSpecificSecret,
+  looksLikeSecretValue,
+} from "./utils/infra-common.js";
 import {
   parseDockerfile,
   parseKeyValues,
@@ -12,29 +17,28 @@ import {
   type DockerStage,
 } from "./utils/dockerfile.js";
 
-/** Variable names that hold credentials. */
-const SECRET_NAME_RE =
-  /(?:SECRET|PASSWORD|PASSWD|PASSPHRASE|TOKEN|API_?KEY|PRIVATE_?KEY|ACCESS_?KEY|SERVICE_?ROLE|CREDENTIALS?|AUTH_?KEY|SIGNING_?KEY|ENCRYPTION_?KEY|CONNECTION_STRING|DSN|(?:_|^)(?:URL|URI)$)/i;
-/** Names that look secret but are public by design or just configuration. */
-const PUBLIC_NAME_RE =
-  /(?:^|_)(?:PUBLIC|PUBLISHABLE|ANON)(?:_|$)|^NEXT_PUBLIC_|^VITE_|^REACT_APP_|^EXPO_PUBLIC_|_(?:FILE|PATH|DIR|URL_PATH|ENABLED|DISABLED|LENGTH|TTL|EXPIRY|EXPIRES(?:_IN)?|TIMEOUT|HEADER|NAME|ID)$/i;
-const PLACEHOLDER_RE =
-  /^(?:|x+|\*+|-|null|none|nil|undefined|false|true|change[-_]?me|replace[-_]?me|placeholder|dummy|example|sample|todo|tbd|<[^>]*>|\[[^\]]*\]|\{\{.*\}\}|your[-_].*|.*[-_]here)$/i;
-const URL_NAME_RE = /URL|URI|DSN|CONNECTION_STRING/i;
-/** Password of a `scheme://user:password@host` URL. */
-const URL_PASSWORD_RE = /^[a-z][a-z0-9+.-]*:\/\/[^\s:@/]*:([^\s@/]+)@/i;
-
 /** `COPY`/`ADD` sources that send the whole build context. */
 const WHOLE_CONTEXT_RE = /^(?:\.|\.\/|\*|\.\/\*)$/;
 
 /** Base images that run as a non-root user by default. */
-const NONROOT_IMAGE_RE = /nonroot|distroless\/static|^cgr\.dev\/|chainguard/i;
+const NONROOT_IMAGE_RE = /nonroot|distroless\/static|^cgr\.dev\/|chainguard|^bitnami\//i;
+/**
+ * Official data-store images whose entrypoint script starts the server as a service
+ * user (gosu / su-exec / setpriv inside the image), as long as the Dockerfile keeps
+ * that entrypoint.
+ */
+const SELF_DROPPING_IMAGE_RE =
+  /^(?:(?:docker\.io\/)?library\/)?(?:postgres|mysql|mariadb|mongo|redis|rabbitmq|memcached|cassandra|couchdb|neo4j|influxdb|percona)$|^(?:docker\.io\/)?(?:postgis\/postgis|valkey\/valkey|timescale\/timescaledb(?:-ha)?)$/i;
+/** `registry/name:tag@digest` -> `registry/name`. */
+function imageRepository(image: string): string {
+  const ref = image.split("@")[0] ?? "";
+  const slash = ref.lastIndexOf("/");
+  const colon = ref.lastIndexOf(":");
+  return colon > slash ? ref.slice(0, colon) : ref;
+}
+
 /** Entrypoint helpers that drop root before starting the app. */
 const PRIVILEGE_DROP_RE = /\b(?:gosu|su-exec|setpriv|runuser|chroot\s+--userspec|s6-setuidgid)\b/;
-
-function lineHasKnownSecret(line: string): boolean {
-  return SECRET_PATTERNS.some((p) => matchSecretPattern(p, line) !== null);
-}
 
 /**
  * Dockerfile rules: secrets baked in with ENV/ARG, the whole build context copied
@@ -66,7 +70,7 @@ export class DockerfileDetector implements Detector {
         // Never throw from a detector.
       }
     }
-    return findings;
+    return capFindingsPerRule(findings);
   }
 
   private secretRules(file: string, instructions: DockerInstruction[], lines: string[]): Finding[] {
@@ -74,17 +78,15 @@ export class DockerfileDetector implements Detector {
     for (const ins of instructions) {
       if (ins.keyword !== "ENV" && ins.keyword !== "ARG") continue;
       const sourceLines = lines.slice(ins.line - 1, ins.endLine).join("\n");
-      if (lineHasKnownSecret(sourceLines)) continue; // reported by the secret detector
+      if (hasSpecificSecret(sourceLines)) continue; // reported by the secret detector
       for (const { key, value } of parseKeyValues(ins.args)) {
-        if (value === undefined || !SECRET_NAME_RE.test(key) || PUBLIC_NAME_RE.test(key)) continue;
+        if (value === undefined) continue;
+        const kind = credentialNameKind(key);
+        if (kind === undefined) continue;
         const v = value.trim();
-        if (v.includes("$") || v.length < 4 || /^\d+$/.test(v) || v.startsWith("/")) continue;
-        if (PLACEHOLDER_RE.test(v)) continue;
+        if (!looksLikeSecretValue(v)) continue;
         // Connection strings are only secret when they carry a password.
-        if (URL_NAME_RE.test(key)) {
-          const pw = URL_PASSWORD_RE.exec(v)?.[1];
-          if (pw === undefined || PLACEHOLDER_RE.test(pw) || pw.includes("$")) continue;
-        }
+        if (kind === "connection" && !/^[a-z][a-z0-9+.-]*:\/\//i.test(v)) continue;
         const lineNo = this.lineOfKey(lines, ins, key);
         out.push(
           makeFinding({
@@ -248,6 +250,15 @@ export class DockerfileDetector implements Detector {
       ),
     );
     if (dropsPrivileges) return [];
+    // Official database/cache images drop to their service user in their own entrypoint;
+    // that only holds while the Dockerfile keeps the image's ENTRYPOINT.
+    if (
+      !lastUser &&
+      SELF_DROPPING_IMAGE_RE.test(imageRepository(image)) &&
+      !chain.some((s) => s.instructions.some((i) => i.keyword === "ENTRYPOINT"))
+    ) {
+      return [];
+    }
 
     const anchor = lastUser ?? final.instructions[0]!;
     return [

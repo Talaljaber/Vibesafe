@@ -1,7 +1,7 @@
 import type { Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared";
-import { SECRET_PATTERNS, matchSecretPattern } from "./patterns/secret-patterns.js";
 import { classifyPath, isTestOrFixturePath } from "./utils/file-kind.js";
 import { makeFinding } from "./utils/finding.js";
+import { capFindingsPerRule, findUrlCredential, hasSpecificSecret } from "./utils/infra-common.js";
 import {
   parseCompose,
   type ComposeEnvVar,
@@ -9,13 +9,36 @@ import {
   type ComposeService,
 } from "./utils/yaml-lines.js";
 
-/** Database, cache and queue images whose ports must never be public. */
-const DATA_STORE_RE =
-  /(?:^|[/_-])(?:postgres(?:ql)?|postgis|timescaledb|supabase\/postgres|mysql|mariadb|percona|mongo(?:db)?|redis|valkey|keydb|memcached|elasticsearch|opensearch|cassandra|scylla|couchdb|couchbase|neo4j|clickhouse|cockroach(?:db)?|mssql|sqlserver|influxdb|rabbitmq|nats|etcd|minio)(?:$|[:@/_-])/i;
+/** Leading word of a database, cache or queue image (or service) name. */
+const DATA_STORE_WORD_RE =
+  /^(?:postgres(?:ql)?|postgis|timescaledb|mysql|mariadb|percona|mongo(?:db)?|redis|valkey|keydb|memcached|elasticsearch|opensearch|cassandra|scylla|couchdb|couchbase|neo4j|clickhouse|cockroach(?:db)?|mssql|sqlserver|influxdb|rabbitmq|nats|etcd|minio)$/i;
 
 /** Admin UIs and metrics exporters named after the store they talk to. */
 const NOT_DATA_STORE_RE =
   /exporter|mongo-express|commander|insight|adminer|pgadmin|phpmyadmin|pgweb|[-_]ui(?:$|[:@/])/i;
+
+/**
+ * True when the image (or service) name is a data store: the leading word of the last
+ * path segment names one (`postgres:16`, `bitnami/redis`, `clickhouse/clickhouse-server`),
+ * or the image is `<store>/server` (`mcr.microsoft.com/mssql/server`). Names that only
+ * contain a store's name (`acme/app-redis-proxy`) are not data stores.
+ */
+function isDataStoreName(name: string): boolean {
+  if (NOT_DATA_STORE_RE.test(name)) return false;
+  const ref = (name.split("@")[0] ?? "").trim();
+  const slash = ref.lastIndexOf("/");
+  const colon = ref.lastIndexOf(":");
+  const repo = colon > slash ? ref.slice(0, colon) : ref;
+  const segments = repo.split("/");
+  const leading = (seg: string | undefined): string => (seg ?? "").split(/[-_.]/)[0] ?? "";
+  const last = segments[segments.length - 1];
+  if (DATA_STORE_WORD_RE.test(leading(last))) return true;
+  return (
+    segments.length >= 2 &&
+    /^server$/i.test(last ?? "") &&
+    DATA_STORE_WORD_RE.test(leading(segments[segments.length - 2]))
+  );
+}
 
 /** Variables that set a data store's administrative password. */
 const PASSWORD_VAR_RE =
@@ -60,16 +83,10 @@ const WEAK_PASSWORDS = new Set([
   "user",
 ]);
 
-/** `scheme://user:password@host[:port]/...` with a single-label host (`db`, `postgres`). */
-const URL_CRED_RE = /\b([a-z][a-z0-9+.-]*):\/\/([^\s:@/]*):([^\s@/]+)@([^\s:/?#]+)/i;
 const DB_SCHEME_RE =
   /^(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis|rediss|amqp|mssql|sqlserver)$/i;
 
 const DEV_FILE_RE = /(?:^|[./_-])(?:dev|development|local|test|ci|override)(?:[./_-]|$)/i;
-
-function lineHasKnownSecret(line: string): boolean {
-  return SECRET_PATTERNS.some((p) => matchSecretPattern(p, line) !== null);
-}
 
 function isWeakPassword(value: string, user?: string | undefined): boolean {
   const v = value.trim().toLowerCase();
@@ -128,12 +145,11 @@ export class DockerComposeDetector implements Detector {
         // Never throw from a detector.
       }
     }
-    return findings;
+    return capFindingsPerRule(findings);
   }
 
   private isDataStore(svc: ComposeService): boolean {
-    const name = svc.image ? svc.image.value : svc.name;
-    return DATA_STORE_RE.test(name) && !NOT_DATA_STORE_RE.test(name);
+    return isDataStoreName(svc.image ? svc.image.value : svc.name);
   }
 
   private passwordFindings(
@@ -149,12 +165,19 @@ export class DockerComposeDetector implements Detector {
 
     for (const env of svc.environment) {
       const rawLine = lines[env.line - 1] ?? "";
-      if (lineHasKnownSecret(rawLine)) continue; // reported by the secret detector
+      // A specific token format on the line is reported by the secret detector; the
+      // weakness still counts for the port rule.
+      const knownSecret = hasSpecificSecret(rawLine);
+      const emit = (kind: "weak" | "no-auth" | "url", dataStoreService: boolean): void => {
+        if (!knownSecret) {
+          findings.push(this.passwordFinding(file, env, rawLine, kind, dataStoreService));
+        }
+      };
       const key = env.key.toUpperCase();
 
       if (NO_AUTH_RE.test(`${key}=${env.value.trim()}`)) {
         if (dataStore) dataStoreWeak = true;
-        findings.push(this.passwordFinding(file, env, rawLine, "no-auth", dataStore));
+        emit("no-auth", dataStore);
         continue;
       }
 
@@ -168,7 +191,7 @@ export class DockerComposeDetector implements Detector {
         else if (key.startsWith("MONGO")) user = userOf(["MONGO_INITDB_ROOT_USERNAME"]);
         if (key === "NEO4J_AUTH" && literal.trim().toLowerCase() === "none") {
           if (dataStore) dataStoreWeak = true;
-          findings.push(this.passwordFinding(file, env, rawLine, "no-auth", dataStore));
+          emit("no-auth", dataStore);
           continue;
         }
         // NEO4J_AUTH is `neo4j/<password>`; an empty value means "pass through from the host".
@@ -177,20 +200,17 @@ export class DockerComposeDetector implements Detector {
         if (password.trim() === "") continue;
         if (isWeakPassword(password, user)) {
           if (dataStore) dataStoreWeak = true;
-          findings.push(this.passwordFinding(file, env, rawLine, "weak", dataStore));
+          emit("weak", dataStore);
         }
         continue;
       }
 
       // Connection strings pointing at another compose service (`@db:5432`).
-      const m = URL_CRED_RE.exec(env.value);
-      if (m && DB_SCHEME_RE.test(m[1] ?? "")) {
-        const host = m[4] ?? "";
-        const password = decodeSafe(m[3] ?? "");
-        if (host.includes(".") || host.includes("$") || password.includes("$")) continue;
-        if (isWeakPassword(password, decodeSafe(m[2] ?? ""))) {
-          findings.push(this.passwordFinding(file, env, rawLine, "url", false));
-        }
+      const cred = findUrlCredential(env.value);
+      if (cred && DB_SCHEME_RE.test(cred.scheme)) {
+        const password = decodeSafe(cred.password);
+        if (cred.host.includes(".") || cred.host.includes("$") || password.includes("$")) continue;
+        if (isWeakPassword(password, decodeSafe(cred.user))) emit("url", false);
       }
     }
     return { findings, dataStoreWeak };
@@ -311,7 +331,8 @@ export class DockerComposeDetector implements Detector {
       );
     }
     for (const vol of svc.volumes) {
-      if (!/(?:^|[\s"'])\/?(?:var\/)?run\/docker\.sock(?::|$)/.test(vol.value)) continue;
+      // Also `${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock`.
+      if (!/(?:^|[\s"']|:-)\/?(?:var\/)?run\/docker\.sock\}?(?::|$)/.test(vol.value)) continue;
       out.push(
         makeFinding({
           ...common,

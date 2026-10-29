@@ -7,6 +7,7 @@ import type {
 } from "@talaljaber/vibesafe-shared";
 import { classifyPath, isTestOrFixturePath } from "./utils/file-kind.js";
 import { makeFinding } from "./utils/finding.js";
+import { capFindingsPerRule } from "./utils/infra-common.js";
 import { findGhExpressions, parseWorkflow, type YamlText } from "./utils/yaml-lines.js";
 
 /**
@@ -15,6 +16,10 @@ import { findGhExpressions, parseWorkflow, type YamlText } from "./utils/yaml-li
  */
 const UNTRUSTED_FIELD_RE =
   /\bgithub\.(?:head_ref\b|event\.(?:issue\.(?:title|body)|pull_request\.(?:title|body|head\.(?:ref|label)|head\.repo\.default_branch)|comment\.body|review\.body|review_comment\.body|discussion\.(?:title|body)|pages\b[^\s}]*?\.page_name|commits\b[^\s}]*?\.(?:message|author\.(?:email|name))|head_commit\.(?:message|author\.(?:email|name)|committer\.(?:email|name))|workflow_run\.(?:head_branch|display_title|head_commit\.(?:message|author\.(?:email|name)))|release\.(?:name|body))\b)/;
+
+/** `toJSON(github.event)` or `toJSON(github.event.<object>)`: serializes the untrusted fields too. */
+const UNTRUSTED_TOJSON_RE =
+  /\btoJSON\(\s*github\.event(?:\.(?:issue|pull_request|comment|review|review_comment|discussion|head_commit|commits|workflow_run|release|pages))?\s*\)/i;
 
 /** Triggers any GitHub user can fire, whose jobs get secrets and a write token. */
 const OUTSIDER_TRIGGERS = new Set([
@@ -79,7 +84,7 @@ export class GhaScriptInjectionDetector implements Detector {
             for (const { text: body, where } of scripts) {
               for (const l of body.lines) {
                 for (const ex of findGhExpressions(l.value)) {
-                  const m = UNTRUSTED_FIELD_RE.exec(ex.expr);
+                  const m = UNTRUSTED_FIELD_RE.exec(ex.expr) ?? UNTRUSTED_TOJSON_RE.exec(ex.expr);
                   if (!m) continue;
                   const shellComment = where === "run:" && /^\s*#/.test(l.value);
                   findings.push(
@@ -114,6 +119,6 @@ export class GhaScriptInjectionDetector implements Detector {
         // Never throw from a detector.
       }
     }
-    return findings;
+    return capFindingsPerRule(findings);
   }
 }

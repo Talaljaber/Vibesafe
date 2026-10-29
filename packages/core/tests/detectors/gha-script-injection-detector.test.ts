@@ -144,3 +144,26 @@ describe("GhaScriptInjectionDetector", () => {
     await expect(run({ [WF]: "${{\non: [\n" })).resolves.toBeDefined();
   });
 });
+
+describe("GhaScriptInjectionDetector: toJSON", () => {
+  it("flags toJSON of an untrusted event object in run:, not of safe contexts", async () => {
+    const findings = await run({
+      [WF]: yaml(
+        "on: issues",
+        "jobs:",
+        "  a:",
+        "    steps:",
+        "      - run: echo '${{ toJSON(github.event.issue) }}' > issue.json",
+        "      - run: echo '${{ toJSON(github.event) }}'",
+        "      - run: echo '${{ toJSON(matrix) }}' '${{ toJSON(github.event.repository) }}'",
+        "      - env:",
+        "          ISSUE: ${{ toJSON(github.event.issue) }}",
+        '        run: echo "$ISSUE"',
+      ),
+    });
+    expect(findings.map((f) => [f.line, f.severity])).toEqual([
+      [5, "high"],
+      [6, "high"],
+    ]);
+  });
+});

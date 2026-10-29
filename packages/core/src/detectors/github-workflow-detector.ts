@@ -1,6 +1,7 @@
 import type { Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared";
 import { classifyPath, isTestOrFixturePath } from "./utils/file-kind.js";
 import { makeFinding } from "./utils/finding.js";
+import { capFindingsPerRule } from "./utils/infra-common.js";
 import {
   parseWorkflow,
   type ActionRef,
@@ -68,7 +69,7 @@ export class GithubWorkflowDetector implements Detector {
         // Never throw from a detector.
       }
     }
-    return findings;
+    return capFindingsPerRule(findings);
   }
 
   private prTargetRule(file: string, wf: Workflow, lines: string[]): Finding[] {

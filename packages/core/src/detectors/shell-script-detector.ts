@@ -1,47 +1,96 @@
 import type { Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared";
 import { redactSecret } from "@talaljaber/vibesafe-shared";
-import { SECRET_PATTERNS, matchSecretPattern } from "./patterns/secret-patterns.js";
 import { classifyPath, isTestOrFixturePath } from "./utils/file-kind.js";
 import { makeFinding } from "./utils/finding.js";
+import {
+  capFindingsPerRule,
+  credentialNameKind,
+  findUrlCredential,
+  hasSpecificSecret,
+  isPlaceholderValue,
+  looksLikeSecretValue,
+} from "./utils/infra-common.js";
 
-/** `curl|wget <plain http URL> ... | [sudo] sh|bash|zsh` and `sh <(curl http://...)`. */
-const PIPE_TO_SHELL_RE =
-  /\b(?:curl|wget)\b[^|;&\n]*?\bhttp:\/\/[^\s|;&]+[^|;&\n]*\|\s*(?:sudo\s+(?:-\S+\s+)*)?(?:env\s+\S+=\S*\s+)*(?:ba|z|da|k)?sh\b|\b(?:ba|z)?sh\s+<\(\s*(?:curl|wget)\b[^)]*\bhttp:\/\//;
-
-/** The same shape with quoted text blanked: the curl and the pipe must be real code. */
-const PIPE_SHAPE_RE =
-  /\b(?:curl|wget)\b[^|;&\n]*\|\s*(?:sudo\s+(?:-\S+\s+)*)?(?:env\s+\S+=\S*\s+)*(?:ba|z|da|k)?sh\b|\b(?:ba|z)?sh\s+<\(\s*(?:curl|wget)\b/;
+/** Start of a pipeline stage that is a shell: `[sudo [-flags]] [env K=V ...] sh|bash|zsh|dash|ksh`. */
+const SHELL_STAGE_RE = /^\s*(?:sudo\s+(?:-\S+\s+)*)?(?:env\s+[^\s=]+=\S*\s+)*(?:ba|z|da|k)?sh\b/;
+const DOWNLOADER_RE = /\b(?:curl|wget)\b/;
+/** `sh <(curl ...` / `bash <(wget ...`: process substitution of a download. */
+const PROCESS_SUBST_RE = /\b(?:ba|z)?sh\s+<\(\s*(?:curl|wget)\b/g;
+/** A plain-HTTP URL starting at a word boundary. */
+const HTTP_URL_RE = /\bhttp:\/\//;
 
 /** `NAME=value` / `export NAME=value` / `readonly NAME=value` with a credential-like name. */
 const ASSIGN_RE =
   /^\s*(?:export\s+|readonly\s+|local\s+|declare\s+(?:-\w+\s+)?)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;#]+)/;
-const SECRET_NAME_RE =
-  /(?:SECRET|PASSWORD|PASSWD|PASSPHRASE|TOKEN|API_?KEY|PRIVATE_?KEY|ACCESS_?KEY|SERVICE_?ROLE|CREDENTIALS?|AUTH_?KEY|SIGNING_?KEY)/i;
-const PUBLIC_NAME_RE =
-  /(?:^|_)(?:PUBLIC|PUBLISHABLE|ANON)(?:_|$)|_(?:FILE|PATH|DIR|NAME|ID|URL|ENABLED|LENGTH|TTL|TIMEOUT|HEADER)$/i;
-const PLACEHOLDER_RE =
-  /^(?:|x+|\*+|-|null|none|undefined|false|true|change[-_]?me|replace[-_]?me|placeholder|dummy|example|sample|todo|tbd|<[^>]*>|\[[^\]]*\]|your[-_].*|.*[-_]here)$/i;
+/** `docker run -e NAME=value` / `--env NAME=value` / `--env=NAME=value`. */
+const ENV_FLAG_RE = /\s(?:-e|--env)(?:\s+|=)([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;|&]+)/g;
 
-/** Command-line password flags: `mysql -pS3cret`, `--password=...`, `sshpass -p ...`, `curl -u user:pass`. */
-const FLAG_CREDENTIAL_RES: RegExp[] = [
-  /\b(?:mysql|mysqldump|mysqladmin|mariadb)\b[^\n]*\s-p(?!\s)([^\s'"$;|&][^\s;|&]*)/,
-  /\s--password(?:=|\s+)(?!\$|"\$)("[^"$]+"|'[^']+'|[^\s;|&$'"]+)/,
-  /\bsshpass\s+-p\s*(?!\$|"\$)("[^"$]+"|'[^']+'|[^\s;|&$'"]+)/,
-  /\bcurl\b[^\n]*\s(?:-u|--user)\s+["']?[^\s:'"$]+:(?!\$)([^\s'"@$]+)["']?/,
+/**
+ * Command-line password flags: `mysql -pS3cret`, `--password=...`, `sshpass -p ...`,
+ * `curl -u user:pass`. `after` is a command word that must come earlier on the line;
+ * the flag pattern then runs once on the rest of the line, so nothing backtracks
+ * across the whole line per occurrence.
+ */
+const FLAG_CREDENTIALS: { after?: RegExp; flag: RegExp }[] = [
+  {
+    after: /\b(?:mysql|mysqldump|mysqladmin|mariadb)\b/,
+    flag: /\s-p(?!\s)([^\s'"$;|&][^\s;|&]*)/,
+  },
+  { flag: /\s--password(?:=|\s+)(?!\$|"\$)("[^"$]+"|'[^']+'|[^\s;|&$'"]+)/ },
+  { flag: /\bsshpass\s+-p\s*(?!\$|"\$)("[^"$]+"|'[^']+'|[^\s;|&$'"]+)/ },
+  { after: /\bcurl\b/, flag: /\s(?:-u|--user)\s+["']?[^\s:'"$]+:(?!\$)([^\s'"@$]+)["']?/ },
 ];
 
-/** `scheme://user:password@host` with a literal password and a single-label host. */
-const URL_CRED_RE = /\b[a-z][a-z0-9+.-]*:\/\/[^\s:@/'"]*:([^\s@/'"]+)@([^\s:/?#'"]+)/i;
-
-function lineHasKnownSecret(line: string): boolean {
-  return SECRET_PATTERNS.some((p) => matchSecretPattern(p, line) !== null);
-}
+/** Lines longer than this are generated or embedded data, not hand-written commands. */
+const MAX_LINE_LENGTH = 10_000;
 
 function unquote(v: string): string {
   if (v.length >= 2 && (v[0] === '"' || v[0] === "'") && v[v.length - 1] === v[0]) {
     return v.slice(1, -1);
   }
   return v;
+}
+
+/**
+ * True when a `curl`/`wget` stage is piped (a single `|`) into a shell stage, or a
+ * shell runs a download through process substitution (`bash <(curl ...)`). With
+ * `requireHttp`, the download must use a plain `http://` URL. The line is split on
+ * `|`, `;` and `&` once and every stage is tested with anchored or single-pass
+ * patterns, so the check is linear in the line length.
+ */
+function pipesDownloadToShell(code: string, requireHttp: boolean): boolean {
+  const parts = code.split(/(\|\|?|&&?|;)/);
+  for (let i = 0; i + 2 < parts.length; i += 2) {
+    if (parts[i + 1] !== "|") continue;
+    const stage = parts[i] ?? "";
+    const dl = DOWNLOADER_RE.exec(stage);
+    if (!dl) continue;
+    if (requireHttp && !HTTP_URL_RE.test(stage.slice(dl.index))) continue;
+    if (SHELL_STAGE_RE.test(parts[i + 2] ?? "")) return true;
+  }
+  // Process substitution: the download runs up to the next closing parenthesis.
+  // Both cursors only move forward, so this stays linear.
+  let httpAt = -2;
+  let closeAt = -2;
+  for (const m of code.matchAll(PROCESS_SUBST_RE)) {
+    if (!requireHttp) return true;
+    const from = m.index + m[0].length;
+    if (closeAt !== code.length && closeAt < from) {
+      const c = code.indexOf(")", from);
+      closeAt = c === -1 ? code.length : c;
+    }
+    if (httpAt !== -1 && httpAt < from) httpAt = nextHttpUrl(code, from);
+    if (httpAt === -1) return false;
+    if (httpAt < closeAt) return true;
+  }
+  return false;
+}
+
+/** Index of the next `http://` at a word boundary at or after `from`, or -1. */
+function nextHttpUrl(code: string, from: number): number {
+  let at = code.indexOf("http://", from);
+  while (at > 0 && /\w/.test(code[at - 1] ?? "")) at = code.indexOf("http://", at + 1);
+  return at;
 }
 
 /**
@@ -65,22 +114,20 @@ export class ShellScriptDetector implements Detector {
         const text = await context.readFile(file);
         if (text.trim() === "") continue;
         const lines = text.split(/\r?\n/);
-        let perRule = 0;
         for (let i = 0; i < lines.length; i++) {
           const raw = lines[i] ?? "";
+          if (raw.length > MAX_LINE_LENGTH) continue;
           const code = stripShellComment(raw);
           if (code.trim() === "") continue;
           if (
             code.includes("http://") &&
-            PIPE_TO_SHELL_RE.test(code) &&
-            PIPE_SHAPE_RE.test(blankQuoted(code))
+            pipesDownloadToShell(code, true) &&
+            pipesDownloadToShell(blankQuoted(code), false)
           ) {
             findings.push(this.pipeFinding(file, i + 1, raw));
           }
-          if (perRule >= 25) continue;
           const cred = this.credentialOf(code);
-          if (cred && !lineHasKnownSecret(raw)) {
-            perRule++;
+          if (cred && !hasSpecificSecret(raw)) {
             const evidence = raw.split(cred.value).join(redactSecret(cred.value));
             findings.push(this.credentialFinding(file, i + 1, evidence, cred.label));
           }
@@ -89,42 +136,52 @@ export class ShellScriptDetector implements Detector {
         // Never throw from a detector.
       }
     }
-    return findings;
+    return capFindingsPerRule(findings);
   }
 
   private credentialOf(code: string): { value: string; label: string } | undefined {
+    const named = (
+      name: string,
+      rawValue: string,
+    ): { value: string; label: string } | undefined => {
+      const value = unquote(rawValue);
+      const kind = credentialNameKind(name);
+      if (kind !== "credential" || !looksLikeSecretValue(value)) return undefined;
+      // Connection strings are handled below (single-label hosts only).
+      if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return undefined;
+      return { value, label: name };
+    };
     const a = ASSIGN_RE.exec(code);
     if (a) {
-      const name = a[1] ?? "";
-      const value = unquote(a[2] ?? "");
-      if (
-        SECRET_NAME_RE.test(name) &&
-        !PUBLIC_NAME_RE.test(name) &&
-        !value.includes("$") &&
-        !value.includes("`") &&
-        value.length >= 4 &&
-        !/^\d+$/.test(value) &&
-        !value.startsWith("/") &&
-        !PLACEHOLDER_RE.test(value)
-      ) {
-        return { value, label: name };
-      }
+      const hit = named(a[1] ?? "", a[2] ?? "");
+      if (hit) return hit;
     }
-    for (const re of FLAG_CREDENTIAL_RES) {
-      const m = re.exec(code);
+    for (const m of code.matchAll(ENV_FLAG_RE)) {
+      const hit = named(m[1] ?? "", m[2] ?? "");
+      if (hit) return hit;
+    }
+    for (const { after, flag } of FLAG_CREDENTIALS) {
+      let rest = code;
+      if (after) {
+        const cmd = after.exec(code);
+        if (!cmd) continue;
+        rest = code.slice(cmd.index);
+      }
+      const m = flag.exec(rest);
       const value = unquote(m?.[1] ?? "");
-      if (m && value.length >= 3 && !PLACEHOLDER_RE.test(value)) {
+      if (m && value.length >= 3 && !isPlaceholderValue(value)) {
         return { value, label: "a command-line password" };
       }
     }
-    const u = URL_CRED_RE.exec(code);
-    if (u) {
-      const password = u[1] ?? "";
-      const host = u[2] ?? "";
-      // Real hostnames are reported by the secret detector's database-URL rule.
-      if (!host.includes(".") && !password.includes("$") && !PLACEHOLDER_RE.test(password)) {
-        return { value: password, label: "a connection string" };
-      }
+    const u = findUrlCredential(code);
+    // Real hostnames are reported by the secret detector's database-URL rule.
+    if (
+      u &&
+      !u.host.includes(".") &&
+      !u.password.includes("$") &&
+      !isPlaceholderValue(u.password)
+    ) {
+      return { value: u.password, label: "a connection string" };
     }
     return undefined;
   }

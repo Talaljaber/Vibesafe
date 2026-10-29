@@ -270,3 +270,75 @@ describe("DockerfileDetector: general", () => {
     ).resolves.toBeDefined();
   });
 });
+
+describe("DockerfileDetector: review hardening", () => {
+  it("ignores configuration names and values that are not credentials", async () => {
+    const findings = byRule(
+      await run({
+        Dockerfile: [
+          "FROM node:20",
+          "ENV TOKEN_ISSUER=https://auth.example.com",
+          "ENV TOKEN_TYPE=Bearer",
+          "ENV PASSWORD_HASHER=argon2id",
+          "ENV AWS_CREDENTIALS_SOURCE=instance-metadata",
+          "ENV CREDENTIALS_PROVIDER=workload-identity",
+          "ENV SECRET_KEY_BASE=development",
+          "ENV JWT_AUDIENCE=api.example.com SECRET_ROTATION_DAYS=30",
+          "ENV API_TOKEN=https://tokens.example.com/issue",
+          "ENV GOOGLE_APPLICATION_CREDENTIALS=./keys/sa.json",
+          "USER node",
+        ].join("\n"),
+      }),
+      "docker-secret-in-env",
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it("reports quoted secrets the same way as unquoted ones", async () => {
+    const findings = byRule(
+      await run({
+        Dockerfile: [
+          "FROM node:20",
+          'ENV JWT_SECRET="4f9a8c1e2b7d6f3a9e0c"',
+          "ENV JWT_SECRET2=4f9a8c1e2b7d6f3a9e0c",
+          "ENV SECRET_KEY_BASE=8b1f0a9c3d2e7f6a5b4c",
+          'ARG DB_PASSWORD="hunter22"',
+          "USER node",
+        ].join("\n"),
+      }),
+      "docker-secret-in-env",
+    );
+    expect(findings.map((f) => [f.line, f.severity, f.confidence])).toEqual([
+      [2, "high", "high"],
+      [3, "high", "high"],
+      [4, "high", "high"],
+      [5, "high", "medium"],
+    ]);
+    expect(findings.map((f) => f.evidence).join("\n")).not.toContain("4f9a8c1e2b7d6f3a9e0c");
+  });
+
+  it("does not flag official database images that drop privileges in their entrypoint", async () => {
+    const cases = [
+      "FROM postgres:16\nCOPY init.sql /docker-entrypoint-initdb.d/\n",
+      'FROM redis:7-alpine\nCOPY redis.conf /usr/local/etc/redis/\nCMD ["redis-server", "/usr/local/etc/redis/redis.conf"]\n',
+      "FROM mysql:8.4\nCOPY schema.sql /docker-entrypoint-initdb.d/\n",
+      "FROM docker.io/library/mongo:7\n",
+      "FROM bitnami/postgresql:16\n",
+    ];
+    for (const Dockerfile of cases) {
+      expect(byRule(await run({ Dockerfile }), "docker-runs-as-root"), Dockerfile).toEqual([]);
+    }
+  });
+
+  it("still flags web servers and database images whose entrypoint is replaced", async () => {
+    const cases = [
+      "FROM nginx:1.27\nCOPY dist /usr/share/nginx/html\n",
+      'FROM postgres:16\nENTRYPOINT ["postgres"]\n',
+      "FROM acme/postgres-tools:1\n",
+      "FROM redis:7\nUSER root\n",
+    ];
+    for (const Dockerfile of cases) {
+      expect(byRule(await run({ Dockerfile }), "docker-runs-as-root"), Dockerfile).toHaveLength(1);
+    }
+  });
+});

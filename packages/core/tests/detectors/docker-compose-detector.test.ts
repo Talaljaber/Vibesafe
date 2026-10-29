@@ -169,20 +169,40 @@ describe("DockerComposeDetector: compose-default-db-password", () => {
     expect(findings).toEqual([]);
   });
 
-  it("skips lines a known secret pattern already matches", async () => {
-    const findings = byRule(
-      await run({
-        "docker-compose.yml": yaml(
-          "services:",
-          "  db:",
-          "    image: postgres:16",
-          "    environment:",
-          '      POSTGRES_PASSWORD: "postgres"',
-        ),
-      }),
-      "compose-default-db-password",
-    );
-    expect(findings).toEqual([]);
+  it("reports quoted default passwords like unquoted ones and keeps the port high", async () => {
+    const findings = await run({
+      "docker-compose.yml": yaml(
+        "services:",
+        "  db:",
+        "    image: postgres:16",
+        "    environment:",
+        '      POSTGRES_PASSWORD: "postgres"',
+        "    ports:",
+        '      - "5432:5432"',
+      ),
+    });
+    expect(findings.map((f) => [f.ruleId, f.line, f.severity])).toEqual([
+      ["security_config/compose-default-db-password", 5, "high"],
+      ["security_config/compose-db-port-exposed", 7, "high"],
+    ]);
+  });
+
+  it("leaves lines with a specific token format to the secret detector, but keeps the weakness", async () => {
+    const token = "ghp_" + "a".repeat(10) + "B".repeat(10) + "c".repeat(16);
+    const findings = await run({
+      "docker-compose.yml": yaml(
+        "services:",
+        "  db:",
+        "    image: postgres:16",
+        "    environment:",
+        `      POSTGRES_PASSWORD: postgres # ${token}`,
+        "    ports:",
+        '      - "5432:5432"',
+      ),
+    });
+    expect(findings.map((f) => [f.ruleId, f.line, f.severity])).toEqual([
+      ["security_config/compose-db-port-exposed", 7, "high"],
+    ]);
   });
 });
 
@@ -251,5 +271,75 @@ describe("DockerComposeDetector: general", () => {
     await expect(
       run({ "docker-compose.yml": "services: [\n  - : :\n\t-\n" }),
     ).resolves.toBeDefined();
+  });
+});
+
+describe("DockerComposeDetector: review hardening", () => {
+  it("matches data stores by the leading word of the image name only", async () => {
+    const findings = byRule(
+      await run({
+        "docker-compose.yml": yaml(
+          "services:",
+          "  proxy:",
+          "    image: ghcr.io/acme/app-redis-proxy:1",
+          "    ports:",
+          '      - "6379:6379"',
+          "  mymongo:",
+          "    build: ./my-mongo-admin",
+          "    ports:",
+          '      - "8081:8081"',
+          "  sql:",
+          "    image: mcr.microsoft.com/mssql/server:2022-latest",
+          "    ports:",
+          '      - "1433:1433"',
+          "  ch:",
+          "    image: clickhouse/clickhouse-server:24",
+          "    ports:",
+          '      - "8123:8123"',
+          "  redis-cache:",
+          "    build: ./cache",
+          "    ports:",
+          '      - "6380:6379"',
+        ),
+      }),
+      "compose-db-port-exposed",
+    );
+    expect(findings.map((f) => f.line)).toEqual([13, 17, 21]);
+  });
+
+  it("flags a Docker socket mounted through a variable default", async () => {
+    const findings = byRule(
+      await run({
+        "compose.yml": yaml(
+          "services:",
+          "  agent:",
+          "    image: ci-agent:1",
+          "    volumes:",
+          "      - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock",
+          "      - ./my-run/docker.sock.md:/docs/x",
+        ),
+      }),
+      "compose-privileged-service",
+    );
+    expect(findings.map((f) => f.line)).toEqual([5]);
+  });
+
+  it("keeps 25 findings per rule and file, then one summary", async () => {
+    const lines = ["services:"];
+    for (let i = 0; i < 300; i++) {
+      lines.push(
+        `  db${i}:`,
+        "    image: postgres:16",
+        "    ports:",
+        `      - "${10000 + i}:5432"`,
+      );
+    }
+    const findings = byRule(
+      await run({ "docker-compose.yml": yaml(...lines) }),
+      "compose-db-port-exposed",
+    );
+    expect(findings).toHaveLength(26);
+    expect(findings[25]!.title).toContain("275 more in this file");
+    expect(findings[25]!.confidence).toBe("medium");
   });
 });
