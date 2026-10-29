@@ -121,6 +121,8 @@ describe("docs hygiene", () => {
     expect(cli.name).toBe("@vibesafe/cli");
     const root = JSON.parse(read("package.json")) as { packageManager: string };
     expect(root.packageManager).toMatch(/^pnpm@9\./);
+    // Only the CLI and its workspace dependencies are installed (pnpm 9 defaults to true).
+    expect(action).toContain("--config.dedupe-peer-dependents=false");
     // Third-party actions are pinned by full commit SHA.
     const uses = [...action.matchAll(/^\s*uses:\s*(\S+)/gm)].map((m) => m[1]!);
     expect(uses.length).toBeGreaterThan(0);
@@ -129,6 +131,125 @@ describe("docs hygiene", () => {
     const version = /^ {2}version:\n((?: {4}.*\n)+)/m.exec(action)?.[1] ?? "";
     expect(version).toContain("deprecationMessage:");
     expect(version).not.toContain("default:");
+  });
+
+  it("the GitHub Action caches its private pnpm store keyed on its own lockfile", () => {
+    const action = read("action.yml");
+    const cacheStep = /- name: Cache the VibeSafe pnpm store\n((?: {6}.*\n)+)/.exec(action)?.[1];
+    expect(cacheStep, "cache step not found").toBeDefined();
+    expect(cacheStep).toMatch(/uses: actions\/cache@[0-9a-f]{40} # v\d+\.\d+\.\d+\n/);
+    // The cached path is the --store-dir the build step installs into.
+    expect(cacheStep).toContain("path: ${{ runner.temp }}/vibesafe-build/store");
+    expect(action).toContain('builddir="$RUNNER_TEMP/vibesafe-build"');
+    expect(action).toContain('--store-dir "$builddir/store"');
+    // hashFiles() cannot read the action directory when it is outside GITHUB_WORKSPACE,
+    // so the key comes from a step that hashes the action's own lockfile.
+    expect(action).not.toMatch(/\$\{\{[^}]*hashFiles\(/);
+    expect(cacheStep).toContain("key: ${{ steps.cache-key.outputs.key }}");
+    const keyStep = /- name: Compute the VibeSafe build cache key\n((?: {6}.*\n)+)/.exec(
+      action,
+    )?.[1];
+    expect(keyStep, "cache key step not found").toBeDefined();
+    expect(keyStep).toContain("id: cache-key");
+    expect(keyStep).toContain("working-directory: ${{ github.action_path }}");
+    expect(keyStep).toContain('readFileSync("pnpm-lock.yaml")');
+    expect(keyStep).toContain("${RUNNER_OS}-${RUNNER_ARCH}-${hash}");
+    // The cache is restored before the build step installs into it.
+    const order = ["Compute the VibeSafe build cache key", "Cache the VibeSafe pnpm store"].map(
+      (s) => action.indexOf(`- name: ${s}`),
+    );
+    const build = action.indexOf("- name: Build VibeSafe from the action source");
+    expect(order[0]).toBeGreaterThan(-1);
+    expect(order[0]).toBeLessThan(order[1]!);
+    expect(order[1]).toBeLessThan(build);
+  });
+
+  it("the cache key step hashes the lockfile the same way as sha256 of its bytes", async () => {
+    const action = read("action.yml");
+    const script = /node -e '([^']+)'/.exec(action)?.[1];
+    expect(script, "node -e hash script not found").toBeDefined();
+    const { execFileSync } = await import("node:child_process");
+    const { createHash } = await import("node:crypto");
+    const out = execFileSync(process.execPath, ["-e", script!], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    const expected = createHash("sha256")
+      .update(fs.readFileSync(path.join(repoRoot, "pnpm-lock.yaml")))
+      .digest("hex");
+    expect(out).toBe(expected);
+  });
+
+  it("packageManager pins pnpm with an integrity hash corepack can verify", () => {
+    const root = JSON.parse(read("package.json")) as { packageManager: string };
+    // corepack format: <name>@<version>+<algo>.<hex digest of the registry tarball>.
+    const m = /^pnpm@(\d+\.\d+\.\d+)\+(sha1|sha224|sha256|sha512)\.([0-9a-f]+)$/.exec(
+      root.packageManager,
+    );
+    expect(m, root.packageManager).not.toBeNull();
+    const hexLength = { sha1: 40, sha224: 56, sha256: 64, sha512: 128 }[m![2] as "sha512"];
+    expect(m![3]).toHaveLength(hexLength);
+    // pnpm/action-setup refuses a `version:` input that differs from packageManager.
+    const ci = read(".github/workflows/ci.yml");
+    const setup = /uses: pnpm\/action-setup@\S+\n((?: {8}.*\n)*)/.exec(ci);
+    expect(setup, "pnpm/action-setup step not found").not.toBeNull();
+    expect(setup![1]).not.toMatch(/^\s*version:/m);
+  });
+
+  it("a self-test workflow runs the action from this checkout on every runner OS", () => {
+    const wf = read(".github/workflows/action-self-test.yml");
+    expect(wf).toMatch(/^on:\n {2}workflow_dispatch:\n {2}pull_request:\n/m);
+    for (const p of ['"action.yml"', '"packages/**"']) expect(wf, p).toContain(`- ${p}`);
+    expect(wf).toMatch(/^permissions:\n {2}contents: read\n/m);
+    expect(wf).toContain("os: [ubuntu-latest, windows-latest, macos-latest]");
+    expect(wf).toContain("runs-on: ${{ matrix.os }}");
+    expect(wf).toMatch(/id: vibesafe\n\s+uses: \.\/\n/);
+    expect(wf).toContain("path: fixtures/nextjs-vibecoded-bad-app");
+    expect(wf).toContain('comment: "false"');
+    expect(wf).toContain("fail-on: none");
+    expect(wf).toContain("VS_STATUS: ${{ steps.vibesafe.outputs.status }}");
+    expect(wf).toContain('if [ -z "$VS_STATUS" ]; then');
+    expect(fs.existsSync(path.join(repoRoot, "fixtures/nextjs-vibecoded-bad-app"))).toBe(true);
+    // Remote actions are pinned by full commit SHA; the only other `uses:` is the local action.
+    const uses = [...wf.matchAll(/^\s*(?:- )?uses:\s*(\S+)/gm)].map((m) => m[1]!);
+    expect(uses).toContain("./");
+    for (const u of uses.filter((u) => u !== "./")) expect(u, u).toMatch(/@[0-9a-f]{40}$/);
+  });
+
+  it("CONTRIBUTING renormalizes line endings without the redundant git add step", () => {
+    const text = read("CONTRIBUTING.md");
+    expect(text).not.toContain("git add --renormalize");
+    expect(text).toContain("git rm --cached -r -q .");
+    expect(text).toContain("git reset --hard");
+    expect(text).toMatch(/Commit or stash your work first/);
+  });
+
+  it("CHANGELOG detector entries each name their pull request", () => {
+    const cl = read("CHANGELOG.md");
+    const start = cl.indexOf("- **Detectors**\n");
+    expect(start).toBeGreaterThan(-1);
+    const block = cl.slice(start).split("\n").slice(1);
+    const bullets = block.slice(
+      0,
+      block.findIndex((l) => !l.startsWith("  - ")),
+    );
+    expect(bullets.length).toBeGreaterThan(10);
+    for (const b of bullets) expect(b, b).toMatch(/#\d+/);
+    // The early contributed detectors each get their own bullet and pull request.
+    const refs: Record<string, string> = {
+      "xss/dangerously-set-inner-html": "#25",
+      "code_quality/hardcoded-localhost": "#21",
+      "structure/missing-error-boundary": "#22",
+      "secret/git-history-": "#23",
+    };
+    for (const [rule, ref] of Object.entries(refs)) {
+      const hits = bullets.filter((b) => b.includes(rule));
+      expect(hits, rule).toHaveLength(1);
+      expect(hits[0], rule).toContain(`${ref})`);
+      for (const other of Object.keys(refs).filter((r) => r !== rule)) {
+        expect(hits[0], `${rule} shares a bullet with ${other}`).not.toContain(other);
+      }
+    }
   });
 
   it("docs describe the source-built Action and keep the npm name warning", () => {

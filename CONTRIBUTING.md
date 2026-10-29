@@ -70,11 +70,10 @@ All workspace packages (and `VIBESAFE_VERSION` in `@vibesafe/shared`) share one 
 
 The repository uses Prettier and LF line endings (enforced by `.gitattributes`). Run `pnpm format:check` before pushing; `pnpm format` fixes formatting.
 
-If you cloned the repository on Windows before `.gitattributes` was added, files checked out with `core.autocrlf=true` may still have CRLF endings and fail `pnpm format:check`. Renormalize once after pulling. Commit or stash your work first, because `git reset --hard` discards uncommitted changes:
+If you cloned the repository on Windows before `.gitattributes` was added, files checked out with `core.autocrlf=true` may still have CRLF endings and fail `pnpm format:check`. Check the files out again once after pulling. Commit or stash your work first, because `git reset --hard` discards uncommitted changes:
 
 ```bash
-git add --renormalize .   # normalize line endings in the index
-git rm --cached -r -q .
+git rm --cached -r -q .   # empty the index
 git reset --hard          # check the files out again with LF endings
 ```
 
