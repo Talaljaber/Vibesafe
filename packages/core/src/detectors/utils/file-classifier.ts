@@ -1,4 +1,4 @@
-import type { ProjectContext } from "@vibesafe/shared";
+import type { ProjectContext } from "@talaljaber/vibesafe-shared";
 
 /**
  * Strips leading whitespace, `//` line comments and block comments so the first

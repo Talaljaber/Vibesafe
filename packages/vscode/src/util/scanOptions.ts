@@ -1,4 +1,4 @@
-import type { FindingCategory, ScanConfig, Severity } from "@vibesafe/shared";
+import type { FindingCategory, ScanConfig, Severity } from "@talaljaber/vibesafe-shared";
 
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
 

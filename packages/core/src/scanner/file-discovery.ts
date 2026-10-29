@@ -8,7 +8,7 @@ import {
   TEST_PATH_GLOBS,
   buildExcludedDirGlobs,
   isPythonRequirementsFile,
-} from "@vibesafe/shared";
+} from "@talaljaber/vibesafe-shared";
 
 type Ignore = ReturnType<typeof ignore>;
 

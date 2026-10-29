@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import figlet from "figlet";
 import boxen from "boxen";
-import { PRODUCT_TAGLINE } from "@vibesafe/shared";
+import { PRODUCT_TAGLINE } from "@talaljaber/vibesafe-shared";
 
 export function printBanner() {
   const logoText = figlet.textSync("VIBESAFE", {

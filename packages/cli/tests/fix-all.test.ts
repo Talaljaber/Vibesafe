@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { ConsoleLogFixer } from "@vibesafe/core";
+import { ConsoleLogFixer } from "@talaljaber/vibesafe-core";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";

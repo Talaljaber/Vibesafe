@@ -37,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `--deep` / `--no-deep`, `--include-tests` / `--no-include-tests`, `--no-config`, `--trust-config`, real scan progress and scan warnings.
 - **GitHub Action** (#91): composite `action.yml` that posts or updates one sticky PR comment and the job summary, and fails the job by `fail-on`; usage example in `examples/github-action.yml`. The action builds the CLI from its own source at the pinned ref and runs that build; the `version` input is deprecated and ignored.
 - **Inline ignores**: `vibesafe-disable-line`, `-next-line` and `-file` directives accept comma-separated rule ids.
-- **MCP server (`@vibesafe/mcp`)**: `vibesafe_scan`, `vibesafe_explain`, `vibesafe_repair_plan`, `vibesafe_fix`; `deep` and `includeTests` scan options; `--root` / `VIBESAFE_MCP_ROOTS` and `--allow-fix` / `VIBESAFE_MCP_ALLOW_FIX` server settings.
+- **MCP server (`@talaljaber/vibesafe-mcp`)**: `vibesafe_scan`, `vibesafe_explain`, `vibesafe_repair_plan`, `vibesafe_fix`; `deep` and `includeTests` scan options; `--root` / `VIBESAFE_MCP_ROOTS` and `--allow-fix` / `VIBESAFE_MCP_ALLOW_FIX` server settings.
 - **Dashboard**: redesigned HTML report (`--html`) and VS Code dashboard, with screenshots in the README.
 - **VS Code**: editor hovers with the problem, why it matters, fix steps and the AI fix prompt; settings, menus, multi-root scans, startup activation, sidebar icon, `.vscodeignore`, `includeTests` default, scan warnings, unit tests, a launch configuration and a webview content security policy.
 - Test and fixture paths are excluded from scans by default.
@@ -55,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub Action: the build installs only the CLI and its workspace dependencies (`--config.dedupe-peer-dependents=false`) and caches its private pnpm store with `actions/cache`, keyed on the action's lockfile, pnpm version, OS and architecture; `packageManager` pins pnpm with its sha512 hash; a `uses: ./` self-test workflow runs the action on Ubuntu, Windows and macOS; CI reads the pnpm version from `packageManager` (#100).
 - `scan` prints the deep-scan notice when the config file turns on `deep`, not only for `--deep` (#99).
 - CI pins its third-party actions to full commit SHAs.
+- The npm packages moved to the `@talaljaber` scope, because the `@vibesafe` scope on npm belongs to someone else: `@vibesafe/shared`, `@vibesafe/core`, `@vibesafe/cli` and `@vibesafe/mcp` are now `@talaljaber/vibesafe-shared`, `@talaljaber/vibesafe-core`, `@talaljaber/vibesafe-cli` and `@talaljaber/vibesafe-mcp` (#101). The `vibesafe` and `vibesafe-mcp` commands and the VS Code extension id are unchanged. The packages are publish-ready (public access, only `dist` plus a README and LICENSE in the tarball, repository links) and the README documents `npx @talaljaber/vibesafe-cli` and `npx @talaljaber/vibesafe-mcp`; releases are published by hand.
 
 ### Fixed
 

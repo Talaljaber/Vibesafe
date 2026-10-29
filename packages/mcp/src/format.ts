@@ -1,4 +1,4 @@
-import type { ScanResult } from "@vibesafe/shared";
+import type { ScanResult } from "@talaljaber/vibesafe-shared";
 
 /**
  * Token budgeting for vibesafe_scan.

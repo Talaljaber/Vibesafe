@@ -1,4 +1,4 @@
-import type { AutoFixer, Finding, FixPreview, FixResult } from "@vibesafe/shared";
+import type { AutoFixer, Finding, FixPreview, FixResult } from "@talaljaber/vibesafe-shared";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveInsideRoot } from "./safe-path.js";

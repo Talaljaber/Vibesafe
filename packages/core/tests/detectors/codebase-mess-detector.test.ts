@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { CodebaseMessDetector } from "../../src/detectors/codebase-mess-detector";
 import { ConsoleLogFixer } from "../../src/fixers/console-log-fixer";
-import type { Finding, ScanContext } from "@vibesafe/shared";
+import type { Finding, ScanContext } from "@talaljaber/vibesafe-shared";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import path from "path";
-import type { ScanResult, Finding, Severity } from "@vibesafe/shared";
+import type { ScanResult, Finding, Severity } from "@talaljaber/vibesafe-shared";
 
 type TreeElement = GroupItem | FindingItem;
 

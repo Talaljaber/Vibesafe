@@ -2,7 +2,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { ScanContext } from "@vibesafe/shared";
+import type { ScanContext } from "@talaljaber/vibesafe-shared";
 import { FileDiscovery } from "../../src/scanner/file-discovery.js";
 import { SecretDetector } from "../../src/detectors/secret-detector.js";
 import { DangerousHtmlDetector } from "../../src/detectors/dangerous-html-detector.js";

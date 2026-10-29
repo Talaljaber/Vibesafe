@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 
-vi.mock("@vibesafe/core", () => ({
+vi.mock("@talaljaber/vibesafe-core", () => ({
   createDefaultRegistry: () => ({}),
   ScannerPipeline: class {},
 }));

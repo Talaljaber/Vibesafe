@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { RateLimitDetector } from "../../src/detectors/rate-limit-detector";
-import type { ScanContext } from "@vibesafe/shared";
+import type { ScanContext } from "@talaljaber/vibesafe-shared";
 
 describe("RateLimitDetector", () => {
   const detector = new RateLimitDetector();

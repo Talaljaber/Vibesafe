@@ -39,7 +39,7 @@
 1. Open the Extensions view in VS Code (`Ctrl+Shift+X` or `Cmd+Shift+X`).
 2. Search for **VibeSafe**.
 3. Click **Install**.
-4. (Optional) Build the companion CLI from source to get the HTML dashboard, SARIF / markdown output and watch mode (see the [main README](https://github.com/Talaljaber/Vibesafe#readme)). It is not published to npm yet.
+4. (Optional) Install the companion CLI (`npm i -g @talaljaber/vibesafe-cli`, or build it from source until the first npm release appears) to get the HTML dashboard, SARIF / markdown output and watch mode (see the [main README](https://github.com/Talaljaber/Vibesafe#readme)).
 
 ### Available Commands
 

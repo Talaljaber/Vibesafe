@@ -1,6 +1,10 @@
 import * as vscode from "vscode";
 import path from "path";
-import { ScannerPipeline, createDefaultRegistry, createDefaultFixRegistry } from "@vibesafe/core";
+import {
+  ScannerPipeline,
+  createDefaultRegistry,
+  createDefaultFixRegistry,
+} from "@talaljaber/vibesafe-core";
 import { updateDiagnostics, updateAllDiagnostics } from "./diagnostics.js";
 import { VibeSafeCodeActionProvider } from "./codeActions.js";
 import { VibeSafeStatusBar } from "./ui/statusBar.js";
@@ -15,7 +19,7 @@ import {
   isInsideRoot,
 } from "./util/findings.js";
 import { readScanOptions } from "./util/scanOptions.js";
-import type { ScanResult } from "@vibesafe/shared";
+import type { ScanResult } from "@talaljaber/vibesafe-shared";
 
 // Keep a reference to the collection so we can clear/update it
 let diagnosticCollection: vscode.DiagnosticCollection;

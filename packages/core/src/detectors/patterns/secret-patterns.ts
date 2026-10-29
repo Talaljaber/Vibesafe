@@ -1,4 +1,4 @@
-import type { Severity } from "@vibesafe/shared";
+import type { Severity } from "@talaljaber/vibesafe-shared";
 
 export interface SecretPattern {
   id: string;

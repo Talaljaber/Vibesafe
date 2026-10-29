@@ -1,5 +1,5 @@
-import type { ScanConfig } from "@vibesafe/shared";
-import { ALL_CATEGORIES, SEVERITY_LEVELS } from "@vibesafe/shared";
+import type { ScanConfig } from "@talaljaber/vibesafe-shared";
+import { ALL_CATEGORIES, SEVERITY_LEVELS } from "@talaljaber/vibesafe-shared";
 
 /**
  * Validates the provided configuration to ensure bounds.

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { DependencyDetector } from "../../src/detectors/dependency-detector";
-import type { ScanContext } from "@vibesafe/shared";
+import type { ScanContext } from "@talaljaber/vibesafe-shared";
 
 describe("DependencyDetector", () => {
   const detector = new DependencyDetector();

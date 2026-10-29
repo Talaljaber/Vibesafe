@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { EnvExampleFixer } from "../../src/fixers/env-example-fixer";
-import type { Finding } from "@vibesafe/shared";
+import type { Finding } from "@talaljaber/vibesafe-shared";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";

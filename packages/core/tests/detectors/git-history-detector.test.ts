@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { GitHistoryDetector } from "../../src/detectors/git-history-detector";
-import type { ScanContext, ScanConfig } from "@vibesafe/shared";
+import type { ScanContext, ScanConfig } from "@talaljaber/vibesafe-shared";
 
 // Assembled at runtime so this file never itself contains a literal matching a
 // secret-scanning pattern, while still producing a value that the OpenAI rule

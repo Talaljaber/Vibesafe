@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { createDefaultFixRegistry } from "@vibesafe/core";
+import { createDefaultFixRegistry } from "@talaljaber/vibesafe-core";
 import type { ScanState } from "../state.js";
 import type { ServerPolicy } from "../policy.js";
 

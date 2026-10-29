@@ -12,8 +12,8 @@
 // Line based (no TOML parser, by design); tables and arrays are tracked by hand.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { Detector, Finding, ScanContext } from "@vibesafe/shared";
-import { CATEGORY_PREFIX, createFindingId, isPythonRequirementsFile } from "@vibesafe/shared";
+import type { Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared";
+import { CATEGORY_PREFIX, createFindingId, isPythonRequirementsFile } from "@talaljaber/vibesafe-shared";
 import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
 
 const UNPINNED_RULE = "dependency/python-unpinned";

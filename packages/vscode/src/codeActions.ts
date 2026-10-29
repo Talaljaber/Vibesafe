@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import type { Finding } from "@vibesafe/shared";
+import type { Finding } from "@talaljaber/vibesafe-shared";
 import type { DiagnosticWithFinding } from "./diagnostics.js";
 
 /**

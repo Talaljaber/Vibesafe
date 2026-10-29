@@ -1,5 +1,5 @@
 import path from "path";
-import type { Finding, ScanResult } from "@vibesafe/shared";
+import type { Finding, ScanResult } from "@talaljaber/vibesafe-shared";
 
 /**
  * Resolve a finding id from whatever a command was invoked with:

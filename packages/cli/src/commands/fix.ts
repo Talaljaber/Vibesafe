@@ -1,8 +1,12 @@
 import path from "path";
 import chalk from "chalk";
-import { ScannerPipeline, createDefaultRegistry, createDefaultFixRegistry } from "@vibesafe/core";
+import {
+  ScannerPipeline,
+  createDefaultRegistry,
+  createDefaultFixRegistry,
+} from "@talaljaber/vibesafe-core";
 import { confirm, select } from "@inquirer/prompts";
-import type { Finding } from "@vibesafe/shared";
+import type { Finding } from "@talaljaber/vibesafe-shared";
 import { buildScanOptions } from "./scan-options.js";
 import { sanitizeTerminal } from "../ui/sanitize.js";
 

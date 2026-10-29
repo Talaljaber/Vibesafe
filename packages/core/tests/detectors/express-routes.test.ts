@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { ScanContext } from "@vibesafe/shared";
+import type { ScanContext } from "@talaljaber/vibesafe-shared";
 import { MissingAuthDetector } from "../../src/detectors/missing-auth-detector";
 import { MissingValidationDetector } from "../../src/detectors/missing-validation-detector";
 import {

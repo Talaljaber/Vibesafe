@@ -1,4 +1,4 @@
-import type { DeployStatus, Finding } from "@vibesafe/shared";
+import type { DeployStatus, Finding } from "@talaljaber/vibesafe-shared";
 
 export interface ResultDelta {
   added: Finding[];

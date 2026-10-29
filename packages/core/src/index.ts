@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// @vibesafe/core — Public API
+// @talaljaber/vibesafe-core — Public API
 // ─────────────────────────────────────────────────────────────────────────────
 
 export { DEFAULT_CONFIG, mergeConfig } from "./config/defaults.js";

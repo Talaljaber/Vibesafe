@@ -39,8 +39,23 @@
 
 ### 💻 Command Line Interface (CLI)
 
-> [!IMPORTANT]
-> VibeSafe's packages are not published to npm yet. The `@vibesafe/cli` name on npm currently belongs to a different, unrelated package, so `npx @vibesafe/cli` and `npm install @vibesafe/cli` do **not** install this tool. Build it from source instead.
+The CLI is published on npm as `@talaljaber/vibesafe-cli` (Node 20 or newer). Run it without installing:
+
+```bash
+npx @talaljaber/vibesafe-cli scan .
+```
+
+Or install it globally to get the `vibesafe` command:
+
+```bash
+npm i -g @talaljaber/vibesafe-cli
+vibesafe scan .
+```
+
+> [!NOTE]
+> The packages are published by hand. Until the first release of `@talaljaber/vibesafe-cli` shows up on npm, build VibeSafe from source instead. Packages in the `@vibesafe` npm scope belong to someone else and are not this tool.
+
+To build from source:
 
 ```bash
 git clone https://github.com/Talaljaber/Vibesafe.git
@@ -180,7 +195,7 @@ Create `.vibesafe.config.json` (or `vibesafe.config.json`) in the project root. 
 TypeScript variant (`.vibesafe.config.ts`, only loaded with `--trust-config`):
 
 ```ts
-import { defineConfig } from "@vibesafe/core";
+import { defineConfig } from "@talaljaber/vibesafe-core";
 
 export default defineConfig({
   rules: { "code_quality/*": "off", "secret/sec-generic-password": "low" }, // "off" or a severity; "*" globs allowed
@@ -232,7 +247,7 @@ Pin the action to a release tag or commit SHA so a moved branch cannot change wh
 
 ### 🤖 MCP server
 
-`@vibesafe/mcp` is a stdio [Model Context Protocol](https://modelcontextprotocol.io) server that lets AI assistants (Claude Code, Claude Desktop, ...) run VibeSafe scans.
+`@talaljaber/vibesafe-mcp` is a stdio [Model Context Protocol](https://modelcontextprotocol.io) server that lets AI assistants (Claude Code, Claude Desktop, ...) run VibeSafe scans.
 
 **Tools**
 
@@ -252,7 +267,24 @@ Finding IDs are only valid until the next `vibesafe_scan`. Scans apply a JSON co
 | `--root <dir>` (repeatable) or `VIBESAFE_MCP_ROOTS` (separated by the OS path delimiter) | Directories that may be scanned (subtrees).               |
 | `--allow-fix` or `VIBESAFE_MCP_ALLOW_FIX=1`                                              | Allow `vibesafe_fix` to write files when `dryRun: false`. |
 
-**Build step.** The server runs from `dist/`, so build first (from the repo root):
+**From npm.** The server is published as `@talaljaber/vibesafe-mcp` (same manual-release note as the CLI). Point your MCP client at `npx`:
+
+```bash
+claude mcp add vibesafe -- npx -y @talaljaber/vibesafe-mcp
+```
+
+```json
+{
+  "mcpServers": {
+    "vibesafe": {
+      "command": "npx",
+      "args": ["-y", "@talaljaber/vibesafe-mcp"]
+    }
+  }
+}
+```
+
+**From source.** The server runs from `dist/`, so build first (from the repo root):
 
 ```bash
 pnpm install && pnpm build
@@ -326,10 +358,10 @@ Please see our [Contributing Guide](CONTRIBUTING.md) for details on how to get s
 
 This project is structured as a `pnpm` monorepo:
 
-- `packages/core`: The main scanning engine, detectors and fixers.
-- `packages/shared`: Shared types, constants and finding id helpers.
-- `packages/cli`: The command-line interface (`@vibesafe/cli`).
-- `packages/mcp`: The stdio MCP server (`@vibesafe/mcp`).
+- `packages/core`: The main scanning engine, detectors and fixers (`@talaljaber/vibesafe-core`).
+- `packages/shared`: Shared types, constants and finding id helpers (`@talaljaber/vibesafe-shared`).
+- `packages/cli`: The command-line interface (`@talaljaber/vibesafe-cli`).
+- `packages/mcp`: The stdio MCP server (`@talaljaber/vibesafe-mcp`).
 - `packages/vscode`: The Visual Studio Code extension (published as `talaljaber.vibeguard-scanner`).
 
 Package versions are kept aligned with `node scripts/sync-versions.mjs` (see [CONTRIBUTING](CONTRIBUTING.md#6-versioning)).
@@ -359,7 +391,7 @@ To run VibeSafe locally:
 
 4. Run the CLI locally:
    ```bash
-   pnpm --filter @vibesafe/cli exec vibesafe scan .
+   pnpm --filter @talaljaber/vibesafe-cli exec vibesafe scan .
    ```
 
 ## 📝 License

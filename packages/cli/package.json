@@ -1,8 +1,18 @@
 {
-  "name": "@vibesafe/cli",
+  "name": "@talaljaber/vibesafe-cli",
   "version": "0.3.0",
   "description": "The don't-deploy-that-yet tool for vibe-coded apps — CLI",
   "license": "MIT",
+  "author": "Talal Jaber",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Talaljaber/Vibesafe.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/Talaljaber/Vibesafe#readme",
+  "bugs": {
+    "url": "https://github.com/Talaljaber/Vibesafe/issues"
+  },
   "type": "module",
   "bin": {
     "vibesafe": "./dist/bin.js"
@@ -15,6 +25,20 @@
       "types": "./dist/index.d.ts"
     }
   },
+  "files": [
+    "dist",
+    "!dist/.tsbuildinfo",
+    "!dist/**/*.tsbuildinfo",
+    "!dist/**/*.map",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc --project tsconfig.json",
     "typecheck": "tsc --noEmit",
@@ -25,8 +49,8 @@
   },
   "dependencies": {
     "@inquirer/prompts": "^8.5.2",
-    "@vibesafe/core": "workspace:*",
-    "@vibesafe/shared": "workspace:*",
+    "@talaljaber/vibesafe-core": "workspace:*",
+    "@talaljaber/vibesafe-shared": "workspace:*",
     "boxen": "^8.0.1",
     "chalk": "^5.6.2",
     "chokidar": "^4.0.3",

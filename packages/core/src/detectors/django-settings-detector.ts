@@ -1,5 +1,11 @@
-import type { Detector, Finding, FindingCategory, ScanContext, Severity } from "@vibesafe/shared";
-import { CATEGORY_PREFIX, createFindingId, redactSecret } from "@vibesafe/shared";
+import type {
+  Detector,
+  Finding,
+  FindingCategory,
+  ScanContext,
+  Severity,
+} from "@talaljaber/vibesafe-shared";
+import { CATEGORY_PREFIX, createFindingId, redactSecret } from "@talaljaber/vibesafe-shared";
 import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
 import {
   isDevOnlySettings,

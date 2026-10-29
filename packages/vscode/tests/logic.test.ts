@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { diagnosticRangeCoords } from "../src/util/range.js";
 import { readScanOptions } from "../src/util/scanOptions.js";
 import { findFindingInResults } from "../src/util/findings.js";
-import type { Finding, ScanResult } from "@vibesafe/shared";
+import type { Finding, ScanResult } from "@talaljaber/vibesafe-shared";
 
 describe("diagnosticRangeCoords", () => {
   it("uses the real line length when text is known", () => {

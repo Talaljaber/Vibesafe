@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { FileDiscovery } from "../../src/scanner/file-discovery.js";
 import { FrontendExposureDetector } from "../../src/detectors/frontend-exposure-detector.js";
-import type { ScanContext } from "@vibesafe/shared";
+import type { ScanContext } from "@talaljaber/vibesafe-shared";
 
 const fixtureDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

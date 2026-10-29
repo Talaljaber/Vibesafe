@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { ScanContext } from "@vibesafe/shared";
+import type { ScanContext } from "@talaljaber/vibesafe-shared";
 import { DjangoSettingsDetector } from "../../src/detectors/django-settings-detector";
 import {
   joinStatement,

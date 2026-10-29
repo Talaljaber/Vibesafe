@@ -1,8 +1,18 @@
 {
-  "name": "@vibesafe/core",
+  "name": "@talaljaber/vibesafe-core",
   "version": "0.3.0",
   "description": "VibeSafe scanning engine — detectors, scoring, repair plan, auto-fixes",
   "license": "MIT",
+  "author": "Talal Jaber",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Talaljaber/Vibesafe.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/Talaljaber/Vibesafe#readme",
+  "bugs": {
+    "url": "https://github.com/Talaljaber/Vibesafe/issues"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -11,6 +21,20 @@
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
     }
+  },
+  "files": [
+    "dist",
+    "!dist/.tsbuildinfo",
+    "!dist/**/*.tsbuildinfo",
+    "!dist/**/*.map",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc --project tsconfig.json",
@@ -21,7 +45,7 @@
     "clean": "rimraf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@vibesafe/shared": "workspace:*",
+    "@talaljaber/vibesafe-shared": "workspace:*",
     "fast-glob": "^3.3.3",
     "ignore": "^7.0.5",
     "jiti": "^2.4.2"
