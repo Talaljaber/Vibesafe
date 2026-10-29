@@ -2,7 +2,10 @@ import { describe, it, expect } from "vitest";
 import type { ScanContext } from "@vibesafe/shared";
 import { MissingAuthDetector } from "../../src/detectors/missing-auth-detector";
 import { MissingValidationDetector } from "../../src/detectors/missing-validation-detector";
-import { StripeWebhookDetector } from "../../src/detectors/stripe-webhook-detector";
+import {
+  StripeWebhookDetector,
+  isStripeWebhookExpressRoute,
+} from "../../src/detectors/stripe-webhook-detector";
 import {
   extractExpressRoutes,
   isExpressCandidateFile,
@@ -417,6 +420,93 @@ app.post("/webhooks/stripe", express.json(), (req, res) => {
       const src = `app.post("/webhooks/github", (req, res) => res.json(req.body));`;
       expect(await auth.detect(ctx({ "server.js": src }))).toHaveLength(1);
       expect(await validation.detect(ctx({ "server.js": src }))).toHaveLength(1);
+    });
+
+    const mixed = `const express = require("express");
+const Stripe = require("stripe");
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const app = express();
+
+app.post("/webhooks/stripe", express.raw({ type: "application/json" }), (req, res) => {
+  const sig = req.headers["stripe-signature"];
+  const event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+  res.json({ received: event.type });
+});
+
+app.post("/webhooks/github", express.json(), (req, res) => {
+  // not stripe: forwards the "stripe" style payload as is
+  res.json({ action: req.body.action });
+});`;
+
+    it("flags a non-Stripe webhook route that shares a file with a Stripe webhook", async () => {
+      const authFindings = await auth.detect(ctx({ "server.js": mixed }));
+      expect(authFindings.map((f) => f.line)).toEqual([12]);
+      expect(authFindings[0]!.plainEnglishProblem).toContain("POST /webhooks/github");
+      const validationFindings = await validation.detect(ctx({ "server.js": mixed }));
+      expect(validationFindings.map((f) => f.line)).toEqual([14]);
+      expect(validationFindings[0]!.plainEnglishProblem).toContain("POST /webhooks/github");
+    });
+
+    it("skips a signed Stripe webhook on a generic path via chain evidence", async () => {
+      const src = `const express = require("express");
+const Stripe = require("stripe");
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const app = express();
+
+app.post("/webhook", bodyParser.raw({ type: "application/json" }), (req, res) => {
+  const sig = req.headers["stripe-signature"];
+  const event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+  res.json({ received: event.type });
+});`;
+      expect(await auth.detect(ctx({ "server.js": src }))).toHaveLength(0);
+      expect(await validation.detect(ctx({ "server.js": src }))).toHaveLength(0);
+    });
+
+    it("skips a generic webhook path whose chain mounts express.raw before a named handler", async () => {
+      const src = `const express = require("express");
+const Stripe = require("stripe");
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const app = express();
+
+function onEvent(req, res) {
+  const event = stripe.webhooks.constructEvent(req.body, req.headers["stripe-signature"], secret);
+  res.json({ received: event.type });
+}
+
+app.post("/webhook", express.raw({ type: "application/json" }), onEvent);`;
+      expect(await auth.detect(ctx({ "server.js": src }))).toHaveLength(0);
+    });
+  });
+
+  describe("isStripeWebhookExpressRoute", () => {
+    const route = (path: string, chainCode: string) => ({ path, chainCode });
+
+    it("requires a webhook path", () => {
+      expect(isStripeWebhookExpressRoute(route("/stripe/events", "constructEvent(x)"))).toBe(false);
+    });
+
+    it("accepts Stripe evidence in the path or chain code", () => {
+      expect(isStripeWebhookExpressRoute(route("/webhooks/stripe", "(req, res) => {}"))).toBe(true);
+      for (const chain of [
+        "(req, res) => stripe.webhooks.constructEvent(req.body, s, k)",
+        'express.raw({ type: "" }), h',
+        "(req, res) => verify(req.rawBody)",
+        "handleStripeEvent",
+      ]) {
+        expect(isStripeWebhookExpressRoute(route("/webhook", chain))).toBe(true);
+      }
+    });
+
+    it("rejects webhook routes without Stripe evidence", () => {
+      expect(isStripeWebhookExpressRoute(route("/webhooks/github", "express.json(), h"))).toBe(
+        false,
+      );
+    });
+
+    it("ignores text inside blanked comments and strings of real routes", () => {
+      const src = `app.post("/webhooks/github", (req, res) => {\n  // stripe constructEvent rawBody\n  res.send("stripe");\n});`;
+      const [r] = extractExpressRoutes(src);
+      expect(isStripeWebhookExpressRoute(r!)).toBe(false);
     });
   });
 

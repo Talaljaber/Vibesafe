@@ -25,6 +25,17 @@ const HELPER_NAME_RE =
 /** Cheap raw-text pre-filter so unrelated files are never scanned or stripped. */
 const RAW_PREFILTER_RE = /stripe|webhook/i;
 
+/**
+ * Cheap raw-text check run before any comment stripping: a file whose path and content never
+ * mention `stripe` or `webhook` cannot be a Stripe webhook handler.
+ */
+export function mayBeStripeWebhookFile(filePath: string, fileContent: string): boolean {
+  return RAW_PREFILTER_RE.test(filePath) || RAW_PREFILTER_RE.test(fileContent);
+}
+
+/** Route-level evidence that an Express webhook route is the Stripe receiver of its file. */
+const ROUTE_STRIPE_EVIDENCE_RE = /stripe|constructEvent|express\s*\.\s*raw|rawBody/i;
+
 function isHandlerText(text: string, allowDefaultExport: boolean, headerCounts = true): boolean {
   return (
     EXPORT_HANDLER_RE.test(text) ||
@@ -64,9 +75,11 @@ function hasStripeReference(code: string): boolean {
  * Determines if a file is a handler dedicated to Stripe webhooks, by path naming (`stripe` +
  * `webhook`, route-like files only) or by content (Stripe usage plus webhook signals, or a
  * `stripe-signature` header read). Either way the file must show real handler evidence.
- * Comments are stripped internally so callers can pass raw file content.
+ * Comments are stripped internally so callers can pass raw file content; files that fail the
+ * cheap `mayBeStripeWebhookFile` pre-filter return early without being stripped.
  */
 export function isStripeWebhookRoute(filePath: string, fileContent: string): boolean {
+  if (!mayBeStripeWebhookFile(filePath, fileContent)) return false;
   const normalizedPath = filePath.replace(/\\/g, "/").toLowerCase();
   if (TEST_FILE_RE.test(normalizedPath)) return false;
 
@@ -101,6 +114,19 @@ export function isStripeWebhookRoute(filePath: string, fileContent: string): boo
  */
 export function isWebhookPath(routePath: string): boolean {
   return /webhook/i.test(routePath);
+}
+
+/**
+ * True when an Express route in a Stripe webhook file is itself the Stripe receiver: its path names
+ * a webhook and its path or handler chain shows Stripe evidence (`stripe`, `constructEvent`,
+ * `express.raw`, `rawBody`). `chainCode` has comments and string contents blanked, so only real
+ * code counts. Other webhook routes in the same file (e.g. `/webhooks/github`) stay covered.
+ */
+export function isStripeWebhookExpressRoute(route: { path: string; chainCode: string }): boolean {
+  return (
+    isWebhookPath(route.path) &&
+    (ROUTE_STRIPE_EVIDENCE_RE.test(route.path) || ROUTE_STRIPE_EVIDENCE_RE.test(route.chainCode))
+  );
 }
 
 /**
@@ -211,7 +237,7 @@ export class StripeWebhookDetector implements Detector {
       if (!SCANNABLE_SUFFIXES.some((suffix) => filePath.endsWith(suffix))) continue;
 
       const raw = await context.readFile(filePath);
-      if (!RAW_PREFILTER_RE.test(filePath) && !RAW_PREFILTER_RE.test(raw)) continue;
+      // isStripeWebhookRoute applies the cheap raw-text pre-filter before stripping comments.
       if (!isStripeWebhookRoute(filePath, raw)) continue;
 
       const content = stripComments(raw);
