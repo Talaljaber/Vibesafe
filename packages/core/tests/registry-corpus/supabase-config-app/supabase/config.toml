@@ -1,0 +1,38 @@
+project_id = "acme"
+
+[api]
+enabled = true
+port = 54321
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:3000"
+jwt_expiry = 604800
+enable_refresh_token_rotation = true
+enable_signup = true
+enable_anonymous_sign_ins = false
+minimum_password_length = 6
+password_requirements = ""
+
+# [auth.captcha]
+# enabled = true
+# provider = "hcaptcha"
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = false
+enable_confirmations = false
+secure_password_change = false
+max_frequency = "1s"
+
+[auth.sms.twilio]
+enabled = false
+auth_token = "env(SUPABASE_AUTH_SMS_TWILIO_AUTH_TOKEN)"
+
+[auth.external.apple]
+enabled = false
+client_id = ""
+secret = "env(SUPABASE_AUTH_EXTERNAL_APPLE_SECRET)"
+
+[studio]
+openai_api_key = "env(OPENAI_API_KEY)"
