@@ -48,6 +48,16 @@ export default [
     },
   },
   {
+    // Code evaluation is forbidden everywhere in the attack package, src/http included.
+    files: ["packages/attack/src/**/*.{ts,tsx,mts,cts}"],
+    rules: {
+      "no-eval": "error",
+      "no-new-func": "error",
+      // Belt and braces only: core no-implied-eval needs declared globals to resolve setTimeout.
+      "no-implied-eval": "error",
+    },
+  },
+  {
     files: ["packages/attack/src/**/*.{ts,tsx,mts,cts}"],
     ignores: ["packages/attack/src/http/**"],
     rules: {
@@ -83,6 +93,10 @@ export default [
             "node:worker_threads",
             "vm",
             "node:vm",
+            "inspector",
+            "node:inspector",
+            "cluster",
+            "node:cluster",
           ],
           patterns: [
             {
@@ -95,6 +109,8 @@ export default [
                 "node:https/*",
                 "node:http2/*",
                 "node:dns/*",
+                "inspector/*",
+                "node:inspector/*",
               ],
               message: "Network modules are only allowed in packages/attack/src/http.",
             },
