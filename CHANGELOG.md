@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Attack demo app fixture (`fixtures/attack-demo-app/`), its fixed-twin overlay and a zero-dependency harness for Attack Mode.
 
 ### Changed
 

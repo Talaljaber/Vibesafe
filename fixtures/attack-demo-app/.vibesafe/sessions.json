@@ -1,0 +1,10 @@
+{
+  "alice": {
+    "headers": { "Cookie": "vs_session=alice-dev" },
+    "resources": { "/api/notes/[id]": "n_alice_1", "/api/invoices/[id]": "inv_alice_1" }
+  },
+  "bob": {
+    "headers": { "Cookie": "vs_session=bob-dev" },
+    "resources": { "/api/notes/[id]": "n_bob_1", "/api/invoices/[id]": "inv_bob_1" }
+  }
+}
