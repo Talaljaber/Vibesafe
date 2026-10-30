@@ -263,7 +263,7 @@ export const ALL_CATEGORIES = Object.keys(CATEGORY_PREFIX) as FindingCategory[];
 
 // ─── Version ──────────────────────────────────────────────────────────────────
 
-export const VIBESAFE_VERSION = "0.3.1";
+export const VIBESAFE_VERSION = "0.4.0";
 
 // ─── Branding ─────────────────────────────────────────────────────────────────
 
