@@ -176,6 +176,50 @@ export function identifiers(masked: string): string[] {
   return out;
 }
 
+const CALL_RE = /(?<![\w.])([A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*)\s*\(/;
+const PASS_FUNCS = new Set([
+  "str",
+  "bytes",
+  "Path",
+  "PurePath",
+  "PurePosixPath",
+  "PureWindowsPath",
+  "join",
+  "unquote",
+  "unquote_plus",
+  "normpath",
+  "abspath",
+  "realpath",
+]);
+const PATH_FUNCS = new Set(["join", "normpath", "abspath", "realpath", "normcase", "expanduser"]);
+const STR_METHODS = new Set([
+  "format",
+  "strip",
+  "lstrip",
+  "rstrip",
+  "lower",
+  "upper",
+  "replace",
+  "encode",
+  "decode",
+  "title",
+  "join",
+]);
+
+/** Index of the bracket closing the one at `open` (`(` or `[`), or -1. */
+function balancedEnd(s: string, open: number): number {
+  let depth = 0;
+  for (let k = open; k < s.length; k++) {
+    const c = s[k];
+    if (c === "(" || c === "[") depth++;
+    else if (c === ")" || c === "]") {
+      depth--;
+      if (depth === 0) return k;
+    }
+  }
+  return -1;
+}
+
 export interface PythonFunction {
   name: string;
   /** 0-based index of the `def` line and of the last line of the body. */
@@ -235,12 +279,20 @@ export interface FunctionTaint {
 }
 
 const ASSIGN_RE =
-  /^\s*(\(?\s*[A-Za-z_]\w*(?:\s*,\s*\*?[A-Za-z_]\w*)*\s*,?\s*\)?)\s*(?::[^=]+?)?\s*(\+?)=(?!=)\s*([\s\S]+)$/;
-const FOR_RE = /^\s*(?:async\s+)?for\s+([\w\s,()]+?)\s+in\s+([\s\S]+?)\s*:\s*[\s\S]*$/;
-const GUARD_NOT_IN_RE = /^\s*(?:el)?if\s+\(?\s*([A-Za-z_]\w*)\s+not\s+in\s+[^:]+:/;
-const GUARD_NOT_IN_PREFIX_RE = /^\s*(?:el)?if\s+not\s+\(?\s*([A-Za-z_]\w*)\s+in\s+[^:]+:/;
-const GUARD_IN_RE = /^\s*(?:el)?if\s+\(?\s*([A-Za-z_]\w*)\s+in\s+[^:]+:/;
-const ASSERT_IN_RE = /^\s*assert\s+([A-Za-z_]\w*)\s+in\s+/;
+  /^(\(?\s*[A-Za-z_]\w*(?:\s*,\s*\*?[A-Za-z_]\w*)*\s*,?\s*\)?)\s*(?::[^=]+?)?\s*(\+?)=(?!=)\s*([\s\S]+)$/;
+const FOR_RE = /^(?:async\s+)?for\s+([\w\s,()]+?)\s+in\s+([\s\S]+?)\s*:\s*[\s\S]*$/;
+const GUARD_NOT_IN_RE = /^(?:el)?if\s+\(?\s*([A-Za-z_]\w*)\s+not\s+in\s+([^:]+):([\s\S]*)$/;
+const GUARD_NOT_IN_PREFIX_RE = /^(?:el)?if\s+not\s+\(?\s*([A-Za-z_]\w*)\s+in\s+([^:]+):([\s\S]*)$/;
+/** A block that leaves the function or loop iteration, so code after it only sees allowed values. */
+const TERMINAL_RE = /^\s*(?:return|raise|continue|abort\s*\()/;
+/** Allowlist-looking container: UPPER_CASE / settings.X name or a literal of strings. */
+function looksLikeAllowlist(container: string): boolean {
+  const c = container.trim();
+  if (/(?:^|\.)[A-Z][A-Z0-9_]*\)?$/.test(c)) return true;
+  return /^[[({]/.test(c) && /["']/.test(c);
+}
+const GUARD_IN_RE = /^(?:el)?if\s+\(?\s*([A-Za-z_]\w*)\s+in\s+[^:]+:/;
+const ASSERT_IN_RE = /^assert\s+([A-Za-z_]\w*)\s+in\s+/;
 const OPEN_LITERAL_RE = /(?<![\w.])open\s*\(\s*(?:[rbuRBU]{0,2})(["'])~*\1/;
 
 function splitNames(lhs: string): string[] {
@@ -272,17 +324,28 @@ export function analyzeFunction(fn: PythonFunction | undefined): FunctionTaint {
   // Guards first: ranges of lines (0-based) where a name is allowlist-checked.
   for (let i = 0; i < stmts.length; i++) {
     const st = stmts[i]!;
-    const head = maskPython(st.head);
-    const notIn = GUARD_NOT_IN_RE.exec(head) ?? GUARD_NOT_IN_PREFIX_RE.exec(head);
+    const head = maskPython(st.head).trimStart();
+    let notIn = GUARD_NOT_IN_RE.exec(head) ?? GUARD_NOT_IN_PREFIX_RE.exec(head);
+    let blockEnd = st.end;
+    let lastBlock: PythonStatement | undefined;
+    for (let j = i + 1; j < stmts.length; j++) {
+      if (stmts[j]!.indent <= st.indent) break;
+      blockEnd = stmts[j]!.end;
+      lastBlock = stmts[j];
+    }
+    if (notIn) {
+      // Only a guard when the block leaves (return/raise/abort/continue) and the container
+      // looks like an allowlist; `if x not in seen: seen.add(x)` guards nothing.
+      const tail = (notIn[3] ?? "").trim();
+      const leaves = tail
+        ? TERMINAL_RE.test(tail)
+        : lastBlock !== undefined && TERMINAL_RE.test(maskPython(lastBlock.stmt).trimStart());
+      if (!leaves || !looksLikeAllowlist(notIn[2] ?? "")) notIn = null;
+    }
     const inM = notIn ? null : GUARD_IN_RE.exec(head);
     const assertM = ASSERT_IN_RE.exec(head);
     const name = notIn?.[1] ?? inM?.[1] ?? assertM?.[1];
     if (!name) continue;
-    let blockEnd = st.end;
-    for (let j = i + 1; j < stmts.length; j++) {
-      if (stmts[j]!.indent <= st.indent) break;
-      blockEnd = stmts[j]!.end;
-    }
     const range: [number, number] = notIn
       ? [blockEnd + 1, Number.MAX_SAFE_INTEGER]
       : assertM
@@ -304,8 +367,73 @@ export function analyzeFunction(fn: PythonFunction | undefined): FunctionTaint {
     return last?.tainted ? last : undefined;
   };
 
+  /**
+   * Removes calls whose result is not text built from their input (ORM lookups, helper
+   * functions, constructors) together with their trailing `.attr` / `(...)` / `[...]` chain.
+   * Taint only survives string building, os.path functions, `.get()` on a request or tainted
+   * mapping and plain string methods.
+   */
+  const stripOpaque = (masked: string, line: number): string => {
+    let s = masked;
+    let from = 0;
+    for (let guard = 0; guard < 100; guard++) {
+      const re = new RegExp(CALL_RE.source, "g");
+      re.lastIndex = from;
+      const m = re.exec(s);
+      if (!m) break;
+      const parts = m[1]!.split(".").map((x) => x.trim());
+      const last = parts[parts.length - 1]!;
+      const recv = parts.slice(0, -1);
+      const recvText = recv.join(".");
+      let keep: boolean;
+      if (recv.length === 0) keep = KEYWORDS.has(last) || PASS_FUNCS.has(last);
+      else if (recvText === "os.path" || recvText === "path" || recvText === "posixpath")
+        keep = PATH_FUNCS.has(last);
+      else if (last === "get" || last === "getlist")
+        keep = hasRequestSource(recvText) || taintAt(recv[0]!, line) !== undefined;
+      else if (STR_METHODS.has(last)) keep = recv.length === 1 || hasRequestSource(recvText);
+      else keep = false;
+      const open = m.index + m[0].length - 1;
+      if (!keep && hasRequestSource(parts.join("."))) keep = true; // request.get_json()
+      if (!keep && /^[A-Z]/.test(last)) {
+        // Serializer / form constructors fed the request body: S(data=request.data), Form(request.POST)
+        keep = splitCallArgs(s, open).some(
+          (a) =>
+            (/^data\s*=/.test(a) && hasRequestSource(a)) ||
+            /^request\s*\.\s*(?:POST|GET|data|FILES|query_params)$/.test(a),
+        );
+      }
+      if (keep) {
+        from = open + 1;
+        continue;
+      }
+      let k = balancedEnd(s, open);
+      if (k < 0) {
+        s = s.slice(0, m.index) + " 0 ";
+        break;
+      }
+      k++;
+      for (;;) {
+        const t = /^\s*\.\s*[A-Za-z_]\w*/.exec(s.slice(k, k + 80));
+        if (t) k += t[0].length;
+        else if (s[k] !== "(" && s[k] !== "[") break;
+        while (s[k] === "(" || s[k] === "[") {
+          const e = balancedEnd(s, k);
+          if (e < 0) {
+            k = s.length;
+            break;
+          }
+          k = e + 1;
+        }
+      }
+      s = s.slice(0, m.index) + " 0 " + s.slice(k);
+      from = m.index + 3;
+    }
+    return s;
+  };
+
   const exprDepth = (masked: string, line: number): number | undefined => {
-    let s = stripCleaners(masked);
+    let s = stripOpaque(stripCleaners(masked), line);
     if (hasRequestSource(s)) return 0;
     s = s.replace(/[⟦⟧]/g, " ");
     let best: number | undefined;
@@ -341,7 +469,7 @@ export function analyzeFunction(fn: PythonFunction | undefined): FunctionTaint {
   };
 
   for (const st of stmts) {
-    const masked = maskPython(st.stmt);
+    const masked = maskPython(st.stmt).trimStart();
     const line = st.start;
     const forM = FOR_RE.exec(masked);
     if (forM) {
@@ -353,7 +481,7 @@ export function analyzeFunction(fn: PythonFunction | undefined): FunctionTaint {
       }
       continue;
     }
-    const withM = /^\s*(?:async\s+)?with\s+open\s*\(([\s\S]*?)\)\s+as\s+([A-Za-z_]\w*)\s*:/.exec(
+    const withM = /^(?:async\s+)?with\s+open\s*\(([\s\S]*?)\)\s+as\s+([A-Za-z_]\w*)\s*:/.exec(
       masked,
     );
     if (withM && OPEN_LITERAL_RE.test("open(" + withM[1]!)) literalHandles.add(withM[2]!);
@@ -384,7 +512,7 @@ export function analyzeFunction(fn: PythonFunction | undefined): FunctionTaint {
   return {
     isTainted: (masked, line) => exprDepth(masked, line) !== undefined,
     taintOrigin: (masked, line) => {
-      const s = stripCleaners(masked).replace(/[⟦⟧]/g, " ");
+      const s = stripOpaque(stripCleaners(masked), line).replace(/[⟦⟧]/g, " ");
       let best: number | undefined;
       for (const id of identifiers(s)) {
         if (isGuarded(id, line)) continue;

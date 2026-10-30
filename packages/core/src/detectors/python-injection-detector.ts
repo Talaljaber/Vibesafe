@@ -4,6 +4,8 @@ import { classifyPath, isTestOrFixturePath } from "./utils/file-kind.js";
 import { pythonStatements, scanPythonLines } from "./utils/python-source.js";
 import {
   analyzeFunction,
+  MAX_FUNCTION_STATEMENTS,
+  hasRequestSource,
   functionAt,
   maskPython,
   pythonFunctions,
@@ -28,7 +30,7 @@ const PREFILTER =
 const SHELL_RE =
   /(?<![\w.])(?:subprocess\s*\.\s*(run|call|check_call|check_output|Popen)|os\s*\.\s*(system|popen))\s*\(/g;
 const EXECUTE_RE =
-  /(?<![\w.])(?:\w*(?:cursor|conn|connection|session|engine)\w*|db|cur|con|cursor\s*\(\s*\))\s*\.\s*(?:execute|executemany)\s*\(/gi;
+  /(?<!\w)(?:\w*(?:cursor|conn|connection|session|engine)\w*|db|cur|con|cursor\s*\(\s*\))\s*\.\s*(?:execute|executemany)\s*\(/gi;
 const RAW_RE = /\.\s*objects\s*\.\s*raw\s*\(|(?<![\w.])RawSQL\s*\(/g;
 const EXTRA_RE = /\.\s*extra\s*\(/g;
 const YAML_RE = /(?<![\w.])yaml\s*\.\s*(load_all|load|unsafe_load_all|unsafe_load)\s*\(/g;
@@ -159,6 +161,12 @@ export class PythonInjectionDetector implements Detector {
     const taints = new Map<PythonFunction | undefined, FunctionTaint>();
     const confinedCache = new Map<PythonFunction | undefined, boolean>();
     const hasLxml = content.includes("lxml");
+    // `from yaml import CSafeLoader as Loader` makes a bare `Loader` safe.
+    const safeLoaderAlias = [...content.matchAll(/from\s+yaml\s+import\s+([^\n]+)/g)].some((im) =>
+      [...im[1]!.matchAll(/\b(\w+)\s+as\s+Loader\b/g)].some(
+        (a) => !/^C?(?:Unsafe|Full)?Loader$/.test(a[1]!),
+      ),
+    );
     const out: Finding[] = [];
 
     const taintOf = (fn: PythonFunction | undefined): FunctionTaint => {
@@ -173,7 +181,10 @@ export class PythonInjectionDetector implements Detector {
       if (!fn) return false;
       let c = confinedCache.get(fn);
       if (c === undefined) {
-        const body = fn.statements.map((s) => maskPython(s.stmt)).join("\n");
+        const body = fn.statements
+          .slice(0, MAX_FUNCTION_STATEMENTS)
+          .map((s) => maskPython(s.stmt))
+          .join("\n");
         c =
           /(?:realpath|abspath|resolve|commonpath|is_relative_to|safe_join)/.test(body) &&
           /(?:startswith|is_relative_to|commonpath|safe_join)/.test(body);
@@ -231,7 +242,10 @@ export class PythonInjectionDetector implements Detector {
       const dynamic = (arg: string): { dyn: boolean; tainted: boolean } => {
         const t = ft();
         const tainted = t.isTainted(arg, st.start);
-        return { dyn: tainted || t.nonConstant(arg, st.start), tainted };
+        // Taint alone only counts for a bare variable or request value (an alias of a request
+        // string); other tainted arguments (ORM statements) are dynamic only when text is built.
+        const direct = /^\(?\s*[A-Za-z_]\w*\s*\)?$/.test(arg.trim()) || hasRequestSource(arg);
+        return { dyn: (tainted && direct) || t.nonConstant(arg, st.start), tainted };
       };
 
       // 1. shell commands
@@ -284,7 +298,11 @@ export class PythonInjectionDetector implements Detector {
           const kw = args.find((a) => /^Loader\s*=/.test(a));
           const loader = kw ? kw.replace(/^Loader\s*=\s*/, "") : args[1];
           if (loader === undefined) unsafe = true;
-          else unsafe = /(?:^|\.)C?(?:Unsafe|Full)?Loader$/.test(loader.trim());
+          else {
+            const l = loader.trim();
+            unsafe =
+              /(?:^|\.)C?(?:Unsafe|Full)?Loader$/.test(l) && !(l === "Loader" && safeLoaderAlias);
+          }
         }
         if (!unsafe) continue;
         const tainted = args[0] !== undefined && ft().isTainted(args[0], st.start);
@@ -362,7 +380,14 @@ export class PythonInjectionDetector implements Detector {
           if (bad !== undefined) {
             // Anchor where the request value was turned into the path; the sink is the end line.
             const origin = ft().taintOrigin(bad, st.start);
-            emit("injection/python-path-traversal", "path", m.index, "high", "high", origin);
+            emit(
+              "injection/python-path-traversal",
+              "path",
+              m.index,
+              "high",
+              m[3] !== undefined ? "medium" : "high",
+              origin,
+            );
           }
         }
       }
