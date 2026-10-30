@@ -224,3 +224,36 @@ describe("CookieFlagsDetector silent idioms", () => {
     ).toEqual([]);
   });
 });
+
+describe("CookieFlagsDetector review round 1", () => {
+  it.each([
+    [
+      "logout idiom jwt",
+      `res.cookie("jwt", "loggedout", { expires: new Date(Date.now() + 10000), httpOnly: true });`,
+    ],
+    ["logout idiom token none", `res.cookie("token", "none", { httpOnly: true });`],
+    ["rememberMe literal", `res.cookie("rememberMe", "true");`],
+    ["has_session flag", `res.cookie("has_session", "1", { secure: true });`],
+    ["remember_email", `res.cookie("remember_email", req.body.email);`],
+    ["literal Set-Cookie value", 'res.setHeader("Set-Cookie", "session=abc; Path=/");'],
+    [
+      "interpolated attributes",
+      "res.setHeader('Set-Cookie', `session=${id}; HttpOnly; ${isProd ? 'Secure; ' : ''}SameSite=Lax`);",
+    ],
+  ])("silent: %s", async (_n, code) => {
+    expect(await one("server.js", code)).toEqual([]);
+  });
+  it("bare serialize import scan is linear on pathological input", async () => {
+    const code = Array.from({ length: 4000 }, () => "{ serialize serialize serialize").join("\n");
+    const t0 = Date.now();
+    await one("server.js", `${code}\nconst c = require("cookie");`);
+    expect(Date.now() - t0).toBeLessThan(3000);
+  });
+  it("still finds a bare serialize import", async () => {
+    const f = await one(
+      "server.js",
+      `import { serialize } from "cookie";\nres.setHeader("x", serialize("session", t, { path: "/" }));`,
+    );
+    expect(f.length).toBeGreaterThan(0);
+  });
+});

@@ -1,4 +1,4 @@
-﻿import type { Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared";
+import type { Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared";
 import { makeFinding } from "./utils/finding.js";
 import {
   classifyFile,
@@ -15,7 +15,12 @@ import {
   verifiesSignature,
   type ExpressRoute,
 } from "./utils/route-analyzer.js";
-import { boundModuleNames, findCookieSites, isSessionCookieName } from "./utils/cookie-options.js";
+import {
+  boundModuleNames,
+  findCookieSites,
+  isRefreshCookie,
+  isSessionCookieName,
+} from "./utils/cookie-options.js";
 
 const MAX_FILES = 2000;
 const MAX_FINDINGS = 5;
@@ -190,10 +195,12 @@ export class CsrfDetector implements Detector {
             PROTECTION_CODE_RE.test(code) ||
             ORIGIN_CHECK_RES.some((re) => matchesInCode(re, text, code));
         }
-        if (!expressFiles.has(file)) continue;
+        const isExpressFile = expressFiles.has(file);
 
-        if (URLENCODED_RE.test(code)) acceptsForms = true;
-        else if (/multer|fileupload|busboy|formidable|body-parser/.test(text)) {
+        if (!isExpressFile) {
+          // Session configuration may live in a module without an express import.
+        } else if (URLENCODED_RE.test(code)) acceptsForms = true;
+        else if (isExpressFile && /multer|fileupload|busboy|formidable|body-parser/.test(text)) {
           for (const n of boundModuleNames(src, FORM_MODULES)) {
             const esc = n.replace(/[$]/g, "\\$");
             if (new RegExp(String.raw`(?<![\w$.])${esc}\s*(?:\.\s*urlencoded\s*)?\(`).test(code)) {
@@ -208,9 +215,11 @@ export class CsrfDetector implements Detector {
           if (s.kind === "express-session" || s.kind === "cookie-session") {
             middleware.push({ file, src, offset: s.start, kind: "session-middleware" });
           } else if (
+            isExpressFile &&
             firstCookieToken === undefined &&
             s.kind === "express" &&
             s.session &&
+            !s.refresh &&
             !s.deletes
           ) {
             firstCookieToken = { file, src, offset: s.start, kind: "cookie-token" };
@@ -219,7 +228,7 @@ export class CsrfDetector implements Detector {
             s.kind === "express-session" ||
             s.kind === "cookie-session" ||
             s.kind === "iron-session";
-          const cookieCall = s.kind === "express" && s.session && !s.deletes;
+          const cookieCall = isExpressFile && s.kind === "express" && s.session && !s.deletes;
           if (!sessionCfg && !cookieCall) continue;
           if (s.flags.sameSite === "lax" || s.flags.sameSite === "strict")
             sameSiteStrictOrLax = true;
@@ -230,13 +239,13 @@ export class CsrfDetector implements Detector {
         for (const m of code.matchAll(PASSPORT_SESSION_RE)) {
           middleware.push({ file, src, offset: m.index ?? 0, kind: "passport-session" });
         }
-        if (firstCookieToken === undefined && code.includes("cookies")) {
+        if (isExpressFile && firstCookieToken === undefined && code.includes("cookies")) {
           COOKIE_READ_RE.lastIndex = 0;
           for (const m of src.text.matchAll(COOKIE_READ_RE)) {
             const i = m.index ?? 0;
             if (code[i] !== text[i]) continue;
             const name = m[1] ?? m[2] ?? "";
-            if (isSessionCookieName(name)) {
+            if (isSessionCookieName(name) && !isRefreshCookie(name, undefined)) {
               firstCookieToken = { file, src, offset: i, kind: "cookie-token" };
               break;
             }

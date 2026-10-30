@@ -21,7 +21,7 @@ export interface CookieFlags {
 export const SESSION_TOKENS: ReadonlySet<string> = new Set(
   (
     "session sess sid sessionid ssid connect auth authtoken token accesstoken refreshtoken " +
-    "idtoken jwt access refresh login remember rememberme credential credentials apikey bearer"
+    "idtoken jwt access refresh login rememberme credential credentials apikey bearer"
   ).split(" "),
 );
 /** One-purpose flow tokens (CSRF double-submit, OAuth state, preferences, invites, resets, OTP, magic links). */
@@ -82,6 +82,23 @@ export function isSessionCookieValue(valueText: string, jwtLibImported: boolean)
   if (tokens.some((t) => VALUE_TOKENS.has(t))) return true;
   if (VALUE_CALL_RE.test(valueText)) return true;
   return jwtLibImported && VALUE_SIGN_RE.test(valueText);
+}
+
+/** A plain literal value (string without `${`, number, boolean) is never a credential. */
+const PLAIN_LITERAL_RE = /^(?:(["'])(?:(?!\1)[^\\\n]|\\.)*\1|`[^`$\\]*`|\d+(?:\.\d+)?|true|false)$/;
+
+/** True when `valueText` is a plain literal (no interpolation, identifier or call). */
+export function isPlainLiteralValue(valueText: string): boolean {
+  return PLAIN_LITERAL_RE.test(valueText.trim());
+}
+
+/** Refresh-token cookie: the name carries a refresh token, or (name not session-like) the value does. */
+export function isRefreshCookie(name: string, valueText: string | undefined): boolean {
+  const nt = cookieNameTokens(name);
+  if (nt.includes("refresh") || nt.includes("refreshtoken")) return true;
+  if (valueText === undefined || isSessionCookieName(name)) return false;
+  const vt = (valueText.match(/[A-Za-z_$][\w$]*/g) ?? []).flatMap((id) => cookieNameTokens(id));
+  return vt.includes("refresh") || vt.includes("refreshtoken");
 }
 
 const JWT_IMPORT_RE = /(?:from\s*|require\s*\(\s*)["'](?:jsonwebtoken|jose)["']/g;
@@ -369,6 +386,8 @@ export interface CookieSite {
   defaultsOff: boolean;
   /** Session/auth cookie (always true for the session-config kinds). */
   session: boolean;
+  /** Refresh-token cookie (not a cookie-session credential for CSRF purposes). */
+  refresh: boolean;
   /** The call clears the cookie. */
   deletes: boolean;
 }
@@ -384,8 +403,22 @@ const NEXT_RESPONSE_RE = /\b([A-Za-z_$][\w$]*)\s*\.\s*cookies\s*\.\s*set\s*\(/g;
 const NEXT_SERVER_RE = /(?:from\s*|require\s*\(\s*)["']next\/server["']/g;
 const KOA_RE = /\bctx\s*\.\s*cookies\s*\.\s*set\s*\(/g;
 const SERIALIZE_RE = /\b(?:cookie|cookies)\s*\.\s*serialize\s*\(/g;
-const BARE_SERIALIZE_IMPORT_RE =
-  /\{[^}]*\bserialize\b[^}]*\}\s*(?:from\s*|=\s*require\s*\(\s*)["']cookie["']/g;
+const COOKIE_MODULE_RE = /["']cookie["']/g;
+const SERIALIZE_BINDING_TAIL_RE = /\{([^{}]{0,300})\}\s*(?:from\s*|=\s*require\s*\(\s*)$/;
+
+/** `{ serialize } from "cookie"` / `= require("cookie")`; bounded windows, linear in file size. */
+function importsBareSerialize(src: JsSource): boolean {
+  const { text } = src;
+  if (!text.includes("serialize")) return false;
+  COOKIE_MODULE_RE.lastIndex = 0;
+  for (const m of text.matchAll(COOKIE_MODULE_RE)) {
+    const i = m.index ?? 0;
+    if (!isCodeAt(src, i)) continue;
+    const tail = SERIALIZE_BINDING_TAIL_RE.exec(text.slice(Math.max(0, i - 400), i));
+    if (tail !== null && /\bserialize\b/.test(tail[1]!)) return true;
+  }
+  return false;
+}
 const HEADER_RE = /\.\s*(?:setHeader|set|append|header)\s*\(/g;
 
 function codeMatchExists(src: JsSource, re: RegExp): boolean {
@@ -485,6 +518,7 @@ export function findCookieSites(src: JsSource): CookieSite[] {
     seen.add(open);
     const name = nameOf(src, nameR);
     const valueCode = code.slice(valueR.start, valueR.end);
+    const literal = isPlainLiteralValue(text.slice(valueR.start, valueR.end));
     sites.push({
       kind,
       start: open,
@@ -492,7 +526,8 @@ export function findCookieSites(src: JsSource): CookieSite[] {
       name,
       flags,
       defaultsOff,
-      session: classify(name, valueCode),
+      session: !literal && classify(name, valueCode),
+      refresh: isRefreshCookie(name, valueCode),
       deletes: flags.deletes || emptyString(src, valueR),
     });
   };
@@ -529,7 +564,7 @@ export function findCookieSites(src: JsSource): CookieSite[] {
 
   // cookie.serialize
   eachMatch(SERIALIZE_RE, (_m, open) => callSite("serialize", true, open));
-  if (codeMatchExists(src, BARE_SERIALIZE_IMPORT_RE)) {
+  if (importsBareSerialize(src)) {
     eachMatch(/(?<![\w$.])serialize\s*\(/g, (_m, open) => callSite("serialize", true, open));
   }
 
@@ -549,6 +584,11 @@ export function findCookieSites(src: JsSource): CookieSite[] {
       if (code[a1.end - 1] !== q) return;
       const value = text.slice(a1.start + 1, a1.end - 1);
       const f = flagsOfHeaderString(value);
+      if (value.slice(value.indexOf(";") < 0 ? value.length : value.indexOf(";")).includes("${")) {
+        if (f.httpOnly === "missing") f.httpOnly = "dynamic";
+        if (f.secure === "missing") f.secure = "dynamic";
+        if (f.sameSite === "missing") f.sameSite = "dynamic";
+      }
       const name = f.name ?? "";
       const eq = value.indexOf("=");
       const valueText = eq < 0 ? "" : (value.split(";")[0] ?? "").slice(eq + 1);
@@ -560,7 +600,9 @@ export function findCookieSites(src: JsSource): CookieSite[] {
         name,
         flags: f,
         defaultsOff: true,
-        session: classify(name, valueText),
+        session:
+          !!valueText.trim() && !valueText.includes("${") ? false : classify(name, valueText),
+        refresh: isRefreshCookie(name, valueText),
         deletes: f.deletes,
       });
     });
@@ -578,6 +620,7 @@ export function findCookieSites(src: JsSource): CookieSite[] {
       flags,
       defaultsOff: false,
       session: true,
+      refresh: false,
       deletes: flags.deletes,
     });
   };

@@ -230,3 +230,27 @@ describe("CsrfDetector silent idioms", () => {
     ).toEqual([]);
   });
 });
+
+describe("CsrfDetector review round 1", () => {
+  it("reads session SameSite from a non-express config module (lax: silent)", async () => {
+    const f = await go({
+      "server.js": `const express = require("express");\nconst session = require("./config/session");\nconst passport = require("passport");\nconst app = express();\napp.use(session);\napp.use(passport.session());\napp.post("/orders", (req, res) => res.json({}));\napp.delete("/orders/:id", (req, res) => res.json({}));\n`,
+      "config/session.js": `const session = require("express-session");\nmodule.exports = session({ secret: process.env.S, cookie: { sameSite: "lax" } });\n`,
+    });
+    expect(f).toEqual([]);
+  });
+  it("finds session middleware in a non-express config module (no SameSite: flags)", async () => {
+    const f = await go({
+      "server.js": `const express = require("express");\nconst session = require("./config/session");\nconst app = express();\napp.use(session);\napp.delete("/orders/:id", (req, res) => res.json({}));\n`,
+      "config/session.js": `const session = require("express-session");\nmodule.exports = session({ secret: process.env.S });\n`,
+    });
+    expect(f).toHaveLength(1);
+    expect(f[0]!.file).toBe("config/session.js");
+  });
+  it("Bearer API with a refresh-token cookie is silent", async () => {
+    const f = await go({
+      "server.js": `const express = require("express");\nconst app = express();\napp.post("/login", (req, res) => { res.cookie("refreshToken", rt, { httpOnly: true }); res.json({ at }); });\napp.post("/refresh", (req, res) => { const t = req.cookies.refreshToken; res.json({}); });\nconst protect = (req, res, next) => { const h = req.headers.authorization; next(); };\napp.delete("/items/:id", protect, (req, res) => res.json({}));\n`,
+    });
+    expect(f).toEqual([]);
+  });
+});
