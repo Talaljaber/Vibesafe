@@ -28,7 +28,7 @@ const FORBIDDEN_MODULES = [
 const names = FORBIDDEN_MODULES.flatMap((m) => [m, `node:${m}`]).join("|");
 const moduleRe = new RegExp(`["'\u0060](?:${names})(?:/[^"'\u0060]*)?["'\u0060]`);
 const onlineRe =
-  /\bOsvDetector\b|\bPackageExistenceDetector\b|\bonline\s*:\s*(?:true\b|[^\s,}]*(?:\bonline\b|Online))/;
+  /\bOsvDetector\b|\bPackageExistenceDetector\b|["']?\bonline\b["']?\s*:(?!\s*false\b)|\{\s*online\s*[,}]|\.online\s*=(?!=)/;
 const fetchRe =
   /(?<![\w$])fetch\s*\(|\bfetch\s*:|["'\u0060]fetch["'\u0060]|(?:globalThis|global|self|window)\s*\.\s*fetch|\b(?:WebSocket|XMLHttpRequest|createRequire|getBuiltinModule)\b|process\s*\.\s*binding/;
 
@@ -136,5 +136,8 @@ describe("online scans are never started from attack", () => {
     expect(onlineRe.test("scan({ online: true })")).toBe(true);
     expect(onlineRe.test("online: opts.online")).toBe(true);
     expect(onlineRe.test("online: false")).toBe(false);
+    expect(onlineRe.test('{ "online": true }')).toBe(true);
+    expect(onlineRe.test("scan({ online: !0 })")).toBe(true);
+    expect(onlineRe.test("scan({ online })")).toBe(true);
   });
 });

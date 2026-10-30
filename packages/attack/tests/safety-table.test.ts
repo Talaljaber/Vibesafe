@@ -44,6 +44,12 @@ const DENY: Row[] = [
   ["https loopback", get("https://127.0.0.1/"), "https-only-supabase"],
   ["supabase without flag", get(OK_SB), "remote-off", {}],
   [
+    "supabase explicit port",
+    get("https://abcdefghij.supabase.co:8443/rest/v1/notes?select=*&limit=1"),
+    "https-only-supabase",
+    SB,
+  ],
+  [
     "supabase auth path",
     get("https://abcdefghij.supabase.co/auth/v1/token?select=*&limit=1"),
     "path",
@@ -110,6 +116,7 @@ const DENY: Row[] = [
   ["space", get("http://127.0.0.1/a b"), "malformed"],
   ["newline", get("http://127.0.0.1/a\nb"), "malformed"],
   ["unicode host", get("http://lоcalhost/"), "malformed"],
+  // Punycode is denied by the exact-set loopback rule (not-loopback), stricter than malformed.
   ["punycode host", get("http://xn--lcalhost-9ve/"), "not-loopback"],
   ["too long", get(`http://127.0.0.1/${"a".repeat(2100)}`), "malformed"],
   ["empty", get(""), "malformed"],
@@ -117,6 +124,11 @@ const DENY: Row[] = [
   [
     "forbidden header",
     { method: "GET", url: "http://127.0.0.1/", headers: { "X-Forwarded-For": "1" } },
+    "headers",
+  ],
+  [
+    "non-latin header value",
+    { method: "GET", url: "http://127.0.0.1/", headers: { Cookie: "a=“b" } },
     "headers",
   ],
   [

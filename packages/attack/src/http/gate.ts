@@ -75,7 +75,7 @@ function checkHeaders(headers: Readonly<Record<string, string>> | undefined): bo
   for (const [name, value] of Object.entries(headers)) {
     const lower = name.toLowerCase();
     if (!ALLOWED_HEADERS.has(lower)) return false;
-    if (typeof value !== "string" || /[\r\n\u0000]/.test(value)) return false;
+    if (typeof value !== "string" || !/^[\t\x20-\x7e]*$/.test(value)) return false;
     if (lower === "user-agent" && !value.startsWith("vibesafe-attack/")) return false;
     if (lower === "x-vibesafe-attack" && value !== "1") return false;
   }
@@ -121,6 +121,7 @@ export function checkRequest(req: GateRequest, config: GateConfig = {}): GateDec
   // https: only the pinned Supabase project
   const hostMatch = SUPABASE_HOST_RE.exec(url.hostname);
   if (!hostMatch || parts.host.toLowerCase() !== url.hostname) return deny("https-only-supabase");
+  if (url.port !== "") return deny("https-only-supabase");
   const project = config.supabaseProject;
   if (project === undefined || project === "") return deny("remote-off");
   if (config.envSupabaseRef === undefined || config.envSupabaseRef !== project) {

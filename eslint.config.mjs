@@ -53,6 +53,7 @@ export default [
     rules: {
       "no-eval": "error",
       "no-new-func": "error",
+      // Belt and braces only: core no-implied-eval needs declared globals to resolve setTimeout.
       "no-implied-eval": "error",
     },
   },

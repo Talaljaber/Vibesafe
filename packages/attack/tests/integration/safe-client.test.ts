@@ -31,6 +31,10 @@ beforeAll(async () => {
     } else if (url.startsWith("/hop/")) {
       const n = Number(url.slice(5));
       res.writeHead(302, { location: `/hop/${n + 1}` }).end();
+    } else if (url === "/to-login") {
+      res.writeHead(302, { location: "/login#next" }).end();
+    } else if (url === "/login") {
+      res.end("login");
     } else if (url === "/slow") {
       // never answers
     } else {
@@ -153,6 +157,48 @@ describe("SafeHttpClient", () => {
     expect(client.sent).toBe(REQUEST_CEILING);
   }, 60_000);
 
+  it("holds the ceiling under concurrency", async () => {
+    const client = new SafeHttpClient({ rate: 100_000, maxRequests: 10 });
+    const results = await Promise.all(
+      Array.from({ length: 25 }, () => client.request({ url: `${base()}/ok` })),
+    );
+    expect(seen).toHaveLength(10);
+    expect(client.sent).toBe(10);
+    expect(results.filter((r) => r.blocked === "ceiling")).toHaveLength(15);
+  });
+
+  it("fails closed on a NaN maxRequests", () => {
+    const client = new SafeHttpClient({ maxRequests: Number.NaN });
+    expect(client.sent).toBe(0);
+    // ceiling falls back to 300, not unlimited
+    expect((client as unknown as { ceiling: number }).ceiling).toBe(REQUEST_CEILING);
+  });
+
+  it("keeps the 3xx when a relative redirect with a fragment is followed", async () => {
+    const r = await new SafeHttpClient({ ...fast }).request({ url: `${base()}/to-login` });
+    expect(r.status).toBe(200);
+    expect(r.body).toBe("login");
+    expect(seen.map((s) => s.url)).toEqual(["/to-login", "/login"]);
+  });
+
+  it("keeps the 3xx when the ceiling stops a redirect hop", async () => {
+    const client = new SafeHttpClient({ ...fast, maxRequests: 1 });
+    const r = await client.request({ url: `${base()}/to-ok` });
+    expect(r.status).toBe(302);
+    expect(r.redirectBlocked).toBe(true);
+    expect(r.blocked).toBe("ceiling");
+  });
+
+  it("returns an error result for a header value node refuses", async () => {
+    const r = await new SafeHttpClient({ ...fast }).request({
+      url: `${base()}/ok`,
+      headers: { Cookie: "a=“b" },
+    });
+    expect(r.status).toBe(0);
+    expect(r.blocked).toBe("headers");
+    expect(seen).toHaveLength(0);
+  });
+
   it("--dry-run opens zero connections and records the plan", async () => {
     const connect = vi.spyOn(net.Socket.prototype, "connect");
     const client = new SafeHttpClient({ dryRun: true });
@@ -208,17 +254,12 @@ describe("SafeHttpClient", () => {
   });
 
   it("times out a hung request", async () => {
-    // exercised via the module constant: the slow route never answers, so use a short-lived check
-    const client = new SafeHttpClient({ ...fast });
+    const client = new SafeHttpClient({ ...fast, timeoutMs: 200 });
     const started = Date.now();
-    const pending = client.request({ url: `${base()}/slow` });
-    const race = await Promise.race([
-      pending,
-      new Promise<"pending">((r) => setTimeout(() => r("pending"), 300)),
-    ]);
-    expect(race).toBe("pending");
-    expect(Date.now() - started).toBeLessThan(5000);
+    const res = await client.request({ url: `${base()}/slow` });
+    expect(res.status).toBe(0);
+    expect(res.error).toBe("timeout");
+    expect(Date.now() - started).toBeLessThan(3000);
     server.closeAllConnections();
-    await pending;
   });
 });

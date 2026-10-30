@@ -52,6 +52,8 @@ export interface SafeClientOptions extends GateConfig {
   rate?: number | undefined;
   /** Lower the per-run ceiling (it can never exceed 300). */
   maxRequests?: number | undefined;
+  /** Test seam: per-request total deadline in ms (default 10 s, 30 s for pre-warm). */
+  timeoutMs?: number | undefined;
   /** Gate and log only; sends nothing. */
   dryRun?: boolean | undefined;
   /** Test seams for the limiter. */
@@ -91,6 +93,10 @@ function cookieNames(raw: string | string[] | undefined): string {
     .join(", ");
 }
 
+function errorHop(error: string): Hop {
+  return { status: 0, contentType: "", headers: {}, body: "", bodyTruncated: false, error };
+}
+
 function sendOnce(
   url: URL,
   kind: "loopback" | "supabase",
@@ -120,7 +126,14 @@ function sendOnce(
       options.lookup = pinnedLookup(loopbackAddress) as http.RequestOptions["lookup"];
     }
     const lib = kind === "supabase" ? https : http;
-    const req = lib.request(options, (res) => {
+    let req: http.ClientRequest;
+    try {
+      req = lib.request(options, onResponse);
+    } catch (err) {
+      done(errorHop((err as NodeJS.ErrnoException).code ?? (err as Error).message));
+      return;
+    }
+    function onResponse(res: http.IncomingMessage): void {
       const chunks: Buffer[] = [];
       let size = 0;
       let truncated = false;
@@ -141,6 +154,7 @@ function sendOnce(
           body: Buffer.concat(chunks).toString("utf8"),
           bodyTruncated: truncated,
           location: typeof location === "string" ? location : undefined,
+          ...(!res.complete && !truncated ? { error: "incomplete" } : {}),
         });
       };
       res.on("data", (chunk: Buffer) => {
@@ -160,7 +174,10 @@ function sendOnce(
       res.on("end", finish);
       res.on("error", () => finish());
       res.on("close", finish);
-    });
+    }
+    // Idle timeout plus a whole-request deadline so a dripping server cannot hold the slot.
+    const deadline = setTimeout(() => req.destroy(new Error("timeout")), timeoutMs);
+    req.on("close", () => clearTimeout(deadline));
     req.setTimeout(timeoutMs, () => {
       req.destroy(new Error("timeout"));
     });
@@ -174,14 +191,7 @@ function sendOnce(
         void sendOnce(url, kind, headers, timeoutMs, "::1").then(done);
         return;
       }
-      done({
-        status: 0,
-        contentType: "",
-        headers: {},
-        body: "",
-        bodyTruncated: false,
-        error: err.code ?? err.message,
-      });
+      done(errorHop(err.message === "timeout" ? "timeout" : (err.code ?? err.message)));
     });
     req.end();
   });
@@ -192,6 +202,7 @@ export class SafeHttpClient {
   private readonly limiter: RateLimiter;
   private readonly ceiling: number;
   private readonly dryRun: boolean;
+  private readonly timeoutOverride: number | undefined;
   private readonly entries: RequestLogEntry[] = [];
   private sentCount = 0;
 
@@ -204,7 +215,12 @@ export class SafeHttpClient {
       ...(options.now ? { now: options.now } : {}),
       ...(options.sleep ? { sleep: options.sleep } : {}),
     });
-    this.ceiling = Math.min(REQUEST_CEILING, Math.max(0, options.maxRequests ?? REQUEST_CEILING));
+    const max = options.maxRequests;
+    this.ceiling =
+      max === undefined || !Number.isFinite(max)
+        ? REQUEST_CEILING
+        : Math.min(REQUEST_CEILING, Math.max(0, Math.floor(max)));
+    this.timeoutOverride = options.timeoutMs;
     this.dryRun = options.dryRun === true;
   }
 
@@ -261,23 +277,22 @@ export class SafeHttpClient {
       "X-VibeSafe-Attack": "1",
       ...req.headers,
     };
-    const timeoutMs = req.prewarm === true ? PREWARM_TIMEOUT_MS : REQUEST_TIMEOUT_MS;
+    const timeoutMs =
+      this.timeoutOverride ?? (req.prewarm === true ? PREWARM_TIMEOUT_MS : REQUEST_TIMEOUT_MS);
     let current = req.url;
     let hops = 0;
 
     for (;;) {
-      const isRedirect = hops > 0;
       const decision: GateDecision = checkRequest(
         { method, url: current, body: req.body, headers },
         this.gateConfig,
       );
       if (!decision.allowed) return this.blocked(req, current, decision.reason);
       if (this.dryRun) return this.blocked(req, current, "dry-run");
-      if (this.sentCount >= this.ceiling) {
-        return this.blocked(req, current, "ceiling", isRedirect ? { redirectBlocked: true } : {});
-      }
-      await this.limiter.acquire();
+      // Reserve the slot synchronously, before any await, so concurrent callers cannot overshoot.
+      if (this.sentCount >= this.ceiling) return this.blocked(req, current, "ceiling");
       this.sentCount += 1;
+      await this.limiter.acquire();
 
       const started = Date.now();
       const hop = await sendOnce(decision.url, decision.kind, headers, timeoutMs, "127.0.0.1");
@@ -316,6 +331,10 @@ export class SafeHttpClient {
       }
       if (next.origin !== decision.url.origin) return blockRedirect("cross-host");
       if (hops >= MAX_SAME_HOST_REDIRECTS) return blockRedirect("loop");
+      next.hash = "";
+      const g2 = checkRequest({ method, url: next.href, headers }, this.gateConfig);
+      if (!g2.allowed) return blockRedirect(g2.reason);
+      if (this.sentCount >= this.ceiling) return blockRedirect("ceiling");
       hops += 1;
       current = next.href;
     }
