@@ -77,6 +77,11 @@ const PATHS: [string, FileKind][] = [
   [".github/ISSUE_TEMPLATE/bug.yml", "other"],
   ["action.yml", "gh-action"],
   ["config.yml", "other"],
+  ["infra/main.tf", "terraform"],
+  ["prod.tfvars", "tfvars"],
+  ["infra/k8s/app.yaml", "k8s-manifest"],
+  ["deploy/kustomization.yml", "k8s-manifest"],
+  ["openapi.yaml", "other"],
   ["scripts/deploy.sh", "shell"],
   ["tools/setup.bash", "shell"],
   [".env", "env"],
@@ -131,6 +136,9 @@ describe("runtimeOfKind", () => {
     expect(runtimeOfKind("script")).toBe("script");
     expect(runtimeOfKind("dockerfile")).toBe("infra");
     expect(runtimeOfKind("env")).toBe("infra");
+    expect(runtimeOfKind("terraform")).toBe("infra");
+    expect(runtimeOfKind("tfvars")).toBe("infra");
+    expect(runtimeOfKind("k8s-manifest")).toBe("infra");
     expect(runtimeOfKind("js-module")).toBe("unknown");
     expect(runtimeOfKind("python")).toBe("unknown");
   });
