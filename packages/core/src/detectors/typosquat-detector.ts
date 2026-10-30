@@ -16,6 +16,7 @@ import {
   KNOWN_TYPOSQUATS,
   LEGITIMATE_NEIGHBOURS,
   POPULAR_PACKAGES,
+  TOP_PACKAGES,
 } from "./patterns/npm-typosquats.js";
 
 const POPULAR = new Set(POPULAR_PACKAGES);
@@ -57,6 +58,37 @@ export function withinOneEdit(a: string, b: string): boolean {
     }
   }
   return true;
+}
+
+/** True when a is b with one letter dropped or one letter doubled (length differs by one). */
+function dropOrDouble(name: string, top: string): boolean {
+  if (name.length === top.length - 1) return withinOneEdit(name, top);
+  if (name.length !== top.length + 1) return false;
+  for (let i = 1; i < name.length; i++) {
+    if (name[i] === name[i - 1] && name.slice(0, i) + name.slice(i + 1) === top) return true;
+  }
+  return false;
+}
+
+/** True when a and b (same length) differ by exactly one adjacent transposition. */
+function adjacentSwap(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let i = 0;
+  while (i < a.length && a[i] === b[i]) i++;
+  return (
+    i + 1 < a.length && a[i] === b[i + 1] && a[i + 1] === b[i] && a.slice(i + 2) === b.slice(i + 2)
+  );
+}
+
+/** The top package `name` is a transposition, doubled or dropped letter of, or undefined. */
+export function topLookAlikeTarget(name: string): string | undefined {
+  if (name.length < 5 || name.startsWith("@")) return undefined;
+  if (POPULAR.has(name) || NEIGHBOURS.has(name)) return undefined;
+  for (const top of TOP_PACKAGES) {
+    if (top.length < 4 || Math.abs(top.length - name.length) > 1) continue;
+    if (name.length === top.length ? adjacentSwap(name, top) : dropOrDouble(name, top)) return top;
+  }
+  return undefined;
 }
 
 /** The popular package `name` probably meant to be, or undefined. */
@@ -125,15 +157,17 @@ export class TyposquatDetector implements Detector {
             );
             continue;
           }
-          const target = lookAlikeTarget(dep.name);
+          const topTarget = topLookAlikeTarget(dep.name);
+          const target = topTarget ?? lookAlikeTarget(dep.name);
           if (target === undefined) continue;
+          const strong = topTarget !== undefined;
           findings.push(
             makeFinding({
               category: "dependency",
               ruleId: "dependency/typosquat-package",
               title: `"${dep.name}" looks like a misspelling of "${target}"`,
-              severity: "medium",
-              confidence: "low",
+              severity: strong ? "high" : "medium",
+              confidence: strong ? "medium" : "low",
               file,
               line: dep.line,
               evidence: dep.text ?? `"${dep.name}"`,

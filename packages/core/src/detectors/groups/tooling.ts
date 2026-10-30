@@ -12,12 +12,14 @@ import { ClientTrustedPriceDetector } from "../client-trusted-price-detector.js"
 import { CheckThenActDetector } from "../check-then-act-detector.js";
 
 import { ServerDataExposureDetector } from "../server-data-exposure-detector.js";
+import { ShellInjectionDetector } from "../shell-injection-detector.js";
 
 export {
   PlaceholderTestsDetector,
   ClientTrustedPriceDetector,
   CheckThenActDetector,
   ServerDataExposureDetector,
+  ShellInjectionDetector,
 };
 
 /** Fresh instances of this group's detectors, registered after the built-in ones. */
@@ -26,6 +28,7 @@ export const toolingDetectors = (): Detector[] => [
   new ClientTrustedPriceDetector(),
   new CheckThenActDetector(),
   new ServerDataExposureDetector(),
+  new ShellInjectionDetector(),
 ];
 
 /** Cross-owner precedence rules declared by this group (see scanner/precedence.ts). */
@@ -42,4 +45,5 @@ export const toolingPrecedence: readonly PrecedenceRule[] = [
 /** Detector id -> non-JS file kinds it legitimately reports on (used by non-js-files.test.ts). */
 export const toolingNonJsExempt: Readonly<Record<string, readonly FileKind[]>> = {
   "placeholder-tests-detector": ["package-manifest"],
+  "shell-injection-detector": ["shell"],
 };
