@@ -1,4 +1,4 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to VibeSafe will be documented in this file.
 
@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Scaffold the `@talaljaber/vibesafe-attack` package (types, API stubs, network chokepoint lint rule and test) for Attack Mode.
+- Add Attack Mode negative controls and response fingerprinting (`controls.ts`) so bland 200s are not mistaken for leaks.
 
 ### Changed
 
