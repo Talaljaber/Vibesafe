@@ -80,9 +80,12 @@ describe("renderHtmlReport", () => {
 
   it("renders ledger tiles and the ledger line", () => {
     const html = renderHtmlReport(run());
-    expect(html).toContain("Static flagged 4 Â· live confirmed 1 Â· refuted 1 Â· couldn't test 1");
-    expect(html).toContain("1 confirmed Â· 1 refuted Â· 1 not tested");
+    expect(html).toContain(
+      "Static flagged 4 \u00b7 live confirmed 1 \u00b7 refuted 1 \u00b7 couldn't test 1",
+    );
+    expect(html).toContain("1 confirmed \u00b7 1 refuted \u00b7 1 not tested");
     expect(html.match(/class="tile /g)?.length).toBe(4);
+    expect(html).not.toContain("\u00c2");
   });
 
   it("renders sections and the requests table with sessions and shapes", () => {
@@ -91,6 +94,22 @@ describe("renderHtmlReport", () => {
     expect(html).toContain("Not tested");
     expect(html).toContain("<td>alice</td><td>200</td>");
     expect(html).toContain("<td>anonymous</td><td>401</td>");
+  });
+
+  it("footer states the exact safety model", () => {
+    const html = renderHtmlReport(run());
+    expect(html).toContain("GET only, and handlers that look like they write are skipped.");
+    expect(html).toContain(
+      "Localhost only; a remote Supabase host only with a flag naming your project.",
+    );
+    expect(html).not.toContain("never leaves your machine");
+  });
+
+  it("redacts the bare sentinel token in excerpts", () => {
+    const html = renderHtmlReport(
+      run({ results: [result({ excerpts: { R3: '{"token":"SENTINEL_TOKEN"}' } })] }),
+    );
+    expect(html).not.toContain("SENTINEL_TOKEN");
   });
 
   it("never emits sentinel values and renders odd keys as <key>", () => {
@@ -140,7 +159,7 @@ describe("renderHtmlReport", () => {
         ],
       }),
     );
-    expect(html).toContain("before: Live confirmed");
+    expect(html).toContain("before: Live proved");
     expect(html).toContain("after: Refuted by the live test");
     expect(html).toContain("This exploit no longer reproduces");
     expect(html).toContain("owner access still works");

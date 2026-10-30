@@ -28,14 +28,15 @@ function safeKey(key: string): string {
 function redactExcerpt(text: string): string {
   return text
     .replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, "[email]")
-    .replace(/\beyJ[\w-]+\.[\w-]+\.[\w-]*/g, "[jwt]")
+    .replace(/\beyJ[\w-]*(?:\.[\w-]*){0,2}/g, "[jwt]")
+    .replace(/\b[A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|APIKEY)[A-Z0-9_]*\b/g, "[token]")
     .replace(/\b(?:sb_(?:secret|publishable)_|sk[-_]|pk[-_]|ghp_|AKIA)[\w-]{6,}/g, "[key]")
-    .replace(/\b[A-Za-z0-9_-]{32,}\b/g, "[token]")
+    .replace(/[A-Za-z0-9_+/=-]{32,}/g, "[token]")
     .slice(0, 200);
 }
 
 const OUTCOME_LABEL: Record<AttackOutcome, string> = {
-  CONFIRMED: "Live confirmed",
+  CONFIRMED: "Live proved",
   NOT_REPRODUCED: "Refuted by the live test",
   INCONCLUSIVE: "Not tested",
   ERROR: "Error",
@@ -108,8 +109,8 @@ function ledgerTiles(run: AttackRun): string {
     tile(l.refuted, "Refuted", l.refuted > 0 ? "ok" : "") +
     tile(l.untested, "Couldn't test", "") +
     `</div>` +
-    `<p class="ledger">Static flagged ${esc(l.staticFlagged)} Â· live confirmed ${esc(l.confirmed)} Â· refuted ${esc(l.refuted)} Â· couldn't test ${esc(l.untested)}` +
-    (l.errors > 0 ? ` Â· errors ${esc(l.errors)}` : "") +
+    `<p class="ledger">Static flagged ${esc(l.staticFlagged)} \u00b7 live confirmed ${esc(l.confirmed)} \u00b7 refuted ${esc(l.refuted)} \u00b7 couldn't test ${esc(l.untested)}` +
+    (l.errors > 0 ? ` \u00b7 errors ${esc(l.errors)}` : "") +
     `</p>`
   );
 }
@@ -123,14 +124,14 @@ function requestsTable(result: AttackResult, group: ProbeGroup | undefined): str
       const shape =
         (s.rowCount !== undefined ? `${s.rowCount} row${s.rowCount === 1 ? "" : "s"}; ` : "") +
         (s.keys.length > 0 ? s.keys.map(safeKey).join(", ") : "no keys");
-      return `<tr><td>${esc(s.label)}</td><td>${esc(sessionOf.get(s.label) ?? "")}</td><td>${esc(s.status)}</td><td>${esc(shape)}</td></tr>`;
+      return `<tr><td>${esc(s.label)}</td><td>${esc(sessionOf.get(s.label) ?? "-")}</td><td>${esc(s.status)}</td><td>${esc(shape)}</td></tr>`;
     })
     .join("");
   return `<div class="table-wrap"><table><thead><tr><th>Request</th><th>Session</th><th>Status</th><th>Shape</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function excerpts(result: AttackResult, loopback: boolean): string {
-  if (!loopback || !result.excerpts) return "";
+  if (!loopback || !result.excerpts || result.checkId === "supabase-anon-read") return "";
   const entries = Object.entries(result.excerpts);
   if (entries.length === 0) return "";
   return (
@@ -167,17 +168,13 @@ function resultCard(
   loopback: boolean,
 ): string {
   const ref = result.staticRef;
-  const where = result.sourceFile
-    ? `${result.sourceFile}${result.line !== undefined ? `:${result.line}` : ""}`
-    : ref
-      ? `${ref.file}${ref.line !== undefined ? `:${ref.line}` : ""}`
-      : "";
+  const where = ref ? `${ref.file}${ref.line !== undefined ? `:${ref.line}` : ""}` : "";
   const staticSaid = ref
     ? `<p class="meta"><b>Static said:</b> ${esc(ref.ruleId)} (${esc(ref.findingId)}) at ${esc(where)}: ${esc(ref.title)}</p>`
     : "";
   const live = `<p class="meta"><b>${esc(OUTCOME_LABEL[result.outcome])}:</b> ${esc(result.reasoning)}</p>`;
   const route = result.route
-    ? `<p class="meta">Check: ${esc(result.checkId)} Â· Route: ${esc(result.method ?? "GET")} ${esc(result.route)}</p>`
+    ? `<p class="meta">Check: ${esc(result.checkId)} \u00b7 Route: ${esc(result.method ?? "GET")} ${esc(result.route)}</p>`
     : `<p class="meta">Check: ${esc(result.checkId)}</p>`;
   const fix =
     result.outcome === "CONFIRMED" && result.fixGuidance
@@ -230,7 +227,7 @@ export function renderHtmlReport(run: AttackRun): string {
   const groups = new Map<string, ProbeGroup>(run.groups.map((g) => [g.attackId, g]));
   const diffs = new Map<string, RetestDiff>((run.diff ?? []).map((d) => [d.attackId, d]));
   const l = run.ledger;
-  const heading = `${l.confirmed} confirmed Â· ${l.refuted} refuted Â· ${l.untested} not tested`;
+  const heading = `${l.confirmed} confirmed \u00b7 ${l.refuted} refuted \u00b7 ${l.untested} not tested`;
 
   const body = SECTIONS.map(({ outcome, title }) => {
     const items = run.results.filter((r) => r.outcome === outcome);
@@ -262,14 +259,14 @@ export function renderHtmlReport(run: AttackRun): string {
     `<meta name="viewport" content="width=device-width,initial-scale=1">` +
     `<title>VibeSafe Attack Report</title><style>${CSS}</style></head><body><main>` +
     `<h1>VibeSafe Attack Report: ${esc(heading)}</h1>` +
-    `<p class="sub">${esc(run.mode)} run Â· ${esc(run.finishedAt)} Â· target ${esc(run.targetUrl)} Â· VibeSafe ${esc(run.vibesafeVersion)}</p>` +
+    `<p class="sub">${esc(run.mode)} run \u00b7 ${esc(run.finishedAt)} \u00b7 target ${esc(run.targetUrl)} \u00b7 VibeSafe ${esc(run.vibesafeVersion)}</p>` +
     ledgerTiles(run) +
     body +
     gone +
-    `<h2>Request log</h2>` +
+    (run.requestLog.length > 0 ? `<h2>Request log</h2>` : "") +
     requestLog(run) +
     `<footer>Attack Mode sends a few safe GET requests to your own app on localhost, aimed by VibeSafe's static findings. ` +
-    `It never sends writes, never leaves your machine, and a result of "no longer reproduces" means this exploit was not reproduced, and says nothing about the rest of the app.</footer>` +
+    `GET only, and handlers that look like they write are skipped. Localhost only; a remote Supabase host only with a flag naming your project. A result of "no longer reproduces" means this exploit was not reproduced, and says nothing about the rest of the app.</footer>` +
     `</main></body></html>\n`
   );
 }
