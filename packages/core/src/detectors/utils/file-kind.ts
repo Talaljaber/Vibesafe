@@ -36,11 +36,13 @@ export type FileKind =
   | "dockerfile"
   | "dockerignore"
   | "compose"
+  | "firebase-rules"
   | "workflow"
   | "gh-action"
   | "shell"
   | "terraform"
   | "tfvars"
+  | "supabase-config"
   | "k8s-manifest"
   | "env"
   | "env-example"
@@ -92,11 +94,13 @@ const RUNTIME: Record<FileKind, FileRuntime> = {
   dockerfile: "infra",
   dockerignore: "infra",
   compose: "infra",
+  "firebase-rules": "infra",
   workflow: "infra",
   "gh-action": "infra",
   shell: "infra",
   terraform: "infra",
   tfvars: "infra",
+  "supabase-config": "infra",
   "k8s-manifest": "infra",
   env: "infra",
   "env-example": "infra",

@@ -12,6 +12,7 @@ import { CommandInjectionDetector } from "../command-injection-detector.js";
 import { CodeEvalDetector } from "../code-eval-detector.js";
 import { SsrfDetector } from "../ssrf-detector.js";
 import { PathTraversalDetector } from "../path-traversal-detector.js";
+import { FileUploadDetector } from "../file-upload-detector.js";
 import { OpenRedirectDetector } from "../open-redirect-detector.js";
 import { PythonInjectionDetector } from "../python-injection-detector.js";
 import { CeleryConfigDetector } from "../celery-config-detector.js";
@@ -22,6 +23,7 @@ export {
   CodeEvalDetector,
   SsrfDetector,
   PathTraversalDetector,
+  FileUploadDetector,
   OpenRedirectDetector,
   PythonInjectionDetector,
   CeleryConfigDetector,
@@ -34,6 +36,7 @@ export const injectionDetectors = (): Detector[] => [
   new CodeEvalDetector(),
   new SsrfDetector(),
   new PathTraversalDetector(),
+  new FileUploadDetector(),
   new OpenRedirectDetector(),
   new PythonInjectionDetector(),
   new CeleryConfigDetector(),

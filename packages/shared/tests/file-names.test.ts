@@ -137,3 +137,13 @@ describe("lockfiles and discovery names", () => {
     expect(SCANNABLE_FILENAMES).toContain(".dockerignore");
   });
 });
+
+describe("firebase rules file name regex", () => {
+  it("does not backtrack on adversarial names", async () => {
+    const { classifyInfraFile } = await import("../src/constants.js");
+    const name = "firestore" + "-a".repeat(120) + "!";
+    const t0 = Date.now();
+    classifyInfraFile(name);
+    expect(Date.now() - t0).toBeLessThan(200);
+  });
+});

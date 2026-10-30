@@ -132,6 +132,18 @@ const COMPOSE = [
   ...JS_BAIT.map((l) => `# ${l}`),
 ].join("\n");
 
+const FIREBASE_RULES = [
+  "rules_version = '2';",
+  "service cloud.firestore {",
+  "  match /databases/{database}/documents {",
+  "    match /{document=**} {",
+  "      allow read, write: if true;",
+  "    }",
+  "  }",
+  "}",
+  ...JS_BAIT.map((l) => `// ${l}`),
+].join("\n");
+
 const WORKFLOW = [
   "name: ci",
   "on: [push]",
@@ -211,6 +223,17 @@ const K8S = [
   "  ADMIN_PASSWORD: Tr0ub4dor-and-more",
 ].join("\n");
 
+const SUPABASE_CONFIG = [
+  'project_id = "acme"',
+  "[auth]",
+  'site_url = "http://127.0.0.1:3000"',
+  "jwt_expiry = 604800",
+  "minimum_password_length = 6",
+  "[auth.email]",
+  "enable_confirmations = false",
+  ...JS_BAIT.map((l) => `# ${l}`),
+].join("\n");
+
 const SAMPLES: { kind: FileKind; files: Record<string, string> }[] = [
   {
     kind: "python",
@@ -223,12 +246,23 @@ const SAMPLES: { kind: FileKind; files: Record<string, string> }[] = [
   { kind: "sql", files: { "db/schema.sql": SQL, "supabase/migrations/001.sql": SQL } },
   { kind: "dockerfile", files: { Dockerfile: DOCKERFILE, "app/api/Dockerfile.dev": DOCKERFILE } },
   { kind: "compose", files: { "docker-compose.yml": COMPOSE } },
+  {
+    kind: "firebase-rules",
+    files: { "firestore.rules": FIREBASE_RULES, "app/api/storage.rules": FIREBASE_RULES },
+  },
   { kind: "workflow", files: { ".github/workflows/ci.yml": WORKFLOW } },
   { kind: "shell", files: { "scripts/deploy.sh": SHELL, "app/api/run.sh": SHELL } },
   { kind: "env", files: { ".env.staging2": ENV } },
   { kind: "terraform", files: { "infra/main.tf": TERRAFORM, "app/api/db.tf": TERRAFORM } },
   { kind: "tfvars", files: { "infra/prod.tfvars": TFVARS, "env.auto.tfvars": TFVARS } },
   { kind: "k8s-manifest", files: { "infra/k8s/app.yaml": K8S, "deploy/app.yml": K8S } },
+  {
+    kind: "supabase-config",
+    files: {
+      "supabase/config.toml": SUPABASE_CONFIG,
+      "apps/web/supabase/config.toml": SUPABASE_CONFIG,
+    },
+  },
 ];
 
 describe("non-JS files", () => {

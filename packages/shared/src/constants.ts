@@ -87,11 +87,13 @@ const DOCKERFILE_RE =
 /** `Dockerfile.ts` or `dockerfile.json` are source/data files, not Dockerfiles. */
 const NOT_DOCKERFILE_EXT_RE = /\.(?:[cm]?[jt]sx?|json|py|md|txt|ya?ml|toml|lock)$/i;
 const COMPOSE_RE = /^(?:docker-)?compose(?:\.[\w-]+)*\.ya?ml$/i;
+const FIREBASE_RULES_RE = /^(?:firestore|storage)(?:[.-]\w+)*\.rules$/i;
 const WORKFLOW_RE = /(?:^|\/)\.github\/workflows\/[^/]+\.ya?ml$/;
 const ACTION_RE = /^action\.ya?ml$/;
 const SHELL_RE = /\.(?:sh|bash|zsh)$/;
 const TERRAFORM_RE = /\.tf$/i;
 const TFVARS_RE = /\.tfvars$/i;
+const SUPABASE_CONFIG_RE = /(?:^|\/)supabase\/config\.toml$/;
 const K8S_YAML_RE = /\.ya?ml$/i;
 const KUSTOMIZATION_RE = /^kustomization\.ya?ml$/i;
 /** Directory names that hold Kubernetes manifests (matched case-insensitively). */
@@ -127,11 +129,13 @@ export type InfraFileKind =
   | "dockerfile"
   | "dockerignore"
   | "compose"
+  | "firebase-rules"
   | "workflow"
   | "gh-action"
   | "shell"
   | "terraform"
   | "tfvars"
+  | "supabase-config"
   | "k8s-manifest"
   | EnvFileKind
   | "next-config-mts";
@@ -158,11 +162,13 @@ export function classifyInfraFile(relativePath: string): InfraFileKind | null {
   if (WORKFLOW_RE.test(p)) return "workflow";
   if (ACTION_RE.test(base)) return "gh-action";
   if (COMPOSE_RE.test(base)) return "compose";
+  if (FIREBASE_RULES_RE.test(base)) return "firebase-rules"; // firestore.rules, storage.rules, firestore.dev.rules
   if (DOCKERFILE_RE.test(base) && !NOT_DOCKERFILE_EXT_RE.test(base)) return "dockerfile";
   if (SHELL_RE.test(base)) return "shell";
   if (base === "next.config.mts") return "next-config-mts";
   if (TERRAFORM_RE.test(base)) return "terraform";
   if (TFVARS_RE.test(base)) return "tfvars";
+  if (SUPABASE_CONFIG_RE.test(p)) return "supabase-config"; // supabase/config.toml only, not other .toml
   if (!(LOCKFILE_NAMES as readonly string[]).includes(base) && isK8sManifestPath(p, base)) {
     return "k8s-manifest";
   }
