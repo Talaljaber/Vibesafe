@@ -1,4 +1,4 @@
-// ─────────────────────────────────────────────────────────────────────────────
+﻿// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Auth Bypass Detector
 //
 // Three ways server code skips the check it appears to perform:
@@ -8,7 +8,7 @@
 //    environment is not production (or a SKIP_AUTH-style flag is set).
 //  - `auth/secret-check-fails-open`: `if (SECRET && header !== SECRET) return 401` skips the
 //    whole check when the secret env var is unset.
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 import type { Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared";
 import { makeFinding } from "./utils/finding.js";
@@ -103,7 +103,7 @@ function andOperands(code: string, text: string): string[] | undefined {
   return parts.map((p) => p.trim()).filter((p) => p.length > 0);
 }
 
-// ─── jwt-decode-without-verify ───────────────────────────────────────────────
+// â”€â”€â”€ jwt-decode-without-verify â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const DECODE_CALL_RE =
   /(?:\b(?:jwt|jsonwebtoken|jose)\s*\.\s*decode|\bdecodeJwt|\bjwtDecode|\bjwt_decode|\bdecode_jwt)\s*(?:<[^>()]*>)?\s*\(/g;
@@ -111,12 +111,14 @@ const MANUAL_DECODE_RE =
   /JSON\s*\.\s*parse\s*\(\s*(?:Buffer\s*\.\s*from|atob)\s*\(\s*([A-Za-z_$][\w$]*(?:\??\.\s*[A-Za-z_$][\w$]*)*)\s*\.\s*split\s*\(\s*['"]\.['"]\s*\)\s*\[\s*1\s*\]/g;
 const REQUEST_SOURCE_RE =
   /\bsearchParams\s*\.\s*get\s*\(|\bheaders\s*(?:\(\s*\))?\s*\.\s*get\s*\(|\bcookies\s*(?:\(\s*\))?\s*\.\s*get\s*\(|\b(?:req|request|ctx|event)\s*\.\s*(?:query|headers|cookies|body|params|nextUrl)\b|\bgetHeader\s*\(|\bgetCookie\s*\(/;
-const TOKENISH_RE = /token|jwt|bearer|share|session|credential|auth/i;
+const TOKENISH_RE = /token|jwt|bearer|session|credential|auth/i;
+const TIME_CLAIMS = new Set(["exp", "iat", "nbf"]);
 const VERIFY_CALL_RE =
   /(?:\bjwt\s*\.\s*verify|\bjwtVerify|\bverifyToken|\bverifyJwt|\bverifyJWT|\bverify[A-Za-z]*Token|\.\s*verify)\s*(?:<[^>()]*>)?\s*\(/g;
 
 /** Names (and the whole-binding name) a statement before `callStart` binds the call result to. */
-function resultBinding(src: JsSource, callStart: number): string[] {
+function resultBinding(src: JsSource, callStart: number): { names: string[]; whole: boolean } {
+  const none = { names: [] as string[], whole: false };
   let i = callStart - 1;
   while (i >= 0 && src.code[i] !== ";" && src.code[i] !== "\n") i--;
   const head = src.code.slice(i + 1, callStart);
@@ -125,10 +127,10 @@ function resultBinding(src: JsSource, callStart: number): string[] {
     /(?:const|let|var)\s+(\{[^}]*\}|[A-Za-z_$][\w$]*)\s*(?::[^=]*)?=\s*(?:await\s+)?\(?\s*(?:\(\s*)?$/.exec(
       textHead,
     );
-  if (!m || head.trim().length === 0) return [];
+  if (!m || head.trim().length === 0) return none;
   const pat = m[1]!;
   if (pat.startsWith("{")) {
-    return pat
+    const names = pat
       .slice(1, -1)
       .split(",")
       .map((p) =>
@@ -140,35 +142,90 @@ function resultBinding(src: JsSource, callStart: number): string[] {
           .replace(/^\.\.\./, ""),
       )
       .filter((p) => /^[A-Za-z_$][\w$]*$/.test(p));
+    return { names, whole: false };
   }
-  return [pat];
+  return { names: [pat], whole: true };
 }
 
 function bodyRange(span: FunctionSpan | undefined, src: JsSource): [number, number] {
   return span ? [span.bodyStart, span.bodyEnd] : [0, src.code.length];
 }
 
-/** Identifier names the function (or file) binds from request-derived expressions. */
-function requestBindings(src: JsSource, from: number, to: number): Set<string> {
+const MAX_DECLS = 1500;
+const MAX_RHS = 400;
+const MAX_TAINTED = 800;
+const MAX_SITES = 200;
+
+/** Code text of `[from,to)` with comments blanked but string-literal contents kept. */
+function codeAndStrings(src: JsSource, from: number, to: number): string {
+  let out = "";
+  let i = from;
+  const blank = (k: number): boolean => src.code[k] === " " && /\S/.test(src.text[k]!);
+  while (i < to) {
+    if (!blank(i)) {
+      out += src.code[i];
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j < to && blank(j)) j++;
+    const prev = src.code[i - 1] ?? "";
+    const isString =
+      prev === '"' ||
+      prev === "'" ||
+      prev === "`" ||
+      (prev === "}" && (src.text[j] === "`" || src.text.slice(j, j + 2) === "${"));
+    out += isString ? src.text.slice(i, j) : " ".repeat(j - i);
+    i = j;
+  }
+  return out;
+}
+
+/** Identifier names the file binds from request-derived expressions (computed once per file). */
+function requestBindings(src: JsSource): Set<string> {
   const tainted = new Set<string>();
-  const re = /(?:const|let|var)\s+(\{[^}]*\}|[A-Za-z_$][\w$]*)\s*(?::[^=;]*)?=/g;
-  const body = src.code.slice(from, to);
-  for (let pass = 0; pass < 2; pass++) {
-    re.lastIndex = 0;
-    for (let m = re.exec(body); m; m = re.exec(body)) {
-      const rhsStart = from + m.index + m[0].length;
-      const rhs = src.text.slice(rhsStart, Math.min(to, expressionEnd(src, rhsStart, to)));
-      const viaBinding = [...tainted].some((t) => new RegExp(`\\b${escapeRe(t)}\\b`).test(rhs));
-      if (REQUEST_SOURCE_RE.test(rhs) || viaBinding) {
-        const pat = m[1]!;
-        if (pat.startsWith("{")) {
-          for (const p of pat.slice(1, -1).split(",")) {
-            const n = p.split(":").pop()!.split("=")[0]!.trim();
-            if (/^[A-Za-z_$][\w$]*$/.test(n)) tainted.add(n);
+  const re = /(?:const|let|var)\s+(\{[^}]{0,300}\}|[A-Za-z_$][\w$]*)\s*(?::[^=;]{0,120})?=/g;
+  interface Decl {
+    names: string[];
+    direct: boolean;
+    ids: string[];
+  }
+  const decls: Decl[] = [];
+  for (let m = re.exec(src.code); m && decls.length < MAX_DECLS; m = re.exec(src.code)) {
+    const rhsStart = m.index + m[0].length;
+    const limit = Math.min(src.code.length, rhsStart + MAX_RHS);
+    const rhs = src.text.slice(rhsStart, Math.min(limit, expressionEnd(src, rhsStart, limit)));
+    const pat = /(?:const|let|var)\s+(\{[^}]*\}|[A-Za-z_$][\w$]*)/.exec(
+      src.text.slice(m.index, rhsStart),
+    );
+    const pt = pat?.[1] ?? m[1]!;
+    const names: string[] = [];
+    if (pt.startsWith("{")) {
+      for (const part of pt.slice(1, -1).split(",")) {
+        const n = part.split(":").pop()!.split("=")[0]!.trim();
+        if (/^[A-Za-z_$][\w$]*$/.test(n)) names.push(n);
+      }
+    } else names.push(pt);
+    decls.push({
+      names,
+      direct: REQUEST_SOURCE_RE.test(rhs),
+      ids: rhs.match(/[A-Za-z_$][\w$]*/g) ?? [],
+    });
+  }
+  for (let pass = 0; pass < 4; pass++) {
+    let changed = false;
+    for (const d of decls) {
+      if (d.names.every((n) => tainted.has(n))) continue;
+      if (d.direct || d.ids.some((id) => tainted.has(id))) {
+        for (const n of d.names) {
+          if (!tainted.has(n) && tainted.size < MAX_TAINTED) {
+            tainted.add(n);
+            changed = true;
           }
-        } else tainted.add(pat);
+        }
       }
     }
+    if (!changed) break;
   }
   return tainted;
 }
@@ -227,55 +284,88 @@ function verifiedInFile(src: JsSource, site: DecodeSite): boolean {
   return false;
 }
 
-/** Whether `names` (members of the decoded value) gate an if/compare/lookup in `[from,to)`. */
+type Gate = "none" | "time" | "claim";
+
+/**
+ * Whether the decoded value gates access in `[from,to)`. `whole` are names bound to the whole
+ * payload (a claim member is required); `bare` names are already claims (destructured or
+ * aliased). "time" means only exp/iat/nbf are gated.
+ */
 function gatesAccess(
   src: JsSource,
-  names: readonly string[],
+  whole: readonly string[],
+  bare: readonly string[],
   from: number,
   to: number,
   ifs: readonly IfStmt[],
-): boolean {
-  if (names.length === 0) return false;
-  const alt = names.map(escapeRe).join("|");
-  const nameRe = new RegExp(`(?:^|[^\\w$.])(?:${alt})(?![\\w$])`);
+): Gate {
+  const all = [...whole, ...bare];
+  if (all.length === 0) return "none";
+  const alt = all.map(escapeRe).join("|");
+  const bareRe =
+    bare.length > 0
+      ? new RegExp(`(?:^|[^\\w$.])(?:${bare.map(escapeRe).join("|")})(?![\\w$])`)
+      : undefined;
+  const memberRe =
+    whole.length > 0
+      ? new RegExp(
+          `(?:^|[^\\w$.])(?:${whole.map(escapeRe).join("|")})\\s*\\??\\.\\s*([\\w$]+)`,
+          "g",
+        )
+      : undefined;
+  let best = "none" as Gate;
+  const note = (g: Gate): void => {
+    if (g === "claim" || (g === "time" && best === "none")) best = g;
+  };
   for (const s of ifs) {
     if (s.at < from || s.at >= to) continue;
-    if (!nameRe.test(s.codeCond)) continue;
-    if (DENY_RE.test(src.code.slice(s.branch.start, s.branch.end))) return true;
+    if (!DENY_RE.test(src.code.slice(s.branch.start, s.branch.end))) continue;
+    if (bareRe?.test(s.codeCond)) note("claim");
+    if (memberRe) {
+      memberRe.lastIndex = 0;
+      for (let m = memberRe.exec(s.codeCond); m; m = memberRe.exec(s.codeCond)) {
+        note(TIME_CLAIMS.has(m[1]!) ? "time" : "claim");
+      }
+    }
+    if (best === "claim") return best;
   }
   const body = src.code.slice(from, to);
   const cmp = new RegExp(
-    `(?:(?:^|[^\\w$.])(?:${alt})\\??\\.[\\w$]+\\s*(?:===|!==|==|!=))|(?:(?:===|!==|==|!=)\\s*(?:${alt})\\??\\.[\\w$]+)`,
+    `(?:(?:^|[^\\w$.])(?:${alt})\\??\\.([\\w$]+)\\s*(?:===|!==|==|!=))|(?:(?:===|!==|==|!=)\\s*(?:${alt})\\??\\.([\\w$]+))`,
     "g",
   );
   for (let m = cmp.exec(body); m; m = cmp.exec(body)) {
     const tail = body.slice(m.index, m.index + 320);
-    if (DENY_RE.test(tail)) return true;
+    if (DENY_RE.test(tail)) note(TIME_CLAIMS.has(m[1] ?? m[2] ?? "") ? "time" : "claim");
+    if (best === "claim") return best;
   }
   const lookup = new RegExp(
     `\\b(?:where|filter)\\s*:\\s*\\{[^{}]*?(?:^|[^\\w$.])(?:${alt})\\??\\.[\\w$]+|\\.\\s*eq\\s*\\([^,()]*,\\s*(?:${alt})\\??\\.[\\w$]+|\\b(?:findById|findOne|findUnique|getUserById|getUser|getById)\\s*\\(\\s*(?:\\{[^}]*?)?(?:${alt})\\??\\.[\\w$]+`,
   );
-  return lookup.test(body);
+  if (lookup.test(body)) return "claim";
+  return best;
 }
 
-function jwtFindings(src: JsSource, file: string, spans: readonly FunctionSpan[]): Finding[] {
+function jwtFindings(
+  src: JsSource,
+  file: string,
+  spans: readonly FunctionSpan[],
+  getBindings: () => Set<string>,
+): Finding[] {
   const out: Finding[] = [];
   const ifs = findIfs(src);
   const seen = new Set<number>();
-  for (const site of decodeSites(src)) {
+  for (const site of decodeSites(src).slice(0, MAX_SITES)) {
     if (out.length >= MAX_PER_FILE) break;
     const line = src.lineAt(site.start);
     if (seen.has(line)) continue;
     const span = enclosingFunction(spans, site.start);
-    const [from, to] = bodyRange(span, src);
+    const [, to] = bodyRange(span, src);
     // token provenance
     const root = site.ident?.split(/[.]/)[0];
     let requestDerived = REQUEST_SOURCE_RE.test(site.argText);
     if (!requestDerived && root !== undefined) {
-      requestDerived =
-        requestBindings(src, from, to).has(root) ||
-        requestBindings(src, 0, src.code.length).has(root);
-      if (!requestDerived && REQUEST_SOURCE_RE.test(site.argText)) requestDerived = true;
+      requestDerived = getBindings().has(root);
     }
     let tokenParam = false;
     if (!requestDerived && root !== undefined && span) {
@@ -285,24 +375,24 @@ function jwtFindings(src: JsSource, file: string, spans: readonly FunctionSpan[]
     if (verifiedInFile(src, site)) continue;
     // decoded binding(s)
     const open = src.code.indexOf("(", site.start);
-    const names = resultBinding(src, site.start);
-    let gated = false;
+    const { names, whole: wholeBinding } = resultBinding(src, site.start);
+    let gate: Gate = "none";
     if (names.length > 0) {
       // aliases: `const id = claims.sub`
-      const all = new Set(names);
+      const aliases = new Set<string>();
       const aliasRe = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=;]*)?=\s*([^;\n]+)/g;
       const afterCall = open >= 0 ? open : site.start;
-      const body = src.code.slice(afterCall, to);
       const bodyText = src.text.slice(afterCall, to);
       for (let m = aliasRe.exec(bodyText); m; m = aliasRe.exec(bodyText)) {
         if (!src.code.slice(afterCall + m.index, afterCall + m.index + 3).match(/con|let|var/)) {
           continue;
         }
         const rhs = m[2]!;
-        if ([...names].some((n) => new RegExp(`\\b${escapeRe(n)}\\b`).test(rhs))) all.add(m[1]!);
+        if (names.some((n) => new RegExp(`\\b${escapeRe(n)}\\b`).test(rhs))) aliases.add(m[1]!);
       }
-      void body;
-      gated = gatesAccess(src, [...all], afterCall, to, ifs);
+      const whole = wholeBinding ? names : [];
+      const bare = wholeBinding ? [...aliases] : [...names, ...aliases];
+      gate = gatesAccess(src, whole, bare, afterCall, to, ifs);
     } else {
       // inline: `if (jwt.decode(t).role !== "admin") return 403`
       const closeCall = open >= 0 ? closeOf(src, open) : -1;
@@ -310,12 +400,16 @@ function jwtFindings(src: JsSource, file: string, spans: readonly FunctionSpan[]
       const inlineMember =
         /^\s*(?:as\s+[\w.<>[\]|]+\s*)?\)?\s*\??\.\s*[\w$]+\s*(?:===|!==|==|!=)/.test(after);
       const inIf = ifs.find((s) => s.condStart <= site.start && site.start < s.condEnd);
-      gated =
+      const denied =
         inIf !== undefined
           ? DENY_RE.test(src.code.slice(inIf.branch.start, inIf.branch.end))
           : inlineMember && DENY_RE.test(src.code.slice(site.start, site.start + 320));
+      if (denied) {
+        const claim = /^\s*(?:as\s+[\w.<>[\]|]+\s*)?\)?\s*\??\.\s*([\w$]+)/.exec(after)?.[1];
+        gate = claim !== undefined && TIME_CLAIMS.has(claim) ? "time" : "claim";
+      }
     }
-    if (!gated) continue;
+    if (gate === "none") continue;
     seen.add(line);
     out.push(
       makeFinding({
@@ -323,7 +417,7 @@ function jwtFindings(src: JsSource, file: string, spans: readonly FunctionSpan[]
         ruleId: "auth/jwt-decode-without-verify",
         title: "Access decision uses a JWT that was only decoded, never verified",
         severity: "high",
-        confidence: requestDerived ? "high" : "medium",
+        confidence: requestDerived && gate === "claim" ? "high" : "medium",
         file,
         line,
         evidence: src.lineText(line),
@@ -345,7 +439,7 @@ function jwtFindings(src: JsSource, file: string, spans: readonly FunctionSpan[]
   return out;
 }
 
-// ─── auth-disabled-outside-production ────────────────────────────────────────
+// â”€â”€â”€ auth-disabled-outside-production â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const AUTH_FN_RE =
   /auth|authenticate|requireUser|requireAdmin|protect|guard|verify(?:Token|Session|Request)/i;
@@ -355,14 +449,15 @@ const NONPROD_RES: readonly RegExp[] = [
   new RegExp(`['"\`]production['"\`]\\s*(?:!==|!=)\\s*[\\w$.]*${ENV_NAME}`),
   new RegExp(`${ENV_NAME}\\s*(?:===|==)\\s*['"\`](?:development|dev|local)['"\`]`),
   /!\s*(?:isProd|isProduction)\b/,
-  /(?<![!\w$.])isDev(?:elopment)?\b(?!\s*\()/,
+  /(?<!!\s*(?:[\w$]+\s*\.\s*)*)(?<![\w$])isDev(?:elopment)?\b(?!\s*\()/,
 ];
 const FLAG_RE =
   /(?<!!\s*)\b(?:process\s*\.\s*env\s*\.\s*)?(?:SKIP_AUTH|DISABLE_AUTH|AUTH_DISABLED|BYPASS_AUTH|skipAuth|disableAuth|authDisabled|bypassAuth)\b/;
 const ALLOW_RE =
-  /^\s*(?:return\s+(?:await\s+)?(?:next\s*\([^)]*\)|NextResponse\s*\.\s*next\s*\([^)]*\)|true\b)|next\s*\(\s*\)\s*;?\s*return\b)/;
+  /\breturn\s+(?:await\s+)?(?:next\s*\(|NextResponse\s*\.\s*next\s*\(|true\b)|\bnext\s*\(\s*\)\s*;?\s*return\b/;
 const BODY_DENY_RE =
-  /\b40[13]\b|[Uu]nauthori[sz]ed|[Ff]orbidden|\bredirect\s*\(|\/log-?in\b|\/sign-?in\b|UNAUTHORIZED|FORBIDDEN/;
+  /\b40[13]\b|[Uu]nauthori[sz]ed|[Ff]orbidden|UNAUTHORIZED|FORBIDDEN|\bredirect\s*\([^)]{0,200}?(?:log-?in|sign-?in|sign-?on|\/auth\b)/;
+const NON_AUTH_NAME_RE = /csrf|xsrf|cors|helmet|rate-?limit/i;
 
 function isAuthMiddleware(span: FunctionSpan, file: string, kind: string): boolean {
   if (span.name !== undefined && AUTH_FN_RE.test(span.name)) return true;
@@ -388,20 +483,18 @@ function envFindings(
   for (const span of spans) {
     if (span.kind === "module" || span.expressionBody) continue;
     if (!isAuthMiddleware(span, file, kind)) continue;
-    const bodyText = src.code.slice(span.bodyStart, span.bodyEnd);
-    if (
-      !BODY_DENY_RE.test(src.text.slice(span.bodyStart, span.bodyEnd)) &&
-      !BODY_DENY_RE.test(bodyText)
-    ) {
-      continue;
-    }
+    if (!BODY_DENY_RE.test(codeAndStrings(src, span.bodyStart, span.bodyEnd))) continue;
+    const subject =
+      span.name !== undefined && NON_AUTH_NAME_RE.test(span.name)
+        ? "CSRF protection"
+        : "Authentication";
     for (const s of ifs) {
       if (out.length >= MAX_PER_FILE) return out;
       if (s.at < span.bodyStart || s.at >= span.bodyEnd) continue;
       if (enclosingFunction(spans, s.at) !== span) continue;
       const branchCode = src.code.slice(s.branch.start, s.branch.end);
-      const first = s.branch.block ? branchCode : branchCode;
-      if (!ALLOW_RE.test(first)) continue;
+      const allow = ALLOW_RE.exec(branchCode);
+      if (!allow || DENY_RE.test(branchCode.slice(0, allow.index))) continue;
       const cond = s.cond;
       const nonProd = NONPROD_RES.some((r) => r.test(cond));
       const flag = !nonProd && FLAG_RE.test(cond);
@@ -422,10 +515,10 @@ function envFindings(
           category: "auth",
           ruleId: "auth/auth-disabled-outside-production",
           title: flag
-            ? "Authentication can be switched off with an environment flag"
-            : "Authentication is skipped when NODE_ENV is not production",
+            ? `${subject} can be switched off with an environment flag`
+            : `${subject} is skipped when NODE_ENV is not production`,
           severity: flag ? "medium" : "high",
-          confidence: flag ? "medium" : "medium",
+          confidence: "medium",
           file,
           line,
           evidence: src.lineText(line),
@@ -448,7 +541,7 @@ function envFindings(
   return out;
 }
 
-// ─── secret-check-fails-open ─────────────────────────────────────────────────
+// â”€â”€â”€ secret-check-fails-open â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const SECRET_NAME_RE = /SECRET|TOKEN|KEY|PASSWORD|AUTH/;
 const NOT_SECRET_RE = /URL|URI|HOST|ORIGIN|^NEXT_PUBLIC_|PUBLIC|ENABLED|DISABLED|ISSUER/;
@@ -469,13 +562,20 @@ function secretBindings(src: JsSource): Map<string, string> {
   return map;
 }
 
-function failOpenFindings(src: JsSource, file: string, spans: readonly FunctionSpan[]): Finding[] {
+const REQUEST_REF_RE =
+  /\b(?:req|request|ctx|event)\b|\bheaders?\s*(?:\(\s*\))?\s*[.[]|\bsearchParams\b|\bcookies?\b|\bgetHeader\s*\(|\bgetCookie\s*\(|\bauthorization\b/i;
+
+function failOpenFindings(
+  src: JsSource,
+  file: string,
+  spans: readonly FunctionSpan[],
+  getBindings: () => Set<string>,
+): Finding[] {
   const out: Finding[] = [];
   if (!src.code.includes("process") || !src.code.includes("env")) return out;
   const bindings = secretBindings(src);
   const ifs = findIfs(src);
   const direct = /process\s*\.\s*env\s*\.\s*([A-Z0-9_]+)/;
-  const terms = (): string[] => [...bindings.keys()];
   const secretTermOf = (operand: string): string | undefined => {
     const t = operand
       .trim()
@@ -490,9 +590,24 @@ function failOpenFindings(src: JsSource, file: string, spans: readonly FunctionS
   };
   const mentions = (text: string, term: string): boolean =>
     new RegExp(`(?:^|[^\\w$.])${escapeRe(term)}(?![\\w$])`).test(text);
-  const compares = (cond: string, term: string): boolean => {
+  /** The compare operand must involve request data (not the secret itself or a literal). */
+  const requestish = (cond: string, term: string, at: number): boolean => {
+    const rest = cond
+      .replace(new RegExp(`(?:^|[^\\w$.])${escapeRe(term)}(?![\\w$])`, "g"), " ")
+      .replace(/process\s*\.\s*env\s*\.\s*[A-Z0-9_]+/g, " ");
+    if (REQUEST_REF_RE.test(rest)) return true;
+    const ids = rest.match(/[A-Za-z_$][\w$]*/g) ?? [];
+    if (ids.length === 0) return false;
+    const span = enclosingFunction(spans, at);
+    const params = new Set<string>();
+    for (const p of span?.params ?? []) for (const n of p.names) if (n !== term) params.add(n);
+    const tainted = getBindings();
+    return ids.some((id) => id !== term && (params.has(id) || tainted.has(id)));
+  };
+  const compares = (cond: string, term: string, at: number): boolean => {
     if (!mentions(cond, term)) return false;
-    return /!==?|(?:^|[^\w$])!\s*[\w$.]+\s*\(/.test(cond);
+    if (!/!==?|(?:^|[^\w$])!\s*[\w$.]+\s*\(/.test(cond)) return false;
+    return requestish(cond, term, at);
   };
   const guardedEarlier = (term: string, at: number): boolean => {
     const span = enclosingFunction(spans, at);
@@ -507,14 +622,13 @@ function failOpenFindings(src: JsSource, file: string, spans: readonly FunctionS
         DENY_RE.test(src.code.slice(g.branch.start, g.branch.end)),
     );
   };
-  void terms;
   const nestedDenyIf = (s: IfStmt, term: string): IfStmt | undefined => {
     if (!s.branch.block) return undefined;
     return ifs.find(
       (n) =>
         n.at > s.branch.start &&
         n.at < s.branch.end &&
-        compares(n.cond, term) &&
+        compares(n.codeCond, term, n.at) &&
         DENY_RE.test(src.code.slice(n.branch.start, n.branch.end)),
     );
   };
@@ -523,14 +637,14 @@ function failOpenFindings(src: JsSource, file: string, spans: readonly FunctionS
   for (const s of ifs) {
     if (out.length >= MAX_PER_FILE) break;
     let term: string | undefined;
-    const ops = andOperands(s.codeCond, s.cond);
+    const ops = andOperands(s.codeCond, s.codeCond);
     if (ops === undefined) continue;
     if (ops.length >= 2) {
       // `S && <compare involving S>`
       for (const o of ops) {
         const t = secretTermOf(o);
         if (t === undefined) continue;
-        const cmpOp = ops.find((p) => p !== o && compares(p, t));
+        const cmpOp = ops.find((p) => p !== o && compares(p, t, s.at));
         if (cmpOp !== undefined && DENY_RE.test(src.code.slice(s.branch.start, s.branch.end))) {
           term = t;
           break;
@@ -597,9 +711,11 @@ export class AuthBypassDetector implements Detector {
         if (!wantsJwt && !wantsEnv && !wantsSecret) continue;
         const src = await getJsSource(context, file);
         const spans = extractFunctions(src, cls);
-        if (wantsJwt) findings.push(...jwtFindings(src, file, spans));
+        let bindings: Set<string> | undefined;
+        const getBindings = (): Set<string> => (bindings ??= requestBindings(src));
+        if (wantsJwt) findings.push(...jwtFindings(src, file, spans, getBindings));
         if (wantsEnv) findings.push(...envFindings(src, file, cls.kind, spans));
-        if (wantsSecret) findings.push(...failOpenFindings(src, file, spans));
+        if (wantsSecret) findings.push(...failOpenFindings(src, file, spans, getBindings));
       } catch {
         // detectors never throw
       }

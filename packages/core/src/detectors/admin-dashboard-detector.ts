@@ -17,7 +17,10 @@ const EXPRESS_RE = /from\s*['"]express['"]|require\s*\(\s*['"]express['"]\s*\)/;
 const AUTH_LIKE_RE =
   /auth|authenticate|requireUser|requireAdmin|ensureLoggedIn|isAdmin|basicAuth|passport\s*\.\s*authenticate|protect|guard|session/i;
 const NONPROD_RE =
-  /(?:NODE_ENV|nodeEnv|APP_ENV|ENVIRONMENT)\s*(?:!==|!=)\s*['"`]production['"`]|(?:NODE_ENV|nodeEnv|APP_ENV|ENVIRONMENT)\s*(?:===|==)\s*['"`](?:development|dev|local)['"`]|!\s*(?:isProd|isProduction)\b|(?<![!\w$.])isDev(?:elopment)?\b/;
+  /(?:NODE_ENV|nodeEnv|APP_ENV|ENVIRONMENT)\s*(?:!==|!=)\s*['"`]production['"`]|(?:NODE_ENV|nodeEnv|APP_ENV|ENVIRONMENT)\s*(?:===|==)\s*['"`](?:development|dev|local)['"`]|!\s*(?:isProd|isProduction)\b|(?<!!\s*(?:[\w$]+\s*\.\s*)*)(?<![\w$])isDev(?:elopment)?\b/;
+/** An inline middleware function that answers 401/403 is an auth check. */
+const INLINE_AUTH_RE = /(?:=>|\bfunction\b)[\s\S]*?(?:\b40[13]\b|[Uu]nauthori[sz]ed|[Ff]orbidden)/;
+const isAuthArg = (a: string): boolean => AUTH_LIKE_RE.test(a) || INLINE_AUTH_RE.test(a);
 
 const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -238,7 +241,7 @@ export class AdminDashboardDetector implements Detector {
           ruleId: "auth/unprotected-queue-dashboard",
           title: "Queue dashboard is mounted without authentication",
           severity: "high",
-          confidence: "high",
+          confidence: exportedRouters.has(obj) ? "medium" : "high",
           file,
           line,
           evidence: src.lineText(line),
@@ -264,8 +267,24 @@ export class AdminDashboardDetector implements Detector {
           u.obj === obj &&
           u.start < at &&
           (u.args.length === 1 || (u.firstIsString && /^['"`]\/?\*?['"`]$/.test(u.args[0]!))) &&
-          u.args.slice(u.firstIsString ? 1 : 0).some((a) => AUTH_LIKE_RE.test(a)),
+          u.args.slice(u.firstIsString ? 1 : 0).some(isAuthArg),
       );
+
+    // `export const router = express.Router()`: it may be mounted behind auth in another module
+    const exportedRouters = new Set<string>();
+    for (const m of src.code.matchAll(
+      /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=;]*)?=\s*(?:express\s*\.\s*)?Router\s*\(/g,
+    )) {
+      const n = m[1]!;
+      const e = escapeRe(n);
+      if (
+        new RegExp(
+          `export\\s+(?:const|let|var)\\s+${e}\\b|export\\s+default\\s+${e}\\b|module\\s*\\.\\s*exports\\s*=\\s*${e}\\b|\\bexports\\s*\\.\\s*[\\w$]+\\s*=\\s*${e}\\b|export\\s*\\{[^}]*\\b${e}\\b`,
+        ).test(src.code)
+      ) {
+        exportedRouters.add(n);
+      }
+    }
 
     for (const u of uses) {
       if (out.length >= MAX_PER_FILE) break;
@@ -274,7 +293,7 @@ export class AdminDashboardDetector implements Detector {
       if (idx < 0) continue;
       if (ranges.some(([a, b]) => u.start >= a && u.start < b)) continue;
       const earlierArgs = u.args.slice(argStart, idx);
-      if (earlierArgs.some((a) => AUTH_LIKE_RE.test(a))) continue;
+      if (earlierArgs.some(isAuthArg)) continue;
       if (authBefore(u.obj, u.start)) continue;
       emit(u.start, u.obj);
     }

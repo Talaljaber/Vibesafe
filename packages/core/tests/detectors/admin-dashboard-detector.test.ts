@@ -157,3 +157,35 @@ describe("auth/unprotected-queue-dashboard", () => {
     expect(f[0]!.line).toBe(7);
   });
 });
+
+describe("admin dashboard review round 1", () => {
+  const base = [
+    "import express from 'express';",
+    "import { createBullBoard } from 'bull-board';",
+    "import { BullMQAdapter } from 'bull-board/bullMQAdapter';",
+  ];
+  it("treats an inline role-check middleware that sends 403 as auth", async () => {
+    const files = {
+      "src/index.ts": [
+        ...base,
+        "const app = express();",
+        "const { router } = createBullBoard([new BullMQAdapter(q)]);",
+        "app.use('/admin/queues', (req, res, next) => { if (req.user?.role !== 'admin') return res.sendStatus(403); next(); }, router);",
+      ].join("\n"),
+    };
+    expect(await run(files)).toHaveLength(0);
+  });
+  it("lowers confidence when mounted on an exported Router", async () => {
+    const files = {
+      "src/board.ts": [
+        ...base,
+        "export const adminRouter = express.Router();",
+        "const { router } = createBullBoard([new BullMQAdapter(q)]);",
+        "adminRouter.use('/queues', router);",
+      ].join("\n"),
+    };
+    const f = await run(files);
+    expect(f).toHaveLength(1);
+    expect(f[0]).toMatchObject({ confidence: "medium" });
+  });
+});

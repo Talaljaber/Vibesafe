@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+﻿import { describe, it, expect } from "vitest";
 import os from "node:os";
 import path from "node:path";
 import { promises as fs } from "node:fs";
@@ -407,5 +407,138 @@ describe("auth-bypass-detector scoping", () => {
     const files = { "app/api/a/route.ts": src, "app/api/b/route.test.ts": src };
     expect(await run(files, "app/api/b/route.test.ts")).toHaveLength(0);
     expect(await run(files, "app/api/a/route.ts")).toHaveLength(1);
+  });
+});
+
+describe("auth-bypass review round 1", () => {
+  it("secret-check-fails-open ignores startup config validation", async () => {
+    const files = {
+      "src/config.ts": [
+        "export function validateConfig() {",
+        "  const jwtSecret = process.env.JWT_SECRET;",
+        "  if (process.env.STRIPE_SECRET_KEY && !process.env.STRIPE_SECRET_KEY.startsWith('sk_')) {",
+        "    throw new Error('bad stripe key');",
+        "  }",
+        "  if (jwtSecret && jwtSecret !== jwtSecret.trim()) {",
+        "    throw new Error('whitespace in secret');",
+        "  }",
+        "  if (jwtSecret && jwtSecret === 'changeme') {",
+        "    throw new Error('default secret');",
+        "  }",
+        "}",
+      ].join("\n"),
+    };
+    expect(rule(await run(files), OPEN)).toHaveLength(0);
+  });
+
+  it("secret-check-fails-open still flags a handler parameter compare", async () => {
+    const files = {
+      "src/hook.ts": [
+        "export function check(provided: string) {",
+        "  const secret = process.env.HOOK_SECRET;",
+        "  if (secret && provided !== secret) {",
+        "    throw new Error('unauthorized');",
+        "  }",
+        "}",
+      ].join("\n"),
+    };
+    expect(rule(await run(files), OPEN)).toHaveLength(1);
+  });
+
+  it("env rule ignores an HTTPS-enforcing Next middleware and a canonical-host middleware", async () => {
+    const files = {
+      "middleware.ts": [
+        "import { NextResponse } from 'next/server';",
+        "export function middleware(req: Request) {",
+        "  // unauthorized visitors are not handled here",
+        "  if (process.env.NODE_ENV !== 'production') {",
+        "    return NextResponse.next();",
+        "  }",
+        "  const url = new URL(req.url);",
+        "  if (url.protocol === 'http:') {",
+        "    return NextResponse.redirect(`https://${url.host}${url.pathname}`);",
+        "  }",
+        "  return NextResponse.next();",
+        "}",
+      ].join("\n"),
+      "src/middleware/canonical.ts": [
+        "export default function canonicalHost(req: any, res: any, next: any) {",
+        "  if (process.env.NODE_ENV !== 'production') return next();",
+        "  if (req.headers.host !== 'www.example.com') return res.redirect(301, 'https://www.example.com' + req.url);",
+        "  next();",
+        "}",
+      ].join("\n"),
+    };
+    expect(rule(await run(files), ENV)).toHaveLength(0);
+  });
+
+  it("env rule flags a login redirect, member-access isDev, bypass later in the branch; titles csrf honestly", async () => {
+    const files = {
+      "src/middleware/guard.ts": [
+        "export function requireUser(req: any, res: any, next: any) {",
+        "  if (config.isDev) {",
+        "    req.user = devUser;",
+        "    return next();",
+        "  }",
+        "  if (!req.session) return res.redirect('/login');",
+        "  next();",
+        "}",
+      ].join("\n"),
+      "src/middleware/csrf.ts": [
+        "export function csrfProtection(req: any, res: any, next: any) {",
+        "  if (process.env.NODE_ENV !== 'production') return next();",
+        "  if (req.headers['x-csrf'] !== req.session.csrf) return res.status(403).end();",
+        "  next();",
+        "}",
+      ].join("\n"),
+    };
+    const f = rule(await run(files), ENV);
+    expect(f).toHaveLength(2);
+    expect(f.find((x) => x.file === "src/middleware/csrf.ts")?.title).toMatch(/^CSRF protection/);
+    expect(f.find((x) => x.file === "src/middleware/guard.ts")?.title).toMatch(/^Authentication/);
+  });
+
+  it("jwt rule needs a claim in the gate and downgrades exp-only checks", async () => {
+    const bare = {
+      "server/proxy.ts": [
+        'import jwt from "jsonwebtoken";',
+        "export async function handler(req: Request) {",
+        '  const bearer = req.headers.get("authorization")?.split(" ")[1] ?? "";',
+        "  const payload = jwt.decode(bearer);",
+        "  if (!payload) return new Response('bad', { status: 401 });",
+        "  return fetch(upstream, { headers: { authorization: `Bearer ${bearer}` } });",
+        "}",
+      ].join("\n"),
+    };
+    expect(rule(await run(bare), JWT)).toHaveLength(0);
+    const expOnly = {
+      "server/pre.ts": [
+        'import jwt from "jsonwebtoken";',
+        "export async function handler(req: Request) {",
+        '  const bearer = req.headers.get("authorization")?.split(" ")[1] ?? "";',
+        "  const payload = jwt.decode(bearer);",
+        "  if (payload.exp < Date.now() / 1000) return new Response('expired', { status: 401 });",
+        "  return next();",
+        "}",
+      ].join("\n"),
+    };
+    const f = rule(await run(expOnly), JWT);
+    expect(f).toHaveLength(1);
+    expect(f[0]).toMatchObject({ confidence: "medium" });
+  });
+
+  it("requestBindings stays fast on pathological files", async () => {
+    const many = Array.from({ length: 3000 }, (_, i) => `  const v${i} = req.query.p${i};`).join(
+      "\n",
+    );
+    const chain = Array.from({ length: 3000 }, (_, i) => `  const c${i + 1} = c${i} + req.x;`).join(
+      "\n",
+    );
+    const files = {
+      "server/many.ts": `import jwt from "jsonwebtoken";\nexport function h(req: any) {\n  const c0 = req.body.t;\n${many}\n${chain}\n  const d = jwt.decode(c3000);\n  if (d.role !== 'admin') throw new Error('no');\n}`,
+    };
+    const t = Date.now();
+    await run(files);
+    expect(Date.now() - t).toBeLessThan(2000);
   });
 });
