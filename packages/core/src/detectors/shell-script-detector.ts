@@ -1,4 +1,4 @@
-import type { Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared";
+﻿import type { Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared";
 import { redactSecret } from "@talaljaber/vibesafe-shared";
 import { classifyPath, isTestOrFixturePath } from "./utils/file-kind.js";
 import { makeFinding } from "./utils/finding.js";
@@ -220,7 +220,7 @@ export class ShellScriptDetector implements Detector {
       const start = i;
       i = j;
       if (!/--acl|AllUsers|allUsers|allAuthenticatedUsers|--public-access/.test(joined)) continue;
-      if (!PUBLIC_UPLOAD_RES.some((re) => re.test(joined))) continue;
+      if (!PUBLIC_UPLOAD_RES.some((re) => matchesOutsideQuotes(re, joined))) continue;
       out.push(this.uploadFinding(file, start + 1, lines[start] ?? ""));
     }
     return out;
@@ -366,6 +366,28 @@ export class ShellScriptDetector implements Detector {
         "My shell script hardcodes a credential (a secret-named variable, a password flag or a connection string with a password). Change the script to read the value from an environment variable, exit with a clear error if it is not set, and avoid passing passwords as command-line arguments. Tell me which credential I need to rotate.",
     });
   }
+}
+
+/** True when `re` matches with its command anchor outside any quoted string. */
+function matchesOutsideQuotes(re: RegExp, text: string): boolean {
+  const g = new RegExp(re.source, "g");
+  for (let m = g.exec(text); m; m = g.exec(text)) {
+    if (!inQuote(text, m.index)) return true;
+  }
+  return false;
+}
+
+function inQuote(s: string, at: number): boolean {
+  let quote: string | null = null;
+  for (let i = 0; i < at; i++) {
+    const ch = s[i];
+    if (quote) {
+      if (ch === quote) quote = null;
+      else if (ch === "\\" && quote === '"') i++;
+    } else if (ch === "\\") i++;
+    else if (ch === '"' || ch === "'") quote = ch;
+  }
+  return quote !== null;
 }
 
 /** Replaces the contents of quoted strings with spaces (quotes kept). */

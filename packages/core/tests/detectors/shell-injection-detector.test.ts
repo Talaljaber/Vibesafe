@@ -158,3 +158,44 @@ describe("injection/shell-sql-interpolation", () => {
     expect(f).toEqual([]);
   });
 });
+
+describe("injection/shell-sql-interpolation review round 1", () => {
+  it("ignores flags of later pipeline commands and non-command mentions", async () => {
+    const f = rule(
+      await run({
+        "scripts/a.sh": sh(
+          'psql "$DATABASE_URL" -f q.sql | grep -c "$1"',
+          'mysql -u root < schema.sql && echo -e "Loaded $1"',
+          'docker compose exec mysql bash -c "mysqldump -u root $1 > dump.sql"',
+        ),
+      }),
+      "shell-sql-interpolation",
+    );
+    expect(f).toEqual([]);
+  });
+
+  it("ignores positional parameters of shell functions", async () => {
+    const f = rule(
+      await run({
+        "scripts/a.sh": sh(
+          "run_sql() {",
+          '  psql "$DATABASE_URL" -c "$1"',
+          "}",
+          'run_sql "SELECT 1"',
+        ),
+      }),
+      "shell-sql-interpolation",
+    );
+    expect(f).toEqual([]);
+  });
+
+  it("still flags script arguments in a command after a separator", async () => {
+    const f = rule(
+      await run({
+        "scripts/a.sh": sh('cd /tmp && sudo psql "$DB" -c "DELETE FROM t WHERE id = $1"'),
+      }),
+      "shell-sql-interpolation",
+    );
+    expect(f).toHaveLength(1);
+  });
+});

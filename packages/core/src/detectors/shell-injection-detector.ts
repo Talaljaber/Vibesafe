@@ -22,6 +22,11 @@ const SQL_FLAG_RE = /\s(?:-[A-Za-z]*[ce]|--command|--execute)(?:=|\s*)(["'])/;
 const HEREDOC_RE = /(?<!<)<<(-?)[ \t]*([A-Za-z_][A-Za-z0-9_]*)(?=\s|$|[|;&)])/;
 const EXPANSION_RE =
   /(?<!\\)\$(?:\{([A-Za-z_][A-Za-z0-9_]*|[0-9@*])[^}]*\}|([A-Za-z_][A-Za-z0-9_]*|[0-9@*]))/g;
+const POSITIONAL_RE = /^[1-9@*]$/;
+const FN_START_RE = /^\s*(?:function\s+[\w:.-]+|[\w:.-]+\s*\(\s*\))/;
+/** Text before a command that still leaves it in command position (separator plus wrappers). */
+const COMMAND_POSITION_RE =
+  /(?:^|[;&|(`]|\$\(|\b(?:then|do)\b)\s*(?:(?:sudo(?:\s+-\S+)*|env|time|nohup|command|exec|[A-Za-z_]\w*=\S*)\s+)*$/;
 const ARG_NAME_RE = /^(?:[1-9@*]|OPTARG)$/;
 const ASSIGN_RE =
   /^\s*(?:[^=\s()'"]*\)\s*)?(?:export\s+|local\s+|readonly\s+|declare\s+(?:-\w+\s+)?)?([A-Za-z_][A-Za-z0-9_]*)\+?=(.*)$/;
@@ -97,11 +102,36 @@ function dropSingleQuoted(v: string): string {
 class ArgTaint {
   private readonly vars = new Set<string>();
   private readonly validatedFrom = new Map<string, number>();
+  /** Line ranges of shell function bodies, where $1..$9/$@/$* are function parameters. */
+  private readonly fnRanges: Array<[number, number]> = [];
 
   constructor(lines: readonly string[]) {
+    this.findFunctions(lines);
     for (let i = 0; i < lines.length; i++) this.scanValidation(lines, i);
     for (let pass = 0; pass < 2; pass++) {
       for (let i = 0; i < lines.length; i++) this.scanAssignment(lines[i] ?? "", i);
+    }
+  }
+
+  private findFunctions(lines: readonly string[]): void {
+    for (let i = 0; i < lines.length; i++) {
+      if (!FN_START_RE.test(lines[i] ?? "")) continue;
+      let depth = 0;
+      let opened = false;
+      for (let k = i; k < lines.length && k - i < 500; k++) {
+        const l = dropSingleQuoted(stripShellComment(lines[k] ?? ""));
+        for (const ch of l) {
+          if (ch === "{") {
+            depth++;
+            opened = true;
+          } else if (ch === "}") depth--;
+        }
+        if (opened && depth <= 0) {
+          this.fnRanges.push([i, k]);
+          break;
+        }
+        if (!opened && k > i) break;
+      }
     }
   }
 
@@ -125,6 +155,8 @@ class ArgTaint {
   /** True when `name`, referenced on line index `at`, holds script-argument data. */
   isTainted(name: string, at: number): boolean {
     if (!ARG_NAME_RE.test(name) && !this.vars.has(name)) return false;
+    if (POSITIONAL_RE.test(name) && this.fnRanges.some(([s, e]) => at >= s && at <= e))
+      return false;
     const v = this.validatedFrom.get(name);
     return v === undefined || v >= at;
   }
@@ -259,7 +291,10 @@ export class ShellInjectionDetector implements Detector {
       let last = i;
       while ((lines[last] ?? "").trimEnd().endsWith("\\") && last + 1 < lines.length) last++;
       const from = (starts[i] ?? 0) + client.index;
-      const cmdText = joined.slice(from, (starts[last] ?? 0) + (lines[last] ?? "").length);
+      if (!COMMAND_POSITION_RE.test(code.slice(0, client.index + client[0].search(/\S/)))) continue;
+      const cmdText = cutValue(
+        joined.slice(from, (starts[last] ?? 0) + (lines[last] ?? "").length),
+      );
       let sqlFrom = -1;
       let sqlTo = -1;
       let endLine = last;

@@ -115,3 +115,18 @@ describe("security_config/shell-public-cloud-upload", () => {
     expect(by(f, "shell-public-cloud-upload")).toEqual([]);
   });
 });
+
+describe("security_config/shell-public-cloud-upload quoted mentions", () => {
+  it("ignores an echoed command but flags the real one", async () => {
+    const f = by(
+      await run({
+        "scripts/a.sh": sh(
+          'echo "aws s3 cp x s3://y --acl public-read"',
+          "aws s3 cp x s3://y --acl public-read",
+        ),
+      }),
+      "shell-public-cloud-upload",
+    );
+    expect(f.map((x) => x.line)).toEqual([3]);
+  });
+});

@@ -1,25 +1,32 @@
-﻿// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // Dependency Detector
 //
 // Scans package.json for risky patterns: suspicious install scripts,
 // and abnormally high dependency counts in the root package.json.
 // Known-vulnerable versions and typosquats are handled by npm-advisory-detector and
 // typosquat-detector.
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 
 import type { Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared";
 import { CATEGORY_PREFIX, createFindingId } from "@talaljaber/vibesafe-shared";
 import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
 
-/** Scripts that run automatically during npm install â€” a common supply-chain attack vector. */
+/** Scripts that run automatically during npm install — a common supply-chain attack vector. */
 const RISKY_SCRIPT_KEYS = ["preinstall", "postinstall", "install"];
 
 /** `curl|wget ... | [sudo] sh|bash|zsh|node|python` (single pipe). */
 const DOWNLOAD_PIPE_RE =
   /\b(?:curl|wget)\b[^|;&]*\|\s*(?:sudo\s+(?:-\S+\s+)*)?(?:(?:ba|z|da|k)?sh|node|python3?)\b/;
 /** `sh -c "$(curl ...)"`, `node -e "$(curl ...)"`, `eval "$(wget ...)"`, `bash <(curl ...)`. */
-const DOWNLOAD_SUBST_RE =
-  /\b(?:(?:ba|z|da|k)?sh|node|python3?|eval)\b[^;&|]*?(?:\$\(|<\()\s*(?:curl|wget)\b/;
+const DOWNLOAD_SUBST_RE = new RegExp(
+  [
+    String.raw`\b(?:(?:ba|z|da|k)?sh|node|python3?)\b[^;&|]*?\s(?:-[A-Za-z]*[ce]|--eval)\s*["']?\$\(`,
+    String.raw`\beval\s+["']?(?:\$\(|\x60)`,
+    String.raw`\b(?:(?:ba|z|da|k)?sh|node|python3?)\b[^;&|]*?<\(`,
+  ]
+    .map((p) => `(?:${p})\\s*(?:curl|wget)\\b`)
+    .join("|"),
+);
 /** `npx -y https://...`: runs a remote package tarball or script. */
 const NPX_URL_RE = /\bnpx\s+(?:-\S+\s+)*["']?https?:\/\//;
 
@@ -51,7 +58,7 @@ export class DependencyDetector implements Detector {
       const raw = await context.readFile(packageJsonPath);
       pkg = JSON.parse(raw) as Record<string, unknown>;
     } catch {
-      return findings; // unparseable package.json â€” skip
+      return findings; // unparseable package.json — skip
     }
 
     const scripts = (pkg.scripts as Record<string, string> | undefined) ?? {};

@@ -60,3 +60,14 @@ describe("DependencyDetector remote install scripts", () => {
     expect(g?.severity).toBe("high");
   });
 });
+
+describe("DependencyDetector command substitution as data", () => {
+  it("does not escalate a node script that only receives downloaded data", async () => {
+    const fs = await scan({
+      scripts: {
+        postinstall: 'node scripts/setup.js --latest "$(curl -s https://api.example.com/version)"',
+      },
+    });
+    expect(fs.every((f) => f.severity !== "critical")).toBe(true);
+  });
+});
