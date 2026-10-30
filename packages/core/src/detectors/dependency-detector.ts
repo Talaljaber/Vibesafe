@@ -14,6 +14,28 @@ import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
 /** Scripts that run automatically during npm install — a common supply-chain attack vector. */
 const RISKY_SCRIPT_KEYS = ["preinstall", "postinstall", "install"];
 
+/** `curl|wget ... | [sudo] sh|bash|zsh|node|python` (single pipe). */
+const DOWNLOAD_PIPE_RE =
+  /\b(?:curl|wget)\b[^|;&]*\|\s*(?:sudo\s+(?:-\S+\s+)*)?(?:(?:ba|z|da|k)?sh|node|python3?)\b/;
+/** `sh -c "$(curl ...)"`, `node -e "$(curl ...)"`, `eval "$(wget ...)"`, `bash <(curl ...)`. */
+const DOWNLOAD_SUBST_RE = new RegExp(
+  [
+    String.raw`\b(?:(?:ba|z|da|k)?sh|node|python3?)\b(?:\s+-\S+)*?\s+(?:-[A-Za-z]*[ce]|--eval)\s*["']?\$\(`,
+    String.raw`\beval\s+["']?(?:\$\(|\x60)`,
+    String.raw`\b(?:(?:ba|z|da|k)?sh|node|python3?)\b[^;&|]*?<\(`,
+  ]
+    .map((p) => `(?:${p})\\s*(?:curl|wget)\\b`)
+    .join("|"),
+);
+/** `npx -y https://...`: runs a remote package tarball or script. */
+const NPX_URL_RE = /\bnpx\s+(?:-\S+\s+)*["']?https?:\/\//;
+
+/** True when an install script downloads remote code and executes it. */
+function downloadsAndRuns(script: string): boolean {
+  if (script.length > 5000 || !/curl|wget|npx/.test(script)) return false;
+  return DOWNLOAD_PIPE_RE.test(script) || DOWNLOAD_SUBST_RE.test(script) || NPX_URL_RE.test(script);
+}
+
 /** Threshold for direct dependency count before flagging. */
 const MAX_DIRECT_DEPS = 80;
 
@@ -50,6 +72,7 @@ export class DependencyDetector implements Detector {
     for (const scriptKey of RISKY_SCRIPT_KEYS) {
       if (scriptKey in scripts) {
         const scriptValue = scripts[scriptKey];
+        const remoteExec = typeof scriptValue === "string" && downloadsAndRuns(scriptValue);
         findings.push({
           id: createFindingId(
             CATEGORY_PREFIX.dependency,
@@ -59,21 +82,33 @@ export class DependencyDetector implements Detector {
             scriptKey,
           ),
           ruleId: "dependency/risky-install-script",
-          title: `Risky lifecycle script: "${scriptKey}"`,
-          severity: isPrivate ? "low" : "high",
+          title: remoteExec
+            ? `Install script downloads and runs a remote script: "${scriptKey}"`
+            : `Risky lifecycle script: "${scriptKey}"`,
+          severity: remoteExec ? "critical" : isPrivate ? "low" : "high",
           category: "dependency",
-          deployBlocking: false,
-          confidence: "medium",
+          deployBlocking: remoteExec,
+          confidence: remoteExec ? "high" : "medium",
           file: packageJsonPath,
           evidence: sanitizeEvidence(`"${scriptKey}": "${scriptValue}"`),
-          plainEnglishProblem: `Your package.json has a "${scriptKey}" script that runs automatically when someone installs your project.`,
+          plainEnglishProblem: remoteExec
+            ? `Your "${scriptKey}" script downloads code from the network and executes it every time someone installs the project (developers and CI runners alike).`
+            : `Your package.json has a "${scriptKey}" script that runs automatically when someone installs your project.`,
           whyItMatters:
             "Malicious packages sometimes use install scripts to run harmful code on developer machines. Having your own install scripts also increases the attack surface.",
-          fixSteps: [
-            `Review the "${scriptKey}" script and confirm it is necessary.`,
-            "If it's a build step, consider moving it to a separate manual command.",
-          ],
+          fixSteps: remoteExec
+            ? [
+                `Remove the download-and-execute step from "${scriptKey}".`,
+                "Install the tool from a package manager or a pinned, checksum-verified release instead.",
+              ]
+            : [
+                `Review the "${scriptKey}" script and confirm it is necessary.`,
+                "If it's a build step, consider moving it to a separate manual command.",
+              ],
           autoFixAvailable: false,
+          aiFixPrompt: remoteExec
+            ? `My package.json "${scriptKey}" script downloads a remote script and executes it. Remove that step and install the tool from a package manager or a pinned release whose checksum is verified.`
+            : `Review my package.json "${scriptKey}" script, tell me whether it is necessary, and if it is only a build step move it to an explicit manual command.`,
         });
       }
     }
