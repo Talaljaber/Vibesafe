@@ -9,7 +9,9 @@ import {
 } from "../patterns/sink-patterns.js";
 import {
   PASS_THROUGH_CALLS,
+  QUEUE_JOB_SOURCE,
   TAINT_CLEANERS,
+  sourcesForRuntime,
   type TaintRuntime,
   type TaintSource,
 } from "../patterns/taint-sources.js";
@@ -440,7 +442,81 @@ export interface SinkCall {
   line: number;
 }
 
-const CALL_RE = /(?<![\w$])([A-Za-z_$][\w$]*(?:\s*\??\.\s*[A-Za-z_$][\w$]*)*)\s*\(/g;
+const CALL_RE = /(?<![\w$])([A-Za-z_$][\w$]*(?:\s*\??\.\s*[A-Za-z_$][\w$]*)*)\s*([(<])/g;
+const TS_PATH_RE = /\.(?:[cm]?ts|tsx)$/i;
+const MAX_TYPE_ARGS = 300;
+
+/**
+ * Offset just past the balanced `<...>` type-argument list starting at `i` (a `<`), or -1
+ * when it is not one (unbalanced, longer than 300 chars, or holds `&&`, `||`, `;`).
+ */
+function skipTypeArgs(code: string, i: number): number {
+  const limit = Math.min(code.length, i + MAX_TYPE_ARGS);
+  let angle = 0;
+  let nest = 0;
+  for (let j = i; j < limit; j++) {
+    const c = code[j]!;
+    if (c === "<") angle++;
+    else if (c === ">") {
+      if (code[j - 1] === "=") continue; // arrow `=>`
+      angle--;
+      if (angle === 0 && nest === 0) return j + 1;
+      if (angle < 0) return -1;
+    } else if (c === "(" || c === "[" || c === "{") nest++;
+    else if (c === ")" || c === "]" || c === "}") {
+      nest--;
+      if (nest < 0) return -1;
+    } else if ((c === "&" && code[j + 1] === "&") || (c === "|" && code[j + 1] === "|")) return -1;
+    else if (c === ";" && nest === 0) return -1;
+    else if (c === "=" && nest === 0 && code[j + 1] === "=") return -1;
+  }
+  return -1;
+}
+
+const PROJECT_SPEC_RE = /^(?:\.{1,2}(?:\/|$)|@\/|~\/|#)/;
+const PROJECT_NAMES_CACHE = new WeakMap<JsSource, Set<string>>();
+const DECLARED_FN_RE = /\bfunction\s*\*?\s+([A-Za-z_$][\w$]*)\s*[(<]/g;
+const DECLARED_ARROW_RE =
+  /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=;]{0,80})?=\s*(?:async\b\s*)?(?:function\b|\(|[A-Za-z_$][\w$]*\s*=>)/g;
+
+/**
+ * Local names bound to project code: imported from a relative, `@/`, `~/` or `#` module, or
+ * declared as a function in this file. Library imports are not included.
+ */
+function projectNames(src: JsSource): Set<string> {
+  const cached = PROJECT_NAMES_CACHE.get(src);
+  if (cached !== undefined) return cached;
+  const names = new Set<string>();
+  PROJECT_NAMES_CACHE.set(src, names);
+  const code = src.code;
+  try {
+    const bound = new Map<string, string>();
+    for (const m of code.matchAll(IMPORT_RE)) {
+      const q = m.index + m[0].length;
+      const e = code.indexOf(code[q] ?? "", q + 1);
+      if (e < 0 || !PROJECT_SPEC_RE.test(src.text.slice(q + 1, e))) continue;
+      const clause = m[1]!.trim();
+      const def = /^([A-Za-z_$][\w$]*)\s*(?:,|$)/.exec(clause);
+      if (def) names.add(def[1]!);
+      const braces = /\{([^}]*)\}/.exec(clause);
+      if (braces) addSpecifiers(bound, "p", braces[1]!);
+    }
+    for (const m of code.matchAll(REQUIRE_RE)) {
+      const q = m.index + m[0].length;
+      const e = code.indexOf(code[q] ?? "", q + 1);
+      if (e < 0 || !PROJECT_SPEC_RE.test(src.text.slice(q + 1, e))) continue;
+      const target = m[1]!;
+      if (target.startsWith("{")) addSpecifiers(bound, "p", target.slice(1, -1));
+      else names.add(target);
+    }
+    for (const k of bound.keys()) names.add(k);
+    for (const m of code.matchAll(DECLARED_FN_RE)) names.add(m[1]!);
+    for (const m of code.matchAll(DECLARED_ARROW_RE)) names.add(m[1]!);
+  } catch {
+    // best effort
+  }
+  return names;
+}
 const NOT_CALLEE = new Set([
   "if",
   "for",
@@ -481,11 +557,21 @@ export function findSinkCalls(
   if (patterns.length === 0) return out;
   const code = src.code;
   const re = new RegExp(CALL_RE.source, "g");
+  const ts = TS_PATH_RE.test(src.file ?? "");
   for (let m = re.exec(code); m !== null; m = re.exec(code)) {
     const raw = m[1]!.replace(/\s+/g, "").replace(/\?\./g, ".");
     const head = raw.split(".")[0]!;
     if (NOT_CALLEE.has(head)) continue;
-    const open = m.index + m[0].length - 1;
+    let open = m.index + m[0].length - 1;
+    if (code[open] === "<") {
+      // TS type arguments between the callee and `(`: `prisma.$queryRawUnsafe<Row[]>(...)`
+      if (!ts) continue;
+      const gt = skipTypeArgs(code, open);
+      if (gt < 0) continue;
+      const p = nextNonWs(code, gt);
+      if (code[p] !== "(") continue;
+      open = p;
+    }
     const close = src.matchOf(open);
     if (close < 0) continue;
     const before = prevNonWs(code, m.index - 1);
@@ -518,6 +604,11 @@ export function findSinkCalls(
       if (p.constructorOnly === true && !isNew) continue;
       if (p.callOnly === true && isNew) continue;
       if (!p.callee.test(callee)) continue;
+      if (
+        p.projectOnly === true &&
+        (callee.includes(".") || aliases.has(callee) || !projectNames(src).has(callee))
+      )
+        continue;
       out.push({
         pattern: p,
         callee,
@@ -722,10 +813,34 @@ export class SinkAnalyzer {
   private readonly ifs = new Map<string, IfStatement[]>();
   private readonly literalCollections = new Map<string, boolean>();
 
+  private readonly extraStates = new Map<number, TaintState>();
+
   constructor(
     readonly f: SinkFile,
     readonly kind: SinkKind,
+    private readonly opts: { extraSources?: readonly TaintSource[] | undefined } = {},
   ) {}
+
+  /**
+   * Analysis of the function covering `offset` with the extra sources added to the runtime's
+   * defaults, or undefined when there are none or the budget is spent.
+   */
+  private extraStateAt(offset: number): TaintState | undefined {
+    const extra = this.opts.extraSources;
+    if (extra === undefined || extra.length === 0) return undefined;
+    const top = this.topOf(offset) ?? moduleSpan(this.f.src);
+    const cached = this.extraStates.get(top.start);
+    if (cached !== undefined) return cached;
+    if (!this.budget()) return undefined;
+    const inherited = this.moduleTaint();
+    const st = analyzeTaint(this.f.src, top, {
+      runtime: this.f.runtime,
+      sources: [...sourcesForRuntime(this.f.runtime), ...extra],
+      ...(inherited.size > 0 ? { inherited } : {}),
+    });
+    this.extraStates.set(top.start, st);
+    return st;
+  }
 
   // ---- states ----
 
@@ -799,6 +914,13 @@ export class SinkAnalyzer {
       }
       const seeded = this.callerSeeded(range, at, 0);
       if (seeded !== undefined) return this.result(seeded.state, seeded.hits, true, at);
+      const extra = this.extraStateAt(at);
+      if (extra !== undefined) {
+        const hits = this.effective(extra, range, at, 0).filter((e) =>
+          this.opts.extraSources?.some((x) => x.id === e.hit.source.id),
+        );
+        if (hits.length > 0) return this.result(extra, hits, false, at);
+      }
     } catch {
       // never throw from a detector
     }
@@ -847,9 +969,12 @@ export class SinkAnalyzer {
   }
 
   /** Effective hits of `range` in an explicit state (see {@link argTaint}). */
-  hitsIn(state: TaintState, range: Range, at: number): EffectiveHit[] {
+  hitsIn(state: TaintState, range: Range, at: number, viaCallbacks = false): EffectiveHit[] {
     try {
-      return this.effective(state, range, at, 0);
+      const direct = this.effective(state, range, at, 0);
+      if (direct.length > 0 || !viaCallbacks) return direct;
+      const cb = this.callbackState(state, at);
+      return cb === undefined ? [] : this.effective(cb, range, at, 0);
     } catch {
       return [];
     }
@@ -1780,4 +1905,17 @@ export function sinkAnchor(
     endLine: last > line ? last : undefined,
     evidence: src.lineText(line).trim(),
   };
+}
+
+const QUEUE_IMPORT_RE =
+  /(?:\bfrom\s*|\brequire\s*\(\s*|\bimport\s*\(?\s*)["'](?:node:)?(?:bullmq|bull|bee-queue|agenda|pg-boss|kue|@nestjs\/bull[\w-]*)["']/;
+
+/** `[QUEUE_JOB_SOURCE]` when the file imports a job-queue library, else undefined. */
+export function queueSourcesOf(f: SinkFile): readonly TaintSource[] | undefined {
+  return QUEUE_IMPORT_RE.test(f.src.text) ? [QUEUE_JOB_SOURCE] : undefined;
+}
+
+/** The hit comes from a queue job payload (second-order: severity caps at high). */
+export function isQueueHit(t: ArgTaint): boolean {
+  return t.hit.source.id === QUEUE_JOB_SOURCE.id;
 }
