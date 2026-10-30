@@ -40,16 +40,6 @@ const METADATA_TOKENS: ReadonlySet<string> = new Set(
   ).split(" "),
 );
 
-const VALUE_TOKENS: ReadonlySet<string> = new Set([
-  "token",
-  "jwt",
-  "session",
-  "sid",
-  "sessionid",
-  "accesstoken",
-  "refreshtoken",
-  "idtoken",
-]);
 const VALUE_CALL_RE =
   /\b(?:jwt\s*\.\s*sign|signToken|signJwt|generateToken|createToken|createSession\w*)\s*\(/;
 const VALUE_SIGN_RE = /(?<![.\w$])sign\s*\(|\bnew\s+SignJWT\s*\(/;
@@ -82,24 +72,11 @@ export function isSessionCookieName(name: string): boolean {
   return tokens.some((t) => SESSION_TOKENS.has(t)) && !hasDeny(tokens);
 }
 
-/** Session/auth cookie by the value expression's text (identifiers and calls). `jwtLibImported`: the file imports/requires `jsonwebtoken` or `jose` (enables a bare `sign(` call). */
+/** Session/auth cookie by the value expression, only for known token-minting calls (name-independent). Reading a property of a session object is never enough. `jwtLibImported`: the file imports/requires `jsonwebtoken` or `jose` (enables a bare `sign(` call). */
 export function isSessionCookieValue(valueText: string, jwtLibImported: boolean): boolean {
-  // Classify each member chain by its last property only (`req.session.user.name` -> `name`), and
-  // skip identifiers that are metadata (`expiresAt`, `tokenExpiry`).
-  const chains = valueText.match(/[A-Za-z_$][\w$]*(?:\s*\??\.\s*[A-Za-z_$][\w$]*)*/g) ?? [];
-  const tokens: string[] = [];
-  for (const chain of chains) {
-    const last = chain.slice(chain.lastIndexOf(".") + 1).trim();
-    const t = cookieNameTokens(last);
-    if (t.some((x) => METADATA_TOKENS.has(x))) continue;
-    tokens.push(...t);
-  }
-  if (hasDeny(tokens)) return false;
-  if (tokens.some((t) => VALUE_TOKENS.has(t))) return true;
   if (VALUE_CALL_RE.test(valueText)) return true;
   return jwtLibImported && VALUE_SIGN_RE.test(valueText);
 }
-
 /** A plain literal value (string without `${`, number, boolean) is never a credential. */
 const PLAIN_LITERAL_RE =
   /^(?:(["'])(?:(?!\1)[^\\\n]|\\.)*\1|`[^`$\\]*`|\d+(?:\.\d+)?|true|false|null|undefined|void\s+0)$/;
@@ -249,8 +226,26 @@ function nearestDecl(offsets: readonly number[], at: number): number | undefined
 }
 
 /** `{` of the same-file `const|let|var NAME = {` declaration in scope at `at`, or undefined. */
+const objDeclMemo = new WeakMap<JsSource, Map<string, number | undefined>>();
+const spreadBudget = new WeakMap<JsSource, number>();
+const MAX_SPREADS_PER_FILE = 50;
+
 function findObjectDecl(src: JsSource, name: string, at: number): number | undefined {
-  return nearestDecl(declOffsets(src, "obj", name, String.raw`(?::[^=;{]{0,200})?=\s*\{`), at);
+  let memo = objDeclMemo.get(src);
+  if (memo === undefined) objDeclMemo.set(src, (memo = new Map()));
+  const key = `${name}@${at}`;
+  if (memo.has(key)) return memo.get(key);
+  const r = nearestDecl(declOffsets(src, "obj", name, String.raw`(?::[^=;{]{0,200})?=\s*\{`), at);
+  memo.set(key, r);
+  return r;
+}
+
+/** True while the per-file budget of resolved spreads lasts. */
+function takeSpread(src: JsSource): boolean {
+  const used = spreadBudget.get(src) ?? 0;
+  if (used >= MAX_SPREADS_PER_FILE) return false;
+  spreadBudget.set(src, used + 1);
+  return true;
 }
 
 /** Text of a same-file `const NAME = "literal"` declaration. */
@@ -333,7 +328,9 @@ function collectFlags(src: JsSource, open: number, depth: number, acc: FlagAcc):
     if (e.spread !== undefined) {
       const expr = src.code.slice(e.spread.start, e.spread.end).trim();
       const decl =
-        IDENT_RE.test(expr) && depth < 2 ? findObjectDecl(src, expr, e.spread.start) : undefined;
+        IDENT_RE.test(expr) && depth < 2 && takeSpread(src)
+          ? findObjectDecl(src, expr, e.spread.start)
+          : undefined;
       if (decl === undefined) markUnresolved(acc);
       else collectFlags(src, decl, depth + 1, acc);
       continue;

@@ -1,4 +1,4 @@
-﻿import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vitest";
 import { CookieFlagsDetector } from "../../src/detectors/cookie-flags-detector.js";
 import { expectRubric } from "../helpers/rubric.js";
 import { run } from "../helpers/injection.js";
@@ -77,7 +77,7 @@ describe("CookieFlagsDetector positives", () => {
     expect(f[0]).toMatchObject({ ruleId: NO_HTTPONLY, confidence: "medium" });
   });
   it("9: value-marked cookie with httpOnly only", async () => {
-    const f = await one("server.js", `res.cookie("u", accessToken, { httpOnly: true });`);
+    const f = await one("server.js", `res.cookie("u", signToken(user), { httpOnly: true });`);
     expect(f[0]).toMatchObject({ ruleId: NOT_SECURE, severity: "low", confidence: "medium" });
   });
   it("15: bare sign() with a jsonwebtoken import marks the value", async () => {
@@ -87,12 +87,12 @@ describe("CookieFlagsDetector positives", () => {
     );
     expect(f[0]).toMatchObject({ ruleId: NO_HTTPONLY, confidence: "medium" });
   });
-  it("16: refreshToken is still a session value", async () => {
+  it("16: refreshToken under a neutral name is not classified by value", async () => {
     const f = await run(detector, {
       "a.js": `res.cookie("session", refreshToken);`,
       "b.js": `res.cookie("rt", refreshToken);`,
     });
-    expect(f.map((x) => x.ruleId)).toEqual([NO_HTTPONLY, NO_HTTPONLY]);
+    expect(f.map((x) => x.ruleId)).toEqual([NO_HTTPONLY]);
     expect(f.every((x) => x.confidence === "medium")).toBe(true);
     expectRubric(f);
   });
@@ -288,7 +288,7 @@ describe("cookie flags review round 2", () => {
     expect(f).toEqual([]);
   });
   it("positive control: a metadata-named cookie holding a token still reports", async () => {
-    const f = await one("server.js", `res.cookie("session_type", sessionToken);`);
+    const f = await one("server.js", `res.cookie("session_type", signToken(user));`);
     expect(f.some((x) => x.ruleId === NO_HTTPONLY)).toBe(true);
   });
 });
@@ -388,9 +388,9 @@ describe("CookieFlagsDetector review extra round 3", () => {
     expect(await one("server.js", code)).toHaveLength(0);
   });
   it.each([
-    ["req.session.token", `res.cookie("x", req.session.token);`],
-    ["sessionToken ident", `res.cookie("x", sessionToken);`],
-    ["user.token", `res.cookie("x", user.token);`],
+    ["signToken", `res.cookie("x", signToken(user));`],
+    ["createSession call", `res.cookie("x", createSessionFor(user));`],
+    ["jwt.sign", `res.cookie("x", jwt.sign(p, s));`],
   ])("still flags %s", async (_n, code) => {
     const f = await one("server.js", code);
     expect(f[0]).toMatchObject({ ruleId: NO_HTTPONLY });
@@ -419,5 +419,51 @@ describe("CookieFlagsDetector review extra round 3", () => {
       `import { NextResponse } from "next/server";\n// cookie\nconst x = "${"a$".repeat(20_000)}";`,
     );
     expect(Date.now() - t).toBeLessThan(1000);
+  });
+});
+
+describe("cookie flags final round", () => {
+  it.each([
+    ["Auth.js org cookie", `cookies().set("active_org", session.user.orgId);`],
+    ["display name", `cookies().set("display_name", session.user.name ?? "");`],
+    ["session.locale", `res.cookie("locale", session.locale);`],
+    ["session.user.theme", `res.cookie("theme", session.user.theme, { maxAge: 1000 });`],
+    ["cart id", `res.cookie("cart", req.session.cartId);`],
+    ["checkout", `res.cookie("checkout", session.id, { maxAge: 1000 });`],
+    ["koa visits", `ctx.cookies.set("visits", String(ctx.session.views), { httpOnly: false });`],
+    ["bare token name-less", `res.cookie("x", req.session.token);`],
+    ["bare sessionToken", `res.cookie("x", sessionToken);`],
+  ])("silent: non-session name, session-reading value: %s", async (_n, code) => {
+    expect(await one("server.js", code)).toEqual([]);
+  });
+  it("still flags a minted token under a neutral name", async () => {
+    const f = await one("server.js", `res.cookie("x", signToken(user.id));`);
+    expect(f.length).toBeGreaterThan(0);
+  });
+  it("self-referencing spread is bounded", async () => {
+    const spreads = Array.from({ length: 400 }, () => "...o").join(", ");
+    const t0 = Date.now();
+    await one("server.js", `const o = { ${spreads} };\nres.cookie("session", t, o);`);
+    expect(Date.now() - t0).toBeLessThan(1000);
+  });
+  it("long spread chain is bounded", async () => {
+    const decls = Array.from(
+      { length: 300 },
+      (_v, i) => `const o${i} = { ...o${i + 1}, ...o${i + 1}, ...o${i + 1} };`,
+    ).join("\n");
+    const t0 = Date.now();
+    await one(
+      "server.js",
+      `${decls}\nconst o300 = { httpOnly: true };\nres.cookie("session", t, o0);`,
+    );
+    expect(Date.now() - t0).toBeLessThan(1000);
+  });
+  it("next response regex is linear on a long a$ run", async () => {
+    const t0 = Date.now();
+    await one(
+      "app/api/x/route.ts",
+      `import { NextResponse } from "next/server";\n// cookie\nconst z = "${"a$".repeat(100000)}";\n${"a$".repeat(100000)}`,
+    );
+    expect(Date.now() - t0).toBeLessThan(1000);
   });
 });

@@ -61,6 +61,10 @@ describe("isSessionCookieName", () => {
 });
 
 describe("isSessionCookieValue", () => {
+  it("is false for session-object reads and bare identifiers", () => {
+    for (const v of ["session.user.theme", "req.session.cartId", "sessionToken", "accessToken"])
+      expect(isSessionCookieValue(v, false), v).toBe(false);
+  });
   it("is false for one-purpose flow tokens", () => {
     for (const v of [
       "inviteToken",
@@ -73,14 +77,7 @@ describe("isSessionCookieValue", () => {
       expect(isSessionCookieValue(v, false), v).toBe(false);
   });
   it("is true for credential-looking values", () => {
-    for (const v of [
-      "refreshToken",
-      "accessToken",
-      "sessionToken",
-      "jwt.sign(p, s)",
-      "signToken(user)",
-      "createSessionFor(u)",
-    ])
+    for (const v of ["jwt.sign(p, s)", "signToken(user)", "createSessionFor(u)"])
       expect(isSessionCookieValue(v, false), v).toBe(true);
   });
   it("needs a JWT library import for a bare sign()", () => {
