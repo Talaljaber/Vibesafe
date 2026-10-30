@@ -26,3 +26,7 @@ export function loadRun(
 ): AttackRun | undefined {
   return loadSavedRun(projectPath, which);
 }
+
+export { renderAgentReport } from "./report/markdown.js";
+export { renderTerminalSummary, type TerminalOptions } from "./report/terminal.js";
+export { formatCurl, replayLine, placeholderName, type CurlOptions } from "./report/curl.js";
