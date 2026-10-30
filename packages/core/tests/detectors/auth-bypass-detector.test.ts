@@ -615,6 +615,55 @@ describe("auth-bypass review round 2", () => {
   });
 });
 
+describe("auth-bypass extra round 1", () => {
+  it("does not taint a token response when the request read is inline in the fetch body", async () => {
+    const f = await run({
+      "app/api/auth/callback/route.ts": [
+        'import { jwtDecode } from "jwt-decode";',
+        "export async function GET(req: NextRequest) {",
+        "  const tokenRes = await fetch('https://idp.example.com/token', { method: 'POST', body: new URLSearchParams({ code: req.nextUrl.searchParams.get('code')! }) });",
+        "  const { id_token } = await tokenRes.json();",
+        "  const claims = jwtDecode<{ email_verified: boolean }>(id_token);",
+        "  if (!claims.email_verified) return new Response('no', { status: 403 });",
+        "  return Response.json({ ok: true });",
+        "}",
+      ].join("\n"),
+    });
+    expect(rule(f, JWT)).toHaveLength(0);
+  });
+
+  it("does not taint tokens from an exchange helper called with an inline searchParams read", async () => {
+    const f = await run({
+      "app/api/auth/callback/route.ts": [
+        'import { jwtDecode } from "jwt-decode";',
+        "export async function GET(req: NextRequest) {",
+        "  const { searchParams } = req.nextUrl;",
+        "  const tokens = await exchangeCodeForTokens(searchParams.get('code') ?? '');",
+        "  const claims = jwtDecode<{ email_verified: boolean }>(tokens.id_token);",
+        "  if (!claims.email_verified) return new Response('no', { status: 403 });",
+        "  return Response.json({ ok: true });",
+        "}",
+      ].join("\n"),
+    });
+    expect(rule(f, JWT)).toHaveLength(0);
+  });
+
+  it("still flags a token pulled via an awaited helper given the bare request", async () => {
+    const f = await run({
+      "app/api/admin/route.ts": [
+        'import jwt from "jsonwebtoken";',
+        "export async function GET(req: Request) {",
+        "  const token = await getBearerToken(req);",
+        "  const payload: any = jwt.decode(token);",
+        "  if (payload.role !== 'admin') return new Response('no', { status: 403 });",
+        "  return Response.json({ secret: 1 });",
+        "}",
+      ].join("\n"),
+    });
+    expect(rule(f, JWT).length).toBeGreaterThan(0);
+  });
+});
+
 describe("auth-bypass review round 3", () => {
   it("does not flag an OIDC id_token decoded after a hand-rolled token exchange", async () => {
     const f = await run({
@@ -676,7 +725,7 @@ describe("auth-bypass review round 3", () => {
         "}",
       ].join("\n"),
     });
-    expect(rule(f, OPEN).map((r) => r.confidence)).not.toContain("high");
+    expect(rule(f, OPEN).map((r) => r.confidence)).toEqual(["medium"]);
   });
 
   it("a format check named validateFormat does not count as verification", async () => {

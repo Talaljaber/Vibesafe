@@ -212,10 +212,17 @@ function requestBindings(src: JsSource): Set<string> {
     let ids = rhs.match(/[A-Za-z_$][\w$]*/g) ?? [];
     let direct = REQUEST_SOURCE_RE.test(rhs);
     if (/^\s*\(?\s*await\b/.test(rhs)) {
-      const callee = /^\s*\(?\s*await\s+([\w$.\s]*?)\s*(?:<[^>()]*>)?\s*\(/.exec(rhs)?.[1];
+      const call = /^\s*\(?\s*await\s+([\w$.\s]*?)\s*(?:<[^>()]*>)?\s*\(\s*([\w$]*)\s*([,)])?/.exec(
+        rhs,
+      );
+      const callee = call?.[1];
       if (callee !== undefined) {
         ids = callee.match(/[A-Za-z_$][\w$]*/g) ?? [];
-        if (/^(?:req|request|ctx|event)\b/.test(callee)) direct = true;
+        // only the callee (or a bare request argument) carries request taint, never inline
+        // request reads inside the call arguments (token exchange bodies)
+        direct =
+          /^(?:req|request|ctx|event)\b/.test(callee) ||
+          (/^(?:req|request|ctx|event)$/.test(call?.[2] ?? "") && call?.[3] !== undefined);
       }
     }
     decls.push({ names, direct, ids });
