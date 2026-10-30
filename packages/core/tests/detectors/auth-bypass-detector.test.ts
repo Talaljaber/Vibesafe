@@ -148,11 +148,11 @@ describe("auth/jwt-decode-without-verify", () => {
 
   it("is hidden by crypto/jwt-decode-for-auth on the same line, and returns when that rule is off", async () => {
     const files: Record<string, string> = {
-      "app/api/docs/route.ts": [
+      "app/api/exports/route.ts": [
         'import jwt from "jsonwebtoken";',
         "export async function GET(req: Request) {",
-        '  const share = new URL(req.url).searchParams.get("share");',
-        "  const claims = jwt.decode(share) as any;",
+        '  const handoff = new URL(req.url).searchParams.get("handoff");',
+        "  const claims = jwt.decode(handoff) as any;",
         "  if (claims.role !== 'admin') throw new Error('bad');",
         "  return Response.json({});",
         "}",
@@ -612,5 +612,86 @@ describe("auth-bypass review round 2", () => {
     const t = Date.now();
     await run({ "server/m.ts": `import jwt from "jsonwebtoken";\n${sites}\n${decls}\n` });
     expect(Date.now() - t).toBeLessThan(4000);
+  });
+});
+
+describe("auth-bypass review round 3", () => {
+  it("does not flag an OIDC id_token decoded after a hand-rolled token exchange", async () => {
+    const f = await run({
+      "app/api/auth/callback/route.ts": [
+        'import { jwtDecode } from "jwt-decode";',
+        "export async function GET(req: Request) {",
+        "  const code = new URL(req.url).searchParams.get('code');",
+        "  const tokenRes = await fetch('https://idp.example.com/token', { method: 'POST', body: new URLSearchParams({ code: code! }) });",
+        "  const { id_token } = await tokenRes.json();",
+        "  const claims = jwtDecode<{ email: string; email_verified: boolean }>(id_token);",
+        "  if (!claims.email_verified) return new Response('no', { status: 403 });",
+        "  const user = await db.user.findFirst({ where: { email: claims.email } });",
+        "  return Response.json({ id: user?.id });",
+        "}",
+      ].join("\n"),
+    });
+    expect(rule(f, JWT)).toHaveLength(0);
+  });
+
+  it("does not flag decodeJwt on tokens returned by validateAuthorizationCode", async () => {
+    const f = await run({
+      "app/api/login/google/callback/route.ts": [
+        'import { decodeJwt } from "jose";',
+        "export async function GET(req: Request) {",
+        "  const code = new URL(req.url).searchParams.get('code');",
+        "  const tokens = await google.validateAuthorizationCode(code!, verifier);",
+        "  const claims = decodeJwt(tokens.idToken) as { sub: string; email: string };",
+        "  const user = await db.user.findFirst({ where: { googleId: claims.sub } });",
+        "  return Response.json({ id: user?.id });",
+        "}",
+      ].join("\n"),
+    });
+    expect(rule(f, JWT)).toHaveLength(0);
+  });
+
+  it("still flags a token read from the awaited request body", async () => {
+    const f = await run({
+      "app/api/sessions/route.ts": [
+        'import jwt from "jsonwebtoken";',
+        "export async function POST(req: Request) {",
+        "  const { token } = await req.json();",
+        "  const claims = jwt.decode(token) as any;",
+        "  const user = await db.user.findFirst({ where: { id: claims.sub } });",
+        "  return Response.json({ user });",
+        "}",
+      ].join("\n"),
+    });
+    expect(rule(f, JWT).length).toBeGreaterThan(0);
+  });
+
+  it("fail-open lowers a plain helper parameter compare to medium confidence", async () => {
+    const f = await run({
+      "src/crypto/key-check.ts": [
+        "export function assertEncryptionKeyUnchanged(storedKeyHash: string) {",
+        "  const key = process.env.ENCRYPTION_KEY;",
+        "  if (key && sha(key) !== storedKeyHash) {",
+        "    throw new Error('encryption key changed');",
+        "  }",
+        "}",
+      ].join("\n"),
+    });
+    expect(rule(f, OPEN).map((r) => r.confidence)).not.toContain("high");
+  });
+
+  it("a format check named validateFormat does not count as verification", async () => {
+    const f = await run({
+      "app/api/share/route.ts": [
+        'import jwt from "jsonwebtoken";',
+        "export async function GET(req: Request) {",
+        "  const handoff = new URL(req.url).searchParams.get('handoff');",
+        "  validateFormat(handoff);",
+        "  const claims = jwt.decode(handoff) as any;",
+        "  if (claims.role !== 'admin') throw new Error('bad');",
+        "  return Response.json({});",
+        "}",
+      ].join("\n"),
+    });
+    expect(rule(f, JWT).length).toBeGreaterThan(0);
   });
 });

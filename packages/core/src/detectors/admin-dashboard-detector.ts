@@ -21,6 +21,13 @@ const NONPROD_RE =
 /** An inline middleware function that answers 401/403 is an auth check. */
 const INLINE_AUTH_RE = /(?:=>|\bfunction\b)[\s\S]*?(?:\b40[13]\b|[Uu]nauthori[sz]ed|[Ff]orbidden)/;
 const isAuthArg = (a: string): boolean => AUTH_LIKE_RE.test(a) || INLINE_AUTH_RE.test(a);
+/** Global `app.use(x)` auth: an inline check, a call, or a conventional middleware name. */
+const KNOWN_AUTH_NAME_RE =
+  /^(?:[\w$]+\s*\.\s*)*(?:auth\w*|require[A-Z]\w*|ensure\w+|isAuth\w*|isAdmin|protect\w*|authenticate\w*|\w*Auth|\w*AuthMiddleware|\w*Guard|basicAuth|session|passport)$/;
+const isGlobalAuthArg = (a: string): boolean =>
+  INLINE_AUTH_RE.test(a) ||
+  (a.includes("(") && AUTH_LIKE_RE.test(a)) ||
+  KNOWN_AUTH_NAME_RE.test(a.trim());
 
 const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -267,7 +274,7 @@ export class AdminDashboardDetector implements Detector {
           u.obj === obj &&
           u.start < at &&
           (u.args.length === 1 || (u.firstIsString && /^['"`]\/?\*?['"`]$/.test(u.args[0]!))) &&
-          u.args.slice(u.firstIsString ? 1 : 0).some(isAuthArg),
+          u.args.slice(u.firstIsString ? 1 : 0).some(isGlobalAuthArg),
       );
 
     // `export const router = express.Router()`: it may be mounted behind auth in another module

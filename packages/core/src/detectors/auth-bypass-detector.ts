@@ -114,7 +114,7 @@ const REQUEST_SOURCE_RE =
 const TOKENISH_RE = /token|jwt|bearer|session|credential|auth/i;
 const TIME_CLAIMS = new Set(["exp", "iat", "nbf"]);
 const VERIFY_CALL_RE =
-  /(?:\bjwt\s*\.\s*verify|\bjwtVerify|\bverifyToken|\bverifyJwt|\bverifyJWT|\bverify[A-Za-z]*Token|\bvalidate[A-Za-z]*|\bauthenticate[A-Za-z]*|\bcheck[A-Za-z]*Token|\.\s*verify)\s*(?:<[^>()]*>)?\s*\(/g;
+  /(?:\bjwt\s*\.\s*verify|\bjwtVerify|\bverifyToken|\bverifyJwt|\bverifyJWT|\bverify[A-Za-z]*Token|\bvalidate\w*(?:Token|Jwt|JWT|Session)|\bauthenticate[A-Za-z]*|\bcheck[A-Za-z]*Token|\.\s*verify)\s*(?:<[^>()]*>)?\s*\(/g;
 
 /** Names (and the whole-binding name) a statement before `callStart` binds the call result to. */
 function resultBinding(src: JsSource, callStart: number): { names: string[]; whole: boolean } {
@@ -207,11 +207,18 @@ function requestBindings(src: JsSource): Set<string> {
         if (/^[A-Za-z_$][\w$]*$/.test(n)) names.push(n);
       }
     } else names.push(pt);
-    decls.push({
-      names,
-      direct: REQUEST_SOURCE_RE.test(rhs),
-      ids: rhs.match(/[A-Za-z_$][\w$]*/g) ?? [],
-    });
+    // an awaited call result (token endpoint, HTTP client, SDK) is not request data unless the
+    // callee itself hangs off the request (`await req.json()`, `await formData.get(..)`)
+    let ids = rhs.match(/[A-Za-z_$][\w$]*/g) ?? [];
+    let direct = REQUEST_SOURCE_RE.test(rhs);
+    if (/^\s*\(?\s*await\b/.test(rhs)) {
+      const callee = /^\s*\(?\s*await\s+([\w$.\s]*?)\s*(?:<[^>()]*>)?\s*\(/.exec(rhs)?.[1];
+      if (callee !== undefined) {
+        ids = callee.match(/[A-Za-z_$][\w$]*/g) ?? [];
+        if (/^(?:req|request|ctx|event)\b/.test(callee)) direct = true;
+      }
+    }
+    decls.push({ names, direct, ids });
   }
   for (let pass = 0; pass < 4; pass++) {
     let changed = false;
@@ -596,6 +603,7 @@ function failOpenFindings(
     if (nm && bindings.has(nm[1]!)) return nm[1]!;
     return undefined;
   };
+  let weakParam = false;
   const mentions = (text: string, term: string): boolean =>
     new RegExp(`(?:^|[^\\w$.])${escapeRe(term)}(?![\\w$])`).test(text);
   /** The compare operand must involve request data (not the secret itself or a literal). */
@@ -608,9 +616,13 @@ function failOpenFindings(
     if (ids.length === 0) return false;
     const span = enclosingFunction(spans, at);
     const params = new Set<string>();
+    const handlerish = span !== undefined && span.role !== "other";
     for (const p of span?.params ?? []) for (const n of p.names) if (n !== term) params.add(n);
     const tainted = getBindings();
-    return ids.some((id) => id !== term && (params.has(id) || tainted.has(id)));
+    const hit = ids.some((id) => id !== term && (params.has(id) || tainted.has(id)));
+    // a plain helper parameter is only weak evidence of request data
+    if (hit && !handlerish && !ids.some((id) => id !== term && tainted.has(id))) weakParam = true;
+    return hit;
   };
   const compares = (cond: string, term: string, at: number): boolean => {
     if (!mentions(cond, term)) return false;
@@ -646,6 +658,7 @@ function failOpenFindings(
   for (const s of ifs) {
     if (out.length >= MAX_PER_FILE) break;
     let term: string | undefined;
+    weakParam = false;
     const ops = andOperands(s.codeCond, s.codeCond);
     if (ops === undefined) continue;
     if (ops.length >= 2) {
@@ -675,7 +688,7 @@ function failOpenFindings(
         ruleId: "auth/secret-check-fails-open",
         title: "Secret check is skipped when the secret is not configured",
         severity: "high",
-        confidence: "high",
+        confidence: weakParam ? "medium" : "high",
         file,
         line,
         evidence: src.lineText(line),

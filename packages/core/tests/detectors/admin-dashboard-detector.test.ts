@@ -206,4 +206,32 @@ describe("auth/unprotected-queue-dashboard review round 2", () => {
       expect(f).toHaveLength(0);
     },
   );
+
+  it("a router named like admin pages is not global auth", async () => {
+    const f = await run({
+      "src/index.ts": [
+        "import express from 'express';",
+        "import { createBullBoard } from 'bull-board';",
+        "const app = express();",
+        "app.use(adminPagesRouter);",
+        "const { router: boardRouter } = createBullBoard(queues);",
+        "app.use('/admin/queues', boardRouter);",
+      ].join("\n"),
+    });
+    expect(f).toHaveLength(1);
+  });
+
+  it("a conventional global auth middleware still protects the board", async () => {
+    const f = await run({
+      "src/index.ts": [
+        "import express from 'express';",
+        "import { createBullBoard } from 'bull-board';",
+        "const app = express();",
+        "app.use(requireAdmin);",
+        "const { router: boardRouter } = createBullBoard(queues);",
+        "app.use('/admin/queues', boardRouter);",
+      ].join("\n"),
+    });
+    expect(f).toHaveLength(0);
+  });
 });
