@@ -1,4 +1,4 @@
-import { isRiskyRoutePattern } from "@talaljaber/vibesafe-core";
+﻿import { isRiskyRoutePattern } from "@talaljaber/vibesafe-core";
 import type {
   AttackCheck,
   AttackOutcome,
@@ -12,6 +12,7 @@ import type {
   StaticRef,
 } from "../types.js";
 import { stableAttackId } from "../ids.js";
+import { formatCurl } from "../report/curl.js";
 import { preflightGet } from "../plan/preflight.js";
 import { enclosingHandler } from "../target/enclosing-handler.js";
 import { concretePath } from "../target/route-map.js";
@@ -41,13 +42,14 @@ function skipGroup(
   ref: StaticRef,
   route: string | undefined,
   reason: string,
+  method = "GET",
 ): ProbeGroup {
   return {
     attackId,
     checkId: "unauth-route",
     title: `Unauthenticated GET ${route ?? ref.file}`,
     route,
-    method: "GET",
+    method,
     requests: [],
     staticRef: ref,
     skip: { outcome: "INCONCLUSIVE", reason },
@@ -77,15 +79,29 @@ function plan(ctx: PlanContext): ProbeGroup[] {
       continue;
     }
     const attackId = stableAttackId("unauth-route", "GET", entry.pattern);
-    if (seen.has(attackId)) continue;
-    seen.add(attackId);
-
     const content = ctx.readSource(entry.sourceFile) ?? "";
     const handler = f.line === undefined ? undefined : enclosingHandler(content, f.line);
     if (handler === undefined || handler.method !== "GET") {
-      groups.push(skipGroup(attackId, ref, entry.pattern, "write path, not tested"));
+      if (seen.has(attackId)) continue;
+      seen.add(attackId);
+      const m = handler?.method;
+      const reason =
+        handler === undefined
+          ? "handler not resolved"
+          : m === "HEAD"
+            ? "not a GET handler, not tested"
+            : "write path, not tested";
+      groups.push(skipGroup(attackId, ref, entry.pattern, reason, m ?? "GET"));
       continue;
     }
+    // A GET finding replaces an earlier write-path skip group for the same route.
+    const prior = groups.findIndex((g) => g.attackId === attackId);
+    if (prior >= 0) {
+      const reason = groups[prior]?.skip?.reason ?? "";
+      if (!/^(write path|not a GET|handler not resolved)/.test(reason)) continue;
+      groups.splice(prior, 1);
+    }
+    seen.add(attackId);
     const pre = preflightGet(entry.pattern, content);
     if (pre.skip) {
       groups.push(skipGroup(attackId, ref, entry.pattern, pre.reason ?? "handler may write"));
@@ -159,6 +175,26 @@ function isEmptyJson(v: unknown): boolean {
   return typeof v === "object" && Object.keys(v as object).length === 0;
 }
 
+/** Keys that look like ids, tokens or secrets rather than field names. */
+function looksLikeValue(k: string): boolean {
+  return (
+    /^\d+$/.test(k) ||
+    /^[0-9a-f]{16,}$/i.test(k) ||
+    /^(sk|pk|rk)_/i.test(k) ||
+    /^eyJ/.test(k) ||
+    k.length > 40
+  );
+}
+
+function isErrorOnly(v: unknown): boolean {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return false;
+  const keys = Object.keys(v as object);
+  return (
+    keys.length > 0 &&
+    keys.every((k) => ["error", "errors", "message", "ok", "success", "status"].includes(k))
+  );
+}
+
 function shapeOf(r: ProbeResponse): ResponseShape {
   const shape: ResponseShape = { label: r.label, status: r.status, keys: [] };
   if (!r.contentType.toLowerCase().includes("json")) return shape;
@@ -172,17 +208,16 @@ function shapeOf(r: ProbeResponse): ResponseShape {
   if (target !== null && typeof target === "object" && !Array.isArray(target)) {
     shape.keys = Object.keys(target as Record<string, unknown>)
       .slice(0, MAX_SHAPE_KEYS)
-      .map((k) => (/^[\w.-]{1,64}$/.test(k) ? k : "<key>"))
+      .map((k) => (/^[\w.-]{1,64}$/.test(k) && !looksLikeValue(k) ? k : "<key>"))
       .sort();
   }
   return shape;
 }
 
 function curlLines(group: ProbeGroup): string[] {
-  return group.requests.map((r) => {
-    const auth = r.session === undefined ? "" : ` -H "Cookie: <${r.session} session cookie>"`;
-    return `curl -i${auth} "$TARGET${r.path}"`;
-  });
+  return group.requests.map((r) =>
+    formatCurl({ targetUrl: "<target>", path: r.path, session: r.session }),
+  );
 }
 
 function evaluate(
@@ -221,7 +256,9 @@ function evaluate(
   }
   const u1 = responses.find((r) => r.label === "U1");
   const u2 = responses.find((r) => r.label === "U2");
-  const ownerOk = u2 === undefined || (u2.status !== 0 && u2.status !== 404 && u2.status < 500);
+  const ownerOk =
+    u2 === undefined ||
+    (u2.status !== 0 && u2.status !== 404 && u2.status < 500 && !controls.matches(u2.fingerprint));
 
   if (u1 === undefined || u1.status === 0 || u1.status >= 500) {
     return done("ERROR", "The logged-out request failed or the server errored; can't judge.", {
@@ -253,6 +290,12 @@ function evaluate(
       ownerOk,
     });
   }
+  if (isErrorOnly(parsed.value)) {
+    return done("INCONCLUSIVE", "Returned 200 with only an error or status body; can't judge.", {
+      ownerOk,
+    });
+  }
+  // Deliberate deviation from spec 7.2 step 3: empty JSON and error-only bodies are never CONFIRMED.
   const risky = ref !== undefined && isRiskyRoutePattern(ref.file);
   if (risky || sensitiveKeysWithin(parsed.value, 0)) {
     return done(

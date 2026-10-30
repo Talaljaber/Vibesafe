@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import type { Finding } from "@talaljaber/vibesafe-shared";
 import { buildControlSet, fingerprintResponse } from "../../src/controls.js";
 import { unauthRoute } from "../../src/checks/unauth-route.js";
@@ -167,12 +167,41 @@ describe("unauth-route.evaluate", () => {
   it("never leaks response values and uses placeholder curl lines", () => {
     const r = run([resp("U1", 200, '{"users":[{"email":"leak@example.com"}]}')]);
     expect(JSON.stringify(r)).not.toContain("leak@example.com");
-    expect(r.curl).toEqual(['curl -i "$TARGET/api/admin/users"']);
+    expect(r.curl).toHaveLength(1);
+    expect(r.curl?.[0]).toMatch(/^curl(\.exe)? -s .*<target>\/api\/admin\/users/);
   });
   it("a skipped group evaluates to its INCONCLUSIVE reason", () => {
     const [g] = unauthRoute.plan(ctx([finding("app/api/export/route.js", 1)]));
     const r = unauthRoute.evaluate(g!, [], none);
     expect(r.outcome).toBe("INCONCLUSIVE");
     expect(r.reasoning).toMatch(/write path/);
+  });
+  it("error-only 200 bodies are INCONCLUSIVE, never CONFIRMED", () => {
+    expect(run([resp("U1", 200, '{"error":"Unauthorized"}')]).outcome).toBe("INCONCLUSIVE");
+  });
+  it("U2 matching a control makes ownerOk false", () => {
+    const body = '{"error":"not found"}';
+    const controls = buildControlSet([fingerprintResponse(200, J, body)]);
+    const r = run([resp("U1", 200, '{"users":[1]}'), resp("U2", 200, body)], controls);
+    expect(r.ownerOk).toBe(false);
+  });
+  it("a shell metacharacter in a route segment never reaches curl unescaped", () => {
+    const g = adminGroup();
+    const r = unauthRoute.evaluate(
+      { ...g, requests: [{ label: "U1", method: "GET", host: "target", path: "/api/$(id)`x`" }] },
+      [resp("U1", 200, '{"users":[1]}')],
+      none,
+    );
+    expect(r.curl?.join("\n")).not.toMatch(/\$\(|`/);
+  });
+  it("a GET finding replaces an earlier write-path skip for the same route", () => {
+    const gs = unauthRoute.plan(
+      ctx(
+        [finding("app/api/notes/[id]/route.js", 2), finding("app/api/notes/[id]/route.js", 1)],
+        [alice],
+      ),
+    );
+    expect(gs).toHaveLength(1);
+    expect(gs[0]?.skip).toBeUndefined();
   });
 });
