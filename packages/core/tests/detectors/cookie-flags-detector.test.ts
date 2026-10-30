@@ -337,3 +337,25 @@ describe("CookieFlagsDetector extra review round 1", () => {
     expect(Date.now() - t).toBeLessThan(1000);
   });
 });
+
+describe("CookieFlagsDetector review extra round 2", () => {
+  it.each([
+    [
+      "null logout with httpOnly",
+      `res.cookie("token", null, { expires: new Date(Date.now()), httpOnly: true });`,
+    ],
+    ["null logout no options", `res.cookie("token", null);`],
+    ["undefined logout", `res.cookie("jwt", undefined, { maxAge: 1 });`],
+    ["void 0 logout", `res.cookie("jwt", void 0, { maxAge: 1 });`],
+  ])("stays silent for %s", async (_n, code) => {
+    const findings = await run(new CookieFlagsDetector(), { "src/auth.js": code });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("keeps the login positive", async () => {
+    const findings = await run(new CookieFlagsDetector(), {
+      "src/auth.js": `res.status(200).cookie("token", token, { httpOnly: true });`,
+    });
+    expect(findings.length).toBeGreaterThan(0);
+  });
+});

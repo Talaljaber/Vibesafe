@@ -321,3 +321,12 @@ describe("CsrfDetector extra review round 1", () => {
     expect(f.length).toBeGreaterThan(0);
   });
 });
+
+describe("CsrfDetector review extra round 2", () => {
+  it("handles long whitespace after req.cookies in linear time", async () => {
+    const code = `const express = require("express");\nconst app = express();\nconst a = req.cookies${" ".repeat(60000)};\nconst b = 1;\n`;
+    const t0 = Date.now();
+    await go({ "server.js": code });
+    expect(Date.now() - t0).toBeLessThan(1500);
+  });
+});

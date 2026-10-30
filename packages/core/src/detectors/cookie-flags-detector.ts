@@ -157,7 +157,7 @@ export class CookieFlagsDetector implements Detector {
         title: "Session cookie sent on cross-site requests (SameSite=None)",
         severity: "medium",
         confidence: d.confidence,
-        plainEnglishProblem: `The \`${name}\` session/auth cookie is set with \`sameSite: "none"\` (${weakText}), so browsers attach it to requests from any site, which enables CSRF. Chromium-based browsers reject a SameSite=None cookie without \`secure: true\` is set.`,
+        plainEnglishProblem: `The \`${name}\` session/auth cookie is set with \`sameSite: "none"\` (${weakText}), so browsers attach it to requests from any site, which enables CSRF. Chromium-based browsers reject a SameSite=None cookie unless \`secure: true\` is set.`,
         whyItMatters:
           "Another site can make a logged-in visitor's browser send authenticated requests to your app without them noticing.",
         fixSteps: [

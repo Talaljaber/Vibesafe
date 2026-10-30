@@ -93,7 +93,8 @@ export function isSessionCookieValue(valueText: string, jwtLibImported: boolean)
 }
 
 /** A plain literal value (string without `${`, number, boolean) is never a credential. */
-const PLAIN_LITERAL_RE = /^(?:(["'])(?:(?!\1)[^\\\n]|\\.)*\1|`[^`$\\]*`|\d+(?:\.\d+)?|true|false)$/;
+const PLAIN_LITERAL_RE =
+  /^(?:(["'])(?:(?!\1)[^\\\n]|\\.)*\1|`[^`$\\]*`|\d+(?:\.\d+)?|true|false|null|undefined|void\s+0)$/;
 
 /** True when `valueText` is a plain literal (no interpolation, identifier or call). */
 export function isPlainLiteralValue(valueText: string): boolean {
@@ -506,7 +507,7 @@ function boundNames(src: JsSource, mod: string): string[] {
   const m = escapeRe(mod);
   const res = [
     new RegExp(
-      String.raw`\bimport\s+(?:\*\s+as\s+)?([A-Za-z_$][\w$]*)\s*(?:,\s*\{[^{}]{0,500}\})?\s*from\s*["']${m}["']`,
+      String.raw`\bimport\s+(?:\*\s+as\s+)?([A-Za-z_$][\w$]*)\s*(?:,\s*\{[^{}]{0,500}\}\s*)?from\s*["']${m}["']`,
       "g",
     ),
     new RegExp(

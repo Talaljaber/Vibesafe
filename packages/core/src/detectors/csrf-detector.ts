@@ -67,7 +67,7 @@ const FORM_MODULES: readonly string[] = [
   "body-parser",
 ];
 const COOKIE_READ_RE =
-  /\breq\s*\.\s*(?:signedCookies|cookies)\s*(?:\??\.\s*([A-Za-z_$][\w$]*)|\??\.?\s*\[\s*["'`]([^"'`\n]{1,64})["'`]\s*\])/g;
+  /\breq\s*\.\s*(?:signedCookies|cookies)\s*(?:\??\.\s*([A-Za-z_$][\w$]*)|(?:\?\.\s*)?\[\s*["'`]([^"'`\n]{1,64})["'`]\s*\])/g;
 const PASSPORT_SESSION_RE = /\bpassport\s*\.\s*session\s*\(\s*\)/g;
 const BODY_READ_RE = /\b(?:req|request)\s*\.\s*body\b|\bbody\s*[,}]/;
 /** A file without any of these cannot be an Express file, a session site or a protection signal. */
