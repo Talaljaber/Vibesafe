@@ -89,6 +89,8 @@ interface Candidate {
   line: number | undefined;
   evidence: string;
   inLockfile: boolean;
+  /** The project's .npmrc holds an auth token for the public registry host. */
+  npmAuth?: boolean | undefined;
 }
 
 type Verdict =
@@ -207,6 +209,22 @@ export class PackageExistenceDetector implements Detector {
       }
     }
 
+    const authCache = new Map<string, boolean>();
+    const hasNpmAuth = async (dir: string): Promise<boolean> => {
+      const cached = authCache.get(dir);
+      if (cached !== undefined) return cached;
+      let text = "";
+      try {
+        text = await context.readFile(dir ? `/.npmrc` : ".npmrc");
+      } catch {
+        text = "";
+      }
+      let found = typeof text === "string" && NPMRC_AUTH_RE.test(text);
+      if (!found && dir !== "") found = await hasNpmAuth(dirOf(dir));
+      authCache.set(dir, found);
+      return found;
+    };
+
     const configCache = new Map<string, RegistryConfig>();
     const registryConfig = async (dir: string): Promise<RegistryConfig> => {
       const cached = configCache.get(dir);
@@ -286,6 +304,7 @@ export class PackageExistenceDetector implements Detector {
           line: dep.line,
           evidence: dep.text ?? `"${dep.name}"`,
           inLockfile,
+          npmAuth: name.startsWith("@") ? await hasNpmAuth(manifest.dir) : undefined,
         });
       }
     }
@@ -320,6 +339,7 @@ export class PackageExistenceDetector implements Detector {
           const name = normalizePypiName(req.name);
           if (name === "python" || !PYPI_NAME_RE.test(name) || out.has(name)) continue;
           if (local.has(name)) continue;
+          if (isIncludeGroupRef(req.evidence, name)) continue;
           out.set(name, {
             ecosystem: "PyPI",
             name,
@@ -440,8 +460,9 @@ export class PackageExistenceDetector implements Detector {
       const reply = await get(npmPackumentUrl(c.name));
       if (reply.kind === "status" && reply.status === 404) {
         // The public registry answers 404 for private scoped packages when unauthenticated, and a
-        // lockfile entry means the project installed it before: not evidence of a made-up name.
-        if (c.name.startsWith("@") && c.inLockfile) verdicts.set(c, { kind: "fine" });
+        // lockfile entry or an .npmrc auth token for the public host means private scoped packages: not evidence of a made-up name.
+        if (c.name.startsWith("@") && (c.inLockfile || c.npmAuth === true))
+          verdicts.set(c, { kind: "fine" });
         else verdicts.set(c, { kind: "not-found", removed: c.inLockfile });
       } else if (reply.kind === "ok") {
         const p = parsePackument(reply.json);
@@ -649,18 +670,44 @@ function writtenName(evidence: string, normalized: string): string {
   return normalized;
 }
 
+/** True when `name` appears in the line only as the value of a PEP 735 `include-group = "..."`. */
+function isIncludeGroupRef(evidence: string, name: string): boolean {
+  for (const m of evidence.matchAll(/include-group\s*=\s*["']([^"']+)["']/gi)) {
+    if (normalizePypiName(m[1]!) === name) return true;
+  }
+  return false;
+}
+
+const NPMRC_AUTH_RE = /^\s*\/\/registry\.npmjs\.org\/:_auth(?:Token)?\s*=/im;
+
 /** A requirements / pyproject / Pipfile that installs from somewhere other than public PyPI. */
 function hasCustomPythonIndex(
   content: string,
   kind: "requirements" | "pyproject" | "pipfile",
 ): boolean {
-  if (kind === "requirements") return /^\s*(?:-i|--index-url|--extra-index-url)\b/m.test(content);
+  if (kind === "requirements") {
+    return /^\s*(?:-i|-f|--index-url|--extra-index-url|--find-links|--no-index)(?:\s|=|$)/m.test(
+      content,
+    );
+  }
   if (
     /^\s*\[\[?\s*(?:tool\.poetry\.source|tool\.uv\.index|tool\.pdm\.source)\s*\]\]?\s*$/m.test(
       content,
     )
   ) {
     return true;
+  }
+  if (kind === "pyproject") {
+    let inUv = false;
+    for (const line of content.split(/\r?\n/)) {
+      const header = /^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(?:#.*)?$/.exec(line);
+      if (header) {
+        inUv = /^tool\.uv(?:\.pip)?$/.test(header[1]!);
+        continue;
+      }
+      if (inUv && /^\s*(?:index-url|extra-index-url|find-links|no-index)\s*=/.test(line))
+        return true;
+    }
   }
   if (kind !== "pipfile") return false;
   let inSource = false;

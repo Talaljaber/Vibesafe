@@ -674,6 +674,69 @@ describe("PackageExistenceDetector: PyPI", () => {
     expect(pub.findings).toHaveLength(1);
   });
 
+  it("never sends PEP 735 include-group names to PyPI, but still checks real packages", async () => {
+    const files = {
+      "pyproject.toml":
+        '[project]\nname = "app"\n\n[dependency-groups]\ntest = ["acme-testkit"]\ndev = [{ include-group = "test" }, "acme-lintkit"]\nci = [\n  { include-group = "lint" },\n  "acme-covkit",\n]\n',
+    };
+    const { calls } = await detect(files, pypi({}));
+    expect(calls).toContain("https://pypi.org/pypi/acme-lintkit/json");
+    expect(calls).toContain("https://pypi.org/pypi/acme-testkit/json");
+    expect(calls).toContain("https://pypi.org/pypi/acme-covkit/json");
+    expect(calls).not.toContain("https://pypi.org/pypi/test/json");
+    expect(calls).not.toContain("https://pypi.org/pypi/lint/json");
+  });
+
+  it("skips offline and local-wheel installs and legacy uv index keys", async () => {
+    const cases: Record<string, string>[] = [
+      { "requirements.txt": "--no-index\nacme-internal==1.0\n" },
+      { "requirements.txt": "-f ./wheels\nacme-internal==1.0\n" },
+      { "requirements.txt": "--find-links=./wheels\nacme-internal==1.0\n" },
+      {
+        "pyproject.toml":
+          '[project]\nname = "x"\ndependencies = ["acme-internal"]\n\n[tool.uv]\nextra-index-url = ["https://pypi.acme.dev/simple"]\n',
+      },
+      {
+        "pyproject.toml":
+          '[project]\nname = "x"\ndependencies = ["acme-internal"]\n\n[tool.uv.pip]\nno-index = true\n',
+      },
+    ];
+    for (const files of cases) {
+      const { findings, calls } = await detect(files, pypi({}));
+      expect(findings).toEqual([]);
+      expect(calls).toEqual([]);
+    }
+  });
+
+  it("still checks pyproject dependencies when [tool.uv] has no index keys", async () => {
+    const { calls } = await detect(
+      {
+        "pyproject.toml":
+          '[project]\nname = "x"\ndependencies = ["made-up-lib"]\n\n[tool.uv]\ndev-dependencies = ["pytest"]\n',
+      },
+      pypi({}),
+    );
+    expect(calls).toContain("https://pypi.org/pypi/made-up-lib/json");
+  });
+
+  it("treats a scoped 404 as private when .npmrc has a registry.npmjs.org auth token", async () => {
+    const files = {
+      "package.json": pkg({ "@acme/internal": "^1.0.0" }),
+      ".npmrc": "//registry.npmjs.org/:_authToken=${NPM_TOKEN}\n",
+    };
+    const { findings } = await detect(files, npmRoutes({ downloads: {} }));
+    expect(findings).toEqual([]);
+    const bare = await detect(
+      { "package.json": files["package.json"] },
+      npmRoutes({ downloads: {} }),
+    );
+    expect(bare.findings).toHaveLength(1);
+    const unscoped = await detect(
+      { "package.json": pkg({ "made-up-thing-lib": "^1.0.0" }), ".npmrc": files[".npmrc"] },
+      npmRoutes({ downloads: {} }),
+    );
+    expect(unscoped.findings).toHaveLength(1);
+  });
   it("never sends a pyproject's own name (self-referencing extras) to PyPI", async () => {
     const files = {
       "pyproject.toml":
