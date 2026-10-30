@@ -1,3 +1,4 @@
+import { loadSavedRun } from "./persist.js";
 import type { AttackResult, AttackRun, RunOptions } from "./types.js";
 
 export type * from "./types.js";
@@ -20,10 +21,10 @@ export async function replayAttack(_options: RunOptions, _attackId: string): Pro
  * "baseline" is attack-baseline.json (used by retest), "last" is attack-last.json.
  */
 export function loadRun(
-  _projectPath: string,
-  _which: "baseline" | "last" = "last",
+  projectPath: string,
+  which: "baseline" | "last" = "last",
 ): AttackRun | undefined {
-  throw new Error(NOT_IMPLEMENTED);
+  return loadSavedRun(projectPath, which);
 }
 
 export { renderAgentReport } from "./report/markdown.js";
