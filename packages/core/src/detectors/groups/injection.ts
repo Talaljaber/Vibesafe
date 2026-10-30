@@ -13,6 +13,8 @@ import { CodeEvalDetector } from "../code-eval-detector.js";
 import { SsrfDetector } from "../ssrf-detector.js";
 import { PathTraversalDetector } from "../path-traversal-detector.js";
 import { OpenRedirectDetector } from "../open-redirect-detector.js";
+import { PythonInjectionDetector } from "../python-injection-detector.js";
+import { CeleryConfigDetector } from "../celery-config-detector.js";
 
 export {
   SqlInjectionDetector,
@@ -21,6 +23,8 @@ export {
   SsrfDetector,
   PathTraversalDetector,
   OpenRedirectDetector,
+  PythonInjectionDetector,
+  CeleryConfigDetector,
 };
 
 /** Fresh instances of this group's detectors, registered after the built-in ones. */
@@ -31,6 +35,8 @@ export const injectionDetectors = (): Detector[] => [
   new SsrfDetector(),
   new PathTraversalDetector(),
   new OpenRedirectDetector(),
+  new PythonInjectionDetector(),
+  new CeleryConfigDetector(),
 ];
 
 /**
@@ -59,4 +65,7 @@ export const injectionPrecedence: readonly PrecedenceRule[] = SEVERE_INJECTION_R
 );
 
 /** Detector id -> non-JS file kinds it legitimately reports on (used by non-js-files.test.ts). */
-export const injectionNonJsExempt: Readonly<Record<string, readonly FileKind[]>> = {};
+export const injectionNonJsExempt: Readonly<Record<string, readonly FileKind[]>> = {
+  "python-injection-detector": ["python"],
+  "celery-config-detector": ["python"],
+};
