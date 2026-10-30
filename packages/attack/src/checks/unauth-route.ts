@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { isRiskyRoutePattern } from "@talaljaber/vibesafe-core";
 import type {
   AttackCheck,
@@ -12,6 +11,7 @@ import type {
   ResponseShape,
   StaticRef,
 } from "../types.js";
+import { stableAttackId } from "../ids.js";
 import { preflightGet } from "../plan/preflight.js";
 import { enclosingHandler } from "../target/enclosing-handler.js";
 import { concretePath } from "../target/route-map.js";
@@ -35,21 +35,6 @@ const LOGIN_PATH_RE = /\/(login|log-in|signin|sign-in|sign_in|signup|auth)(\/|\?
 const MAX_SHAPE_KEYS = 20;
 
 const norm = (p: string): string => p.replace(/\\/g, "/");
-
-/** Spec section 9: dynamic segments normalized by position, sha256, first 12 hex chars. */
-function attackIdFor(pattern: string): string {
-  let d = 0;
-  let c = 0;
-  const normalized = pattern
-    .split("/")
-    .map((s) => (/^\[\[?\.\.\./.test(s) ? `*${++c}` : /^\[.+\]$/.test(s) ? `:${++d}` : s))
-    .join("/");
-  const hex = createHash("sha256")
-    .update(`unauth-route|GET|${normalized}`)
-    .digest("hex")
-    .slice(0, 12);
-  return `ATK-${hex}`;
-}
 
 function skipGroup(
   attackId: string,
@@ -85,13 +70,13 @@ function plan(ctx: PlanContext): ProbeGroup[] {
     };
     const entry = ctx.routes.find((r) => norm(r.sourceFile) === file);
     if (entry === undefined) {
-      const id = attackIdFor(file);
+      const id = stableAttackId("unauth-route", "GET", file);
       if (seen.has(id)) continue;
       seen.add(id);
       groups.push(skipGroup(id, ref, undefined, "route not resolved (Next.js app router only)"));
       continue;
     }
-    const attackId = attackIdFor(entry.pattern);
+    const attackId = stableAttackId("unauth-route", "GET", entry.pattern);
     if (seen.has(attackId)) continue;
     seen.add(attackId);
 
