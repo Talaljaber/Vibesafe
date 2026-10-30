@@ -238,7 +238,13 @@ export class CsrfDetector implements Detector {
             s.kind === "express-session" ||
             s.kind === "cookie-session" ||
             s.kind === "iron-session";
-          const cookieCall = s.kind === "express" && s.session && !s.refresh && !s.deletes;
+          // A session cookie's SameSite counts however it is set: res.cookie, cookie.serialize
+          // or a literal Set-Cookie header.
+          const cookieCall =
+            (s.kind === "express" || s.kind === "serialize" || s.kind === "header") &&
+            s.session &&
+            !s.refresh &&
+            !s.deletes;
           if (!sessionCfg && !cookieCall) continue;
           if (s.flags.sameSite === "lax" || s.flags.sameSite === "strict")
             sameSiteStrictOrLax = true;

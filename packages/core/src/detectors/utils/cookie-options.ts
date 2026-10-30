@@ -47,6 +47,7 @@ const VALUE_SIGN_RE = /(?<![.\w$])sign\s*\(|\bnew\s+SignJWT\s*\(/;
 /** Splits a cookie name into lower-case tokens plus adjacent-pair joins ("next-auth.session-token" -> next, auth, session, token, nextauth, authsession, sessiontoken). */
 export function cookieNameTokens(name: string): string[] {
   const parts = name
+    .slice(0, 200)
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .replace(/([A-Z])(?=[A-Z][a-z])/g, "$1 ")
     .split(/[^A-Za-z0-9]+/)
@@ -303,10 +304,20 @@ function findStringDecl(src: JsSource, name: string, at: number): string | undef
 
 const IDENT_RE = /^[A-Za-z_$][\w$]*$/;
 
+/** Trailing `as T` / `satisfies T` on an inline options argument; bounded so it stays linear. */
+const TRAILING_CAST_RE = /\s(?:as|satisfies)\s+[\w$.<>[\], ]{1,120}$/;
+
 /** `{` of an object literal argument, or of the same-file const object it names. */
 function objectOpenOf(src: JsSource, r: Range): number | undefined {
   const t = trimRange(src, r);
   if (src.code[t.start] === "{" && src.matchOf(t.start) === t.end - 1) return t.start;
+  if (src.code[t.start] === "{") {
+    const close = src.matchOf(t.start);
+    if (close > t.start && close < t.end - 1) {
+      const tail = src.code.slice(close + 1, t.end);
+      if (tail.length <= 130 && TRAILING_CAST_RE.test(tail)) return t.start;
+    }
+  }
   const id = src.code.slice(t.start, t.end);
   return IDENT_RE.test(id) ? findObjectDecl(src, id, t.start) : undefined;
 }
@@ -583,18 +594,21 @@ export function boundModuleNames(src: JsSource, mods: readonly string[]): string
   return mods.flatMap((m) => boundNames(src, m));
 }
 
+/** Real cookie names are short; longer text is cut so name tokenizing stays linear. */
+const NAME_MAX = 200;
+
 function nameOf(src: JsSource, r: Range): string {
   const c = src.code[r.start];
   if (c === '"' || c === "'") {
     const e = stringEnd(src, r.start);
-    if (e === r.end) return src.text.slice(r.start + 1, e - 1);
+    if (e === r.end) return src.text.slice(r.start + 1, Math.min(e - 1, r.start + 1 + NAME_MAX));
   } else if (c === "`" && src.code[r.end - 1] === "`") {
-    return src.text.slice(r.start + 1, r.end - 1);
+    return src.text.slice(r.start + 1, Math.min(r.end - 1, r.start + 1 + NAME_MAX));
   } else {
     const id = src.code.slice(r.start, r.end);
-    if (IDENT_RE.test(id)) return findStringDecl(src, id, r.start) ?? id;
+    if (IDENT_RE.test(id)) return (findStringDecl(src, id, r.start) ?? id).slice(0, NAME_MAX);
   }
-  return src.text.slice(r.start, Math.min(r.end, r.start + 200));
+  return src.text.slice(r.start, Math.min(r.end, r.start + NAME_MAX));
 }
 
 function emptyString(src: JsSource, r: Range): boolean {

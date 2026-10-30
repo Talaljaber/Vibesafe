@@ -339,3 +339,41 @@ describe("CsrfDetector review extra round 3", () => {
     return go(files).then((f) => expect(f).toHaveLength(0));
   });
 });
+
+describe("CsrfDetector final review", () => {
+  const ROUTES = `const auth = (req, res, next) => { jwt.verify(req.cookies.token, SECRET); next(); };\napp.patch("/api/me", auth, (req, res) => res.json({}));\napp.delete("/api/posts/:id", auth, (req, res) => res.json({}));\n`;
+  const server = (login: string) =>
+    `const express = require("express");\nconst cookie = require("cookie");\nconst app = express();\napp.post("/login", (req, res) => { const token = jwt.sign({}, SECRET); ${login} res.json({}); });\n${ROUTES}`;
+  it.each([
+    [
+      "cookie.serialize with sameSite strict",
+      `res.setHeader("Set-Cookie", cookie.serialize("token", token, { httpOnly: true, secure: true, sameSite: "strict", path: "/" }));`,
+    ],
+    [
+      "a literal Set-Cookie header with SameSite=Lax",
+      'res.setHeader("Set-Cookie", `token=${token}; HttpOnly; Secure; SameSite=Lax; Path=/`);',
+    ],
+    [
+      "res.append Set-Cookie with SameSite=Strict",
+      'res.append("Set-Cookie", `token=${token}; Path=/; HttpOnly; Secure; SameSite=Strict`);',
+    ],
+    [
+      "inline options cast with as",
+      `res.cookie("token", token, { httpOnly: true, secure: true, sameSite: "lax" } as CookieOptions);`,
+    ],
+    [
+      "inline options cast with satisfies",
+      `res.cookie("token", token, { httpOnly: true, secure: true, sameSite: "strict" } satisfies CookieOptions);`,
+    ],
+  ])("silent when the session cookie is set by %s", async (_label, login) => {
+    expect(await go({ "server.ts": server(login) })).toEqual([]);
+  });
+  it("positive control: a Set-Cookie header without SameSite is still reported", async () => {
+    const f = await go({
+      "server.ts": server(
+        'res.setHeader("Set-Cookie", `token=${token}; HttpOnly; Secure; Path=/`);',
+      ),
+    });
+    expect(f.length).toBeGreaterThan(0);
+  });
+});

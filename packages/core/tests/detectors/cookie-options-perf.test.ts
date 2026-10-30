@@ -43,6 +43,16 @@ describe("cookie site resolution stays near-linear on ~1 MB inputs", () => {
     const c = 'res.cookie("token",\n'.repeat(k) + "t" + ")".repeat(k) + ";";
     expect(time(c)).toBeLessThan(2500);
   });
+  it("nested template-literal cookie names", () => {
+    const k = 3000;
+    const c = "res.cookie(`a${".repeat(k) + "x" + "}`, v)".repeat(k) + ";";
+    expect(time(c)).toBeLessThan(2500);
+  });
+  it("a 200 KB string const used as the cookie name at 5000 sites", () => {
+    let c = `const N = "${"s".repeat(200_000)}";\n`;
+    for (let i = 0; i < 5000; i++) c += `res.cookie(N, t${i});\n`;
+    expect(time(c)).toBeLessThan(2500);
+  });
 });
 
 describe("spread budget is per call", () => {
