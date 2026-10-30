@@ -290,3 +290,34 @@ describe("CsrfDetector review round 3", () => {
     expect(f.length).toBeGreaterThan(0);
   });
 });
+
+describe("CsrfDetector extra review round 1", () => {
+  const SERVER = (cookieIdent: string) =>
+    `const express = require("express");\nconst app = express();\nconst auth = (req, res, next) => { const token = ${cookieIdent}; next(); };\napp.put("/api/posts/:id", auth, (req, res) => res.json({}));\napp.delete("/api/posts/:id", auth, (req, res) => res.json({}));\n`;
+  it("SameSite from a non-express controller cookie silences", async () => {
+    const f = await go({
+      "server.js": SERVER("req.cookies.token"),
+      "controllers/authController.js": `exports.login = (req, res) => { res.cookie("token", jwt.sign({}, s), { httpOnly: true, sameSite: "strict", maxAge: 1 }); res.json({}); };\n`,
+    });
+    expect(f).toEqual([]);
+  });
+  it("positive control: controller cookie without sameSite is still reported", async () => {
+    const f = await go({
+      "server.js": SERVER("req.cookies.token"),
+      "controllers/authController.js": `exports.login = (req, res) => { res.cookie("token", jwt.sign({}, s), { httpOnly: true, maxAge: 1 }); res.json({}); };\n`,
+    });
+    expect(f.length).toBeGreaterThan(0);
+  });
+  it("chained res.status(200).cookie with strict is silent", async () => {
+    const f = await go({
+      "server.js": `const express = require("express");\nconst app = express();\nconst options = { httpOnly: true, secure: true, sameSite: "strict" };\napp.post("/api/login", (req, res) => { res.status(200).cookie("token", token, options).json({ success: true }); });\nconst isAuth = (req, res, next) => { const token = req.cookies.token; next(); };\napp.delete("/api/orders/:id", isAuth, (req, res) => res.json({}));\n`,
+    });
+    expect(f).toEqual([]);
+  });
+  it("optional-chaining cookie read counts as evidence", async () => {
+    const f = await go({
+      "server.js": SERVER("req.cookies?.accessToken"),
+    });
+    expect(f.length).toBeGreaterThan(0);
+  });
+});

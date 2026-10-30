@@ -299,3 +299,41 @@ describe("cookie-flags round 3", () => {
     expect(f).toEqual([]);
   });
 });
+
+describe("CookieFlagsDetector extra review round 1", () => {
+  it("resolves the nearest preceding options declaration (unrelated earlier const options)", async () => {
+    const f = await one(
+      "server.js",
+      `exports.updateMe = async (req, res) => {\n  const options = { new: true, runValidators: true };\n  await User.findByIdAndUpdate(id, body, options);\n};\nexports.login = (req, res) => {\n  const options = { httpOnly: true, secure: true, sameSite: "strict" };\n  res.cookie("accessToken", accessToken, options);\n};`,
+    );
+    expect(f).toEqual([]);
+  });
+  it("reversed order: later unflagged options object is still reported", async () => {
+    const f = await one(
+      "server.js",
+      `exports.a = (req, res) => {\n  const options = { httpOnly: true, secure: true };\n  res.cookie("theme", "x", options);\n};\nexports.login = (req, res) => {\n  const options = { path: "/" };\n  res.cookie("accessToken", jwt.sign(p, s), options);\n};`,
+    );
+    expect(f.map((x) => x.ruleId)).toContain(NO_HTTPONLY);
+  });
+  it("chained res.status(200).cookie without flags is reported", async () => {
+    const f = await one(
+      "server.js",
+      `app.post("/login", (req, res) => {\n  res.status(200).cookie("token", jwt.sign(p, s)).json({});\n});`,
+    );
+    expect(f[0]).toMatchObject({ ruleId: NO_HTTPONLY });
+  });
+  it("a 100 KB string in an options value stays fast", async () => {
+    const big = "a".repeat(100_000);
+    const t = Date.now();
+    await one(
+      "server.js",
+      `res.cookie("session", t, { httpOnly: true, secure: true, sameSite: "lax", domain: "${big}" });`,
+    );
+    await one(
+      "server.js",
+      `res.cookie("session", t, { httpOnly: true, secure: true, sameSite: "lax", domain: \`${" ".repeat(100_000)}\` });`,
+    );
+    await one("server.js", `res.setHeader("Set-Cookie", "session=${"A".repeat(60_000)}; Path=/");`);
+    expect(Date.now() - t).toBeLessThan(1000);
+  });
+});

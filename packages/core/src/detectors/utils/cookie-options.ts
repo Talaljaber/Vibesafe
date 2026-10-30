@@ -58,7 +58,7 @@ const VALUE_SIGN_RE = /(?<![.\w$])sign\s*\(|\bnew\s+SignJWT\s*\(/;
 export function cookieNameTokens(name: string): string[] {
   const parts = name
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .replace(/([A-Z])(?=[A-Z][a-z])/g, "$1 ")
     .split(/[^A-Za-z0-9]+/)
     .filter((p) => p !== "")
     .map((p) => p.toLowerCase());
@@ -210,23 +210,47 @@ function objectEntries(src: JsSource, open: number): Entry[] | undefined {
   return out;
 }
 
-/** `{` of a same-file `const|let|var NAME = {` declaration, or undefined. */
-function findObjectDecl(src: JsSource, name: string): number | undefined {
-  const re = new RegExp(
-    String.raw`\b(?:const|let|var)\s+${escapeRe(name)}\s*(?::[^=;{]{0,200})?=\s*\{`,
-  );
-  const m = re.exec(src.code);
-  return m === null ? undefined : m.index + m[0].length - 1;
+const declCache = new WeakMap<JsSource, Map<string, number[]>>();
+
+/** All declaration offsets (cached per source) matching `re`, as the offset of the char before the match end. */
+function declOffsets(src: JsSource, kind: string, name: string, tail: string): number[] {
+  let byKey = declCache.get(src);
+  if (byKey === undefined) {
+    byKey = new Map();
+    declCache.set(src, byKey);
+  }
+  const key = `${kind}:${name}`;
+  const hit = byKey.get(key);
+  if (hit !== undefined) return hit;
+  const re = new RegExp(String.raw`\b(?:const|let|var)\s+${escapeRe(name)}\s*${tail}`, "g");
+  const out: number[] = [];
+  for (const m of src.code.matchAll(re)) out.push(m.index + m[0].length - 1);
+  byKey.set(key, out);
+  return out;
+}
+
+/** The declaration nearest before `at`, else the first one after it (module-level consts declared later). */
+function nearestDecl(offsets: readonly number[], at: number): number | undefined {
+  let before: number | undefined;
+  for (const o of offsets) {
+    if (o < at) before = o;
+    else break;
+  }
+  return before ?? offsets[0];
+}
+
+/** `{` of the same-file `const|let|var NAME = {` declaration in scope at `at`, or undefined. */
+function findObjectDecl(src: JsSource, name: string, at: number): number | undefined {
+  return nearestDecl(declOffsets(src, "obj", name, String.raw`(?::[^=;{]{0,200})?=\s*\{`), at);
 }
 
 /** Text of a same-file `const NAME = "literal"` declaration. */
-function findStringDecl(src: JsSource, name: string): string | undefined {
-  const re = new RegExp(
-    String.raw`\b(?:const|let|var)\s+${escapeRe(name)}\s*(?::[^=;{]{0,80})?=\s*(["'])`,
+function findStringDecl(src: JsSource, name: string, at: number): string | undefined {
+  const open = nearestDecl(
+    declOffsets(src, "str", name, String.raw`(?::[^=;{]{0,80})?=\s*["']`),
+    at,
   );
-  const m = re.exec(src.code);
-  if (m === null) return undefined;
-  const open = m.index + m[0].length - 1;
+  if (open === undefined) return undefined;
   const end = stringEnd(src, open);
   return end < 0 ? undefined : src.text.slice(open + 1, end - 1);
 }
@@ -238,7 +262,7 @@ function objectOpenOf(src: JsSource, r: Range): number | undefined {
   const t = trimRange(src, r);
   if (src.code[t.start] === "{" && src.matchOf(t.start) === t.end - 1) return t.start;
   const id = src.code.slice(t.start, t.end);
-  return IDENT_RE.test(id) ? findObjectDecl(src, id) : undefined;
+  return IDENT_RE.test(id) ? findObjectDecl(src, id, t.start) : undefined;
 }
 
 interface FlagAcc {
@@ -254,6 +278,23 @@ function boolState(code: string): FlagState {
   return v === "true" ? "true" : v === "false" ? "false" : "dynamic";
 }
 
+const FLAG_KEYS: ReadonlySet<string> = new Set([
+  "httpOnly",
+  "secure",
+  "sameSite",
+  "maxAge",
+  "expires",
+]);
+
+/** Value text of a flag entry without a trailing `as T` / `satisfies T`; linear, and values over 400 chars are dynamic. */
+function flagValue(text: string, r: Range): string {
+  if (r.end - r.start > 400) return "\u0000dynamic";
+  return text
+    .slice(r.start, r.end)
+    .replace(/\s(?:as|satisfies)\s[^]*$/, "")
+    .trim();
+}
+
 function collectFlags(src: JsSource, open: number, depth: number, acc: FlagAcc): void {
   const entries = objectEntries(src, open);
   if (entries === undefined) {
@@ -267,16 +308,15 @@ function collectFlags(src: JsSource, open: number, depth: number, acc: FlagAcc):
     }
     if (e.spread !== undefined) {
       const expr = src.code.slice(e.spread.start, e.spread.end).trim();
-      const decl = IDENT_RE.test(expr) && depth < 2 ? findObjectDecl(src, expr) : undefined;
+      const decl =
+        IDENT_RE.test(expr) && depth < 2 ? findObjectDecl(src, expr, e.spread.start) : undefined;
       if (decl === undefined) acc.unresolved = true;
       else collectFlags(src, decl, depth + 1, acc);
       continue;
     }
     if (e.key === undefined || e.value === undefined) continue;
-    const valueCode = src.code
-      .slice(e.value.start, e.value.end)
-      .replace(/\s+(?:as|satisfies)\s+[^]*$/, "")
-      .trim();
+    if (!FLAG_KEYS.has(e.key)) continue;
+    const valueCode = flagValue(src.code, e.value);
     switch (e.key) {
       case "httpOnly":
         acc.httpOnly = e.shorthand ? "dynamic" : boolState(valueCode);
@@ -285,12 +325,7 @@ function collectFlags(src: JsSource, open: number, depth: number, acc: FlagAcc):
         acc.secure = e.shorthand ? "dynamic" : boolState(valueCode);
         break;
       case "sameSite": {
-        const lit = /^(["'`])(none|lax|strict)\1$/i.exec(
-          src.text
-            .slice(e.value.start, e.value.end)
-            .replace(/\s+(?:as|satisfies)\s+[^]*$/, "")
-            .trim(),
-        );
+        const lit = /^(["'`])(none|lax|strict)\1$/i.exec(flagValue(src.text, e.value));
         if (e.shorthand) acc.sameSite = "dynamic";
         else if (lit !== null) acc.sameSite = lit[2]!.toLowerCase() as SameSiteState;
         else if (valueCode === "true") acc.sameSite = "strict";
@@ -429,7 +464,8 @@ export interface CookieSite {
   deletes: boolean;
 }
 
-const EXPRESS_RE = /\b(?:res|resp|response|reply)\s*\.\s*(?:cookie|setCookie)\s*\(/g;
+const EXPRESS_RE =
+  /\b(?:res|resp|response|reply)\s*(?:\.\s*status\s*\([^()]{0,40}\)\s*)?\.\s*(?:cookie|setCookie)\s*\(/g;
 const NEXT_HEADERS_RES = [
   /\bcookies\s*\(\s*\)\s*\.\s*set\s*\(/g,
   /\(\s*await\s+cookies\s*\(\s*\)\s*\)\s*\.\s*set\s*\(/g,
@@ -470,7 +506,7 @@ function boundNames(src: JsSource, mod: string): string[] {
   const m = escapeRe(mod);
   const res = [
     new RegExp(
-      String.raw`\bimport\s+(?:\*\s+as\s+)?([A-Za-z_$][\w$]*)\s*(?:,\s*\{[^}]*\})?\s*from\s*["']${m}["']`,
+      String.raw`\bimport\s+(?:\*\s+as\s+)?([A-Za-z_$][\w$]*)\s*(?:,\s*\{[^{}]{0,500}\})?\s*from\s*["']${m}["']`,
       "g",
     ),
     new RegExp(
@@ -499,7 +535,7 @@ function nameOf(src: JsSource, r: Range): string {
     return src.text.slice(r.start + 1, r.end - 1);
   } else {
     const id = src.code.slice(r.start, r.end);
-    if (IDENT_RE.test(id)) return findStringDecl(src, id) ?? id;
+    if (IDENT_RE.test(id)) return findStringDecl(src, id, r.start) ?? id;
   }
   return src.text.slice(r.start, Math.min(r.end, r.start + 200));
 }
