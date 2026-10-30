@@ -11,6 +11,7 @@ export async function GET(request, { params }) {
     .eq("id", id)
     .eq("user_id", session.userId)
     .single();
+  if (!data) return Response.json({ error: "not found" }, { status: 404 });
   return Response.json(data);
 }
 
@@ -25,5 +26,6 @@ export async function PATCH(request, { params }) {
     .eq("id", id)
     .eq("user_id", session.userId)
     .single();
+  if (!data) return Response.json({ error: "not found" }, { status: 404 });
   return Response.json(data);
 }

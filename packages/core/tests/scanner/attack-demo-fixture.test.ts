@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -37,11 +37,36 @@ describe("attack-demo-app fixture: static findings", () => {
   it("emits the four expected findings", async () => {
     const findings = await scan(demoDir);
     const notes = idor(findings, NOTES);
-    expect(notes.map((f) => f.line).sort()).toEqual(
-      [lineOf(demoDir, NOTES, '.from("notes").select'), lineOf(demoDir, NOTES, ".update(")].sort(),
+    expect(notes.map((f) => f.line).sort((a, b) => a - b)).toEqual(
+      [lineOf(demoDir, NOTES, '.from("notes").select'), lineOf(demoDir, NOTES, ".update(")].sort(
+        (a, b) => a - b,
+      ),
     );
+    const byLine = (n: number) => notes.find((f) => f.line === n)!;
+    expect(byLine(lineOf(demoDir, NOTES, '.from("notes").select')).plainEnglishProblem).toMatch(
+      /^This handler reads/,
+    );
+    expect(byLine(lineOf(demoDir, NOTES, ".update(")).plainEnglishProblem).toMatch(
+      /^This handler changes/,
+    );
+    expect(idor(findings, INVOICES)[0]!.plainEnglishProblem).toMatch(/^This handler reads/);
     expect(idor(findings, INVOICES)).toHaveLength(1);
     expect(missingAuth(findings, ADMIN)).toHaveLength(1);
+  });
+
+  it("ships a sessions file matching the SessionsFile shape", () => {
+    const f = JSON.parse(
+      fs.readFileSync(path.join(demoDir, ".vibesafe", "sessions.json"), "utf-8"),
+    ) as {
+      schemaVersion: number;
+      sessions: { label: string; headers: object; resources: object }[];
+    };
+    expect(f.schemaVersion).toBe(1);
+    expect(f.sessions.map((s) => s.label)).toEqual(["alice", "bob"]);
+    for (const s of f.sessions) {
+      expect(s.headers).toBeTypeOf("object");
+      expect(s.resources).toBeTypeOf("object");
+    }
   });
 
   it("with the overlay merged only the invoices idor remains of those four", async () => {
@@ -93,7 +118,7 @@ function request(
 
 function startHarness(
   extraArgs: string[],
-): Promise<{ child: ChildProcess; port: number; stdout: string }> {
+): Promise<{ child: ChildProcess; port: number; stdout: string; merged: string | undefined }> {
   return new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,
@@ -101,16 +126,30 @@ function startHarness(
       { stdio: ["ignore", "pipe", "pipe"] },
     );
     let stdout = "";
-    const timer = setTimeout(() => reject(new Error("harness did not start")), 15000);
+    let stderr = "";
+    const fail = (e: Error) => {
+      clearTimeout(timer);
+      child.kill();
+      reject(e);
+    };
+    const timer = setTimeout(() => fail(new Error(`harness did not start: ${stderr}`)), 15000);
+    child.stderr!.on("data", (c) => (stderr += String(c)));
+    child.on("exit", (code) => fail(new Error(`harness exited ${code}: ${stderr}`)));
     child.stdout!.on("data", (c) => {
       stdout += String(c);
       const m = /^LISTENING (\d+)$/m.exec(stdout);
       if (m) {
         clearTimeout(timer);
-        resolve({ child, port: Number(m[1]), stdout });
+        child.removeAllListeners("exit");
+        resolve({
+          child,
+          port: Number(m[1]),
+          stdout,
+          merged: /^MERGED (.+)$/m.exec(stderr)?.[1]?.trim(),
+        });
       }
     });
-    child.on("error", reject);
+    child.on("error", fail);
   });
 }
 
@@ -119,6 +158,7 @@ const BOB = { cookie: "vs_session=bob-dev" };
 
 describe("attack-demo-app harness", () => {
   const children: ChildProcess[] = [];
+  const mergedDirs: string[] = [];
   let port = 0;
   let lineSeen = "";
 
@@ -131,9 +171,8 @@ describe("attack-demo-app harness", () => {
 
   afterAll(() => {
     for (const c of children) c.kill();
+    for (const d of mergedDirs) fs.rmSync(d, { recursive: true, force: true });
   });
-
-  afterEach(() => undefined);
 
   it("prints LISTENING <port>", () => {
     expect(lineSeen).toMatch(/^LISTENING \d+$/m);
@@ -194,8 +233,9 @@ describe("attack-demo-app harness", () => {
   it("with --overlay serves the fixed routes", async () => {
     const h = await startHarness(["--overlay", fixedDir]);
     children.push(h.child);
+    if (h.merged) mergedDirs.push(h.merged);
     const leak = await request(h.port, "/api/notes/n_bob_1", { headers: ALICE });
-    expect(JSON.parse(leak.body)).toBeNull();
+    expect(leak.status).toBe(404);
     const own = await request(h.port, "/api/notes/n_bob_1", { headers: BOB });
     expect(JSON.parse(own.body).user_id).toBe("u_bob");
     expect((await request(h.port, "/api/admin/users")).status).toBe(401);

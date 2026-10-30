@@ -1,4 +1,5 @@
 // Zero-dependency harness: serves app/**/route.{js,mjs} and public/ on 127.0.0.1.
+// vibesafe-disable-file code_quality/hardcoded-localhost
 import http from "node:http";
 import fs from "node:fs";
 import os from "node:os";
@@ -12,6 +13,10 @@ const argVal = (name) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 const port = Number(argVal("--port") ?? 3000);
+if (!Number.isInteger(port) || port < 0 || port > 65535) {
+  console.error("invalid --port");
+  process.exit(2);
+}
 const overlayArg = argVal("--overlay");
 
 // The overlay holds changed files only, and its routes import ../lib/*. So serve a merged temp
@@ -19,7 +24,19 @@ const overlayArg = argVal("--overlay");
 let root = baseRoot;
 let mergedDir;
 if (overlayArg) {
+  // Windows kill() skips exit handlers: sweep stale dirs from earlier runs, and announce ours.
+  try {
+    for (const d of fs.readdirSync(os.tmpdir())) {
+      const p = path.join(os.tmpdir(), d);
+      if (d.startsWith("vibesafe-harness-") && Date.now() - fs.statSync(p).mtimeMs > 600000) {
+        fs.rmSync(p, { recursive: true, force: true });
+      }
+    }
+  } catch {
+    // best effort
+  }
   mergedDir = fs.mkdtempSync(path.join(os.tmpdir(), "vibesafe-harness-"));
+  console.error(`MERGED ${mergedDir}`);
   const skip = (src) => !src.split(path.sep).includes("node_modules");
   fs.cpSync(baseRoot, mergedDir, { recursive: true, filter: skip });
   fs.cpSync(path.resolve(overlayArg), mergedDir, { recursive: true, filter: skip });
@@ -132,6 +149,7 @@ const server = http.createServer(async (req, res) => {
     return send(res, 404, JSON.stringify({ error: "not found" }));
   } catch (err) {
     console.error(err);
+    if (res.headersSent) return res.destroy();
     return send(res, 500, JSON.stringify({ error: "internal error" }));
   }
 });
