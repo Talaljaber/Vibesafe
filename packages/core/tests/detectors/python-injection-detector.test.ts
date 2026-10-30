@@ -364,3 +364,139 @@ describe("python-injection-detector: scoping", () => {
     expect(f.length).toBeGreaterThan(20);
   });
 });
+
+describe("python-injection-detector: review round 2", () => {
+  it("is silent for ORM lookups and cache/get helpers fed request values", async () => {
+    const f = await run(
+      lines(
+        "def a(request, cursor):",
+        '    obj = get_object_or_404(Order, pk=request.GET["id"])',
+        "    other = Order.objects.get(pk=obj.pk)",
+        '    hit = cache.get(request.GET["k"])',
+        "    cursor.execute(other.sql_name)",
+        "    cursor.execute(hit)",
+      ),
+    );
+    expect(f).toHaveLength(0);
+  });
+
+  it("is silent for SQLAlchemy select().where() and keyset pagination arithmetic", async () => {
+    const f = await run(
+      lines(
+        "def a(request, session, page_size, offset):",
+        '    stmt = select(Order).where(Order.id == request.GET["id"]).limit(page_size + 1)',
+        "    session.execute(stmt)",
+        "    session.execute(stmt.offset(offset + 1))",
+      ),
+    );
+    expect(f).toHaveLength(0);
+  });
+
+  it("still flags literal + column text building", async () => {
+    const f = await run(
+      lines("def a(cursor, col):", '    cursor.execute("SELECT " + col + " FROM t")'),
+    );
+    expect(rules(f)).toEqual(["injection/python-sql-interpolation"]);
+  });
+
+  it("flags text() of a request-built f-string as critical", async () => {
+    const f = await run(
+      lines(
+        "def a(request, db):",
+        '    email = request.args.get("email")',
+        "    db.session.execute(text(f\"SELECT * FROM u WHERE email = '{email}'\"))",
+      ),
+    );
+    expect(f).toHaveLength(1);
+    expect(f[0]).toMatchObject({ severity: "critical" });
+  });
+
+  it("only treats session/engine as whole receiver names", async () => {
+    const f = await run(
+      lines("def a(self, rule):", '    self.rules_engine.execute(f"{rule.name}")'),
+    );
+    expect(f).toHaveLength(0);
+  });
+
+  it("treats not-in with an allowlist that leaves as a guard, but not a bookkeeping block", async () => {
+    const guarded = await run(
+      lines(
+        "def a(request, cursor):",
+        '    col = request.GET["c"]',
+        "    if col not in COLUMNS:",
+        "        return 400",
+        '    cursor.execute(f"SELECT {col} FROM t")',
+      ),
+    );
+    expect(guarded).toHaveLength(0);
+    const notGuard = await run(
+      lines(
+        "def a(request, cursor, seen):",
+        '    col = request.GET["c"]',
+        "    if col not in seen:",
+        "        seen.add(col)",
+        '    cursor.execute(f"SELECT {col} FROM t")',
+      ),
+    );
+    expect(rules(notGuard)).toEqual(["injection/python-sql-interpolation"]);
+  });
+
+  it("treats a leaving regex fullmatch check as a guard for paths and shells", async () => {
+    const guarded = await run(
+      lines(
+        "def a(request):",
+        '    name = request.GET["n"]',
+        '    if not re.fullmatch(r"[a-z0-9_-]+", name):',
+        "        return 400",
+        '    return open(os.path.join(DIR, name + ".pdf"))',
+      ),
+    );
+    expect(guarded).toHaveLength(0);
+    const unguarded = await run(
+      lines(
+        "def a(request):",
+        '    name = request.GET["n"]',
+        '    if not re.match(r"[a-z]+", name):',
+        "        return 400",
+        '    return open(os.path.join(DIR, name + ".pdf"))',
+      ),
+    );
+    expect(rules(unguarded)).toEqual(["injection/python-path-traversal"]);
+  });
+
+  it("gives two sinks at the same column different ids", async () => {
+    const f = await run(
+      lines(
+        "def a(request):",
+        '    p = os.path.join(DIR, request.GET["n"])',
+        "    open(p)",
+        "    open(p)",
+      ),
+    );
+    expect(new Set(f.map((x) => x.id)).size).toBe(f.length);
+    expect(f.length).toBe(2);
+  });
+
+  it("handles 300 nested defs quickly", async () => {
+    const src = lines(
+      "def outer(cursor, x):",
+      ...Array.from({ length: 300 }, (_, i) => `    def inner${i}(y):\n        return y`),
+      '    cursor.execute(f"SELECT {x}")',
+    );
+    const t = Date.now();
+    await run(src);
+    expect(Date.now() - t).toBeLessThan(3000);
+  });
+
+  it("does not hang on thousands of trailing spaces after a bare statement", async () => {
+    const src = lines(
+      "def a(cursor, x):",
+      "    pass" + " ".repeat(5000),
+      "    return" + " ".repeat(5000),
+      '    cursor.execute(f"SELECT {x}")',
+    );
+    const t = Date.now();
+    await run(src);
+    expect(Date.now() - t).toBeLessThan(3000);
+  });
+});

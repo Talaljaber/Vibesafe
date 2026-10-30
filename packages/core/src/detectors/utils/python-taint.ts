@@ -279,7 +279,7 @@ export interface FunctionTaint {
 }
 
 const ASSIGN_RE =
-  /^(\(?\s*[A-Za-z_]\w*(?:\s*,\s*\*?[A-Za-z_]\w*)*\s*,?\s*\)?)\s*(?::[^=]+?)?\s*(\+?)=(?!=)\s*([\s\S]+)$/;
+  /^(\(?\s*[A-Za-z_]\w*(?:\s*,\s*\*?[A-Za-z_]\w*)*(?:\s*,)?(?:\s*\))?)(?:\s*:[^=]+?)?\s*(\+?)=(?!=)\s*([\s\S]+)$/;
 const FOR_RE = /^(?:async\s+)?for\s+([\w\s,()]+?)\s+in\s+([\s\S]+?)\s*:\s*[\s\S]*$/;
 const GUARD_NOT_IN_RE = /^(?:el)?if\s+\(?\s*([A-Za-z_]\w*)\s+not\s+in\s+([^:]+):([\s\S]*)$/;
 const GUARD_NOT_IN_PREFIX_RE = /^(?:el)?if\s+not\s+\(?\s*([A-Za-z_]\w*)\s+in\s+([^:]+):([\s\S]*)$/;
@@ -291,6 +291,9 @@ function looksLikeAllowlist(container: string): boolean {
   if (/(?:^|\.)[A-Z][A-Z0-9_]*\)?$/.test(c)) return true;
   return /^[[({]/.test(c) && /["']/.test(c);
 }
+/** `if not re.fullmatch(r"literal", x): return` (re.match only when the pattern is `$`/`\Z` anchored). */
+const GUARD_REGEX_RE =
+  /^(?:el)?if\s+not\s+(?:re\s*\.\s*)?(fullmatch|match)\s*\(\s*[rbuRBU]{0,2}(["'])~*\2\s*,\s*([A-Za-z_]\w*)\s*\)\s*:([\s\S]*)$/;
 const GUARD_IN_RE = /^(?:el)?if\s+\(?\s*([A-Za-z_]\w*)\s+in\s+[^:]+:/;
 const ASSERT_IN_RE = /^assert\s+([A-Za-z_]\w*)\s+in\s+/;
 const OPEN_LITERAL_RE = /(?<![\w.])open\s*\(\s*(?:[rbuRBU]{0,2})(["'])~*\1/;
@@ -315,6 +318,8 @@ const CONSTANT_NAME_RE = /^[A-Z][A-Z0-9_]*$/;
 export function analyzeFunction(fn: PythonFunction | undefined): FunctionTaint {
   const events = new Map<string, TaintEvent[]>();
   const nonConstVars = new Set<string>();
+  /** Names assigned a string literal / f-string or built text: `+` on them is text building. */
+  const textVars = new Set<string>();
   const literalHandles = new Set<string>();
   /** Names assigned only from cleaner calls (int(), shlex.quote(), ...): safe to interpolate. */
   const cleanVars = new Set<string>();
@@ -326,6 +331,8 @@ export function analyzeFunction(fn: PythonFunction | undefined): FunctionTaint {
     const st = stmts[i]!;
     const head = maskPython(st.head).trimStart();
     let notIn = GUARD_NOT_IN_RE.exec(head) ?? GUARD_NOT_IN_PREFIX_RE.exec(head);
+    const reM = notIn ? null : GUARD_REGEX_RE.exec(head);
+    const reAnchored = reM !== null && (reM[1] === "fullmatch" || /\$["']|\\Z/.test(st.head));
     let blockEnd = st.end;
     let lastBlock: PythonStatement | undefined;
     for (let j = i + 1; j < stmts.length; j++) {
@@ -342,15 +349,23 @@ export function analyzeFunction(fn: PythonFunction | undefined): FunctionTaint {
         : lastBlock !== undefined && TERMINAL_RE.test(maskPython(lastBlock.stmt).trimStart());
       if (!leaves || !looksLikeAllowlist(notIn[2] ?? "")) notIn = null;
     }
-    const inM = notIn ? null : GUARD_IN_RE.exec(head);
+    let regexGuard = false;
+    if (reM && reAnchored) {
+      const tail = (reM[4] ?? "").trim();
+      regexGuard = tail
+        ? TERMINAL_RE.test(tail)
+        : lastBlock !== undefined && TERMINAL_RE.test(maskPython(lastBlock.stmt).trimStart());
+    }
+    const inM = notIn || reM ? null : GUARD_IN_RE.exec(head);
     const assertM = ASSERT_IN_RE.exec(head);
-    const name = notIn?.[1] ?? inM?.[1] ?? assertM?.[1];
+    const name = notIn?.[1] ?? (regexGuard ? reM?.[3] : undefined) ?? inM?.[1] ?? assertM?.[1];
     if (!name) continue;
-    const range: [number, number] = notIn
-      ? [blockEnd + 1, Number.MAX_SAFE_INTEGER]
-      : assertM
-        ? [st.end + 1, Number.MAX_SAFE_INTEGER]
-        : [st.start, blockEnd];
+    const range: [number, number] =
+      notIn || regexGuard
+        ? [blockEnd + 1, Number.MAX_SAFE_INTEGER]
+        : assertM
+          ? [st.end + 1, Number.MAX_SAFE_INTEGER]
+          : [st.start, blockEnd];
     const list = guards.get(name) ?? [];
     list.push(range);
     guards.set(name, list);
@@ -386,7 +401,12 @@ export function analyzeFunction(fn: PythonFunction | undefined): FunctionTaint {
       const recv = parts.slice(0, -1);
       const recvText = recv.join(".");
       let keep: boolean;
-      if (recv.length === 0) keep = KEYWORDS.has(last) || PASS_FUNCS.has(last);
+      if (recv.length === 0) keep = KEYWORDS.has(last) || PASS_FUNCS.has(last) || last === "text";
+      else if (
+        (recvText === "sqlalchemy" && last === "text") ||
+        (recvText === "sql" && last === "SQL")
+      )
+        keep = true;
       else if (recvText === "os.path" || recvText === "path" || recvText === "posixpath")
         keep = PATH_FUNCS.has(last);
       else if (last === "get" || last === "getlist")
@@ -455,7 +475,11 @@ export function analyzeFunction(fn: PythonFunction | undefined): FunctionTaint {
     const interpolated = s.includes(FIELD_OPEN);
     const percent = /["']\s*%\s*[\w(\[{]/.test(s);
     const format = /\.\s*format\s*\(\s*[^)\s]/.test(s);
-    const plus = /(?:[A-Za-z_]\w*[)\]]?\s*\+|\+\s*[A-Za-z_])/.test(s);
+    // `+` is text building only next to a string literal or a name known to hold text; plain
+    // arithmetic such as `limit(page_size + 1)` is not.
+    const plus =
+      /["']\s*\+|\+\s*[rbufRBUF]{0,2}["']/.test(s) ||
+      [...textVars].some((v) => new RegExp(`(?<![\\w.])${v}\\s*\\+|\\+\\s*${v}(?!\\w)`).test(s));
     if (!interpolated && !percent && !format && !plus) return false;
     const view = s.replace(/[⟦⟧]/g, " ");
     return identifiers(view).some(
@@ -469,7 +493,7 @@ export function analyzeFunction(fn: PythonFunction | undefined): FunctionTaint {
   };
 
   for (const st of stmts) {
-    const masked = maskPython(st.stmt).trimStart();
+    const masked = maskPython(st.stmt).trim();
     const line = st.start;
     const forM = FOR_RE.exec(masked);
     if (forM) {
@@ -504,6 +528,8 @@ export function analyzeFunction(fn: PythonFunction | undefined): FunctionTaint {
       }
       events.set(n, list);
       if (cleaned && !augmented) cleanVars.add(n);
+      const textual = /^\(?\s*[rbufRBUF]{0,2}["']/.test(rhs) || nonConstantExpr(rhs, line);
+      if (textual) textVars.add(n);
       if (nonConstantExpr(rhs, line) || (augmented && nonConstVars.has(n))) nonConstVars.add(n);
       if (names.length === 1 && OPEN_LITERAL_RE.test(rhs)) literalHandles.add(n);
     }

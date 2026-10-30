@@ -30,7 +30,7 @@ const PREFILTER =
 const SHELL_RE =
   /(?<![\w.])(?:subprocess\s*\.\s*(run|call|check_call|check_output|Popen)|os\s*\.\s*(system|popen))\s*\(/g;
 const EXECUTE_RE =
-  /(?<!\w)(?:\w*(?:cursor|conn|connection|session|engine)\w*|db|cur|con|cursor\s*\(\s*\))\s*\.\s*(?:execute|executemany)\s*\(/gi;
+  /(?<!\w)(?:\w*(?:cursor|conn|connection)\w*|(?:\w*_)?session|(?:db_|sql_|sa_|async_)?engine|db|cur|con|cursor\s*\(\s*\))\s*\.\s*(?:execute|executemany)\s*\(/gi;
 const RAW_RE = /\.\s*objects\s*\.\s*raw\s*\(|(?<![\w.])RawSQL\s*\(/g;
 const EXTRA_RE = /\.\s*extra\s*\(/g;
 const YAML_RE = /(?<![\w.])yaml\s*\.\s*(load_all|load|unsafe_load_all|unsafe_load)\s*\(/g;
@@ -226,7 +226,7 @@ export class PythonInjectionDetector implements Detector {
             line: (anchor ?? st.start) + 1,
             ...(st.end > (anchor ?? st.start) ? { endLine: st.end + 1 } : {}),
             evidence,
-            discriminator: `${index}:${ruleId}`,
+            discriminator: `${index}:${st.start}:${ruleId}`,
             plainEnglishProblem: t.problem,
             whyItMatters: t.why,
             fixSteps: t.fix,
