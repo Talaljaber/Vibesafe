@@ -3,7 +3,6 @@ import type { AttackResult, AttackRun, Ledger, RetestDiff } from "../types.js";
 /** Collapses a repo- or response-controlled string to one safe, bounded line. */
 export function oneLine(value: string, max = 200): string {
   const cleaned = value
-    // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g, " ")
     .replace(/`/g, "'")
     .replace(/\s+/g, " ")
@@ -30,8 +29,7 @@ export function routeText(r: Pick<AttackResult, "route" | "method">): string {
 }
 
 export function ledgerLine(l: Ledger): string {
-  const errors = l.errors > 0 ? ` · errors ${l.errors}` : "";
-  return `Static flagged ${l.staticFlagged} · live confirmed ${l.confirmed} · refuted ${l.refuted} · couldn't test ${l.untested}${errors}`;
+  return `Static flagged ${l.staticFlagged} · live confirmed ${l.confirmed} · refuted ${l.refuted} · couldn't test ${l.untested}`;
 }
 
 export function diffFor(run: AttackRun, id: string): RetestDiff | undefined {

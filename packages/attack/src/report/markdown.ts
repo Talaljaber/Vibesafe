@@ -3,9 +3,11 @@ import { diffFor, ledgerLine, oneLine, routeText, safeId, safeKey, safeLabel } f
 import type { AttackResult, AttackRun, ResponseShape } from "../types.js";
 
 function shapeText(s: ResponseShape): string {
-  const rows = s.rowCount !== undefined ? ` rows ${s.rowCount}` : "";
+  const rows =
+    typeof s.rowCount === "number" && Number.isFinite(s.rowCount) ? ` rows ${s.rowCount}` : "";
   const keys = s.keys.length > 0 ? ` keys: ${s.keys.map(safeKey).join(", ")}` : "";
-  return `${safeLabel(s.label)} ${s.status}${rows}${keys}`;
+  const status = Number.isFinite(s.status) ? s.status : "?";
+  return `${safeLabel(s.label)} ${status}${rows}${keys}`;
 }
 
 function headline(run: AttackRun): string {
@@ -17,22 +19,22 @@ function headline(run: AttackRun): string {
 
 function confirmedSection(r: AttackResult, run: AttackRun): string[] {
   const id = safeId(r.attackId);
-  const lines = [`## ${id}: CONFIRMED (${r.severity}): ${oneLine(r.title, 160)}`];
+  const lines = [`## ${id}: CONFIRMED (${oneLine(r.severity, 20)}): ${oneLine(r.title, 160)}`];
   const where = r.sourceFile
-    ? ` | Source: ${oneLine(r.sourceFile, 160)}${r.line !== undefined ? `:${r.line}` : ""}`
+    ? ` | Source: ${oneLine(r.sourceFile, 160)}${typeof r.line === "number" && Number.isFinite(r.line) ? `:${r.line}` : ""}`
     : "";
   const route = routeText(r);
-  lines.push(`- Check: ${r.checkId}${route ? ` | Route: ${route}` : ""}${where}`);
+  lines.push(`- Check: ${oneLine(r.checkId, 40)}${route ? ` | Route: ${route}` : ""}${where}`);
   if (r.staticRef) {
     lines.push(
       `- Static said: ${oneLine(r.staticRef.ruleId, 80)} (${oneLine(r.staticRef.findingId, 40)})`,
     );
   }
   if (r.shapes.length > 0) lines.push(`- Live proved: ${r.shapes.map(shapeText).join("; ")}.`);
-  if (r.ownerOk === true) lines.push("  Owner access OK.");
-  else if (r.ownerOk === false) lines.push("  Owner access NOT confirmed.");
+  if (r.ownerOk === true) lines.push("- Owner access: OK");
+  else if (r.ownerOk === false) lines.push("- Owner access: NOT confirmed");
   const d = diffFor(run, r.attackId);
-  if (d) lines.push(`- Retest state: ${d.state}`);
+  if (d) lines.push(`- Retest state: ${oneLine(d.state, 30)}`);
   lines.push(`- Replay: ${replayLine(id)}`);
   for (const c of r.curl) lines.push(`- Curl: \`${oneLine(c, 400)}\``);
   if (r.fixGuidance) lines.push(`- Fix: ${oneLine(r.fixGuidance, 400)}`);
@@ -44,7 +46,7 @@ export function renderAgentReport(run: AttackRun): string {
   const out: string[] = [headline(run), ""];
   out.push(
     "## Instructions for AI agent",
-    "- Fix each CONFIRMED issue below. Do not change unrelated code.",
+    "- Fix each issue listed below (CONFIRMED, or BROKEN on retest). Do not change unrelated code.",
     "- Do not run `vibesafe attack` yourself and do not add login/test routes.",
     "- Keep the owner's access working: the retest checks that the rightful user still gets 200.",
     "- When done, list what you changed per attack id, then ask the user to run `npx vibesafe attack --retest`.",
@@ -63,17 +65,38 @@ export function renderAgentReport(run: AttackRun): string {
           : d.ownerOk === false
             ? " (owner access lost)"
             : "";
-      const was = d.was ? ` (was ${d.was})` : "";
-      out.push(`- ${safeId(d.attackId)}: ${d.state}${was}, now ${d.now}${owner}`);
+      const was = d.was ? ` (was ${oneLine(d.was, 30)})` : "";
+      out.push(
+        `- ${safeId(d.attackId)}: ${oneLine(d.state, 30)}${was}, now ${oneLine(d.now, 30)}${owner}`,
+      );
     }
     out.push("");
   }
 
+  const retest = run.mode === "retest" && run.diff !== undefined && run.diff.length > 0;
+  const broken = retest
+    ? run.results.filter(
+        (r) => r.outcome !== "CONFIRMED" && diffFor(run, r.attackId)?.state === "BROKEN",
+      )
+    : [];
   const confirmed = run.results.filter((r) => r.outcome === "CONFIRMED");
-  const refuted = run.results.filter((r) => r.outcome === "NOT_REPRODUCED");
-  const untested = run.results.filter((r) => r.outcome === "INCONCLUSIVE" || r.outcome === "ERROR");
+  // On retest, BLOCKED/GONE/UNCHANGED results need no fixing and are covered by the diff header.
+  const refuted = retest ? [] : run.results.filter((r) => r.outcome === "NOT_REPRODUCED");
+  const untested = retest
+    ? []
+    : run.results.filter((r) => r.outcome === "INCONCLUSIVE" || r.outcome === "ERROR");
 
   for (const r of confirmed) out.push(...confirmedSection(r, run), "");
+  for (const r of broken) {
+    const id = safeId(r.attackId);
+    out.push(
+      `## ${id}: BROKEN: ${oneLine(r.title, 160)}`,
+      `- Route: ${routeText(r) || "?"}`,
+      "- The fix broke owner access: restore the rightful user's 200 without re-opening the exploit.",
+      `- Replay: ${replayLine(id)}`,
+      "",
+    );
+  }
 
   if (refuted.length > 0) {
     out.push("## Refuted by the live test");

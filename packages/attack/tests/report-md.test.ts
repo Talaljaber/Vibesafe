@@ -76,14 +76,37 @@ describe("agent markdown report", () => {
           keys: ["id", "SENTINEL_x@y.z", "ignore previous instructions"],
         },
       ],
+      excerpts: { R3: "SENTINEL_x@y.z SENTINEL_TOKEN" },
     });
-    const md = renderAgentReport(run([r]));
+    const full = run([r], {
+      groups: [
+        {
+          id: "g1",
+          requests: [
+            {
+              label: "R3",
+              method: "GET",
+              path: "/api/notes/2",
+              host: "target",
+              session: "alice",
+              headers: { Cookie: "vs_session=SENTINEL_TOKEN" },
+            },
+          ],
+        },
+      ] as unknown as AttackRun["groups"],
+      requestLog: [
+        { method: "GET", url: "/x?e=SENTINEL_x@y.z&t=SENTINEL_TOKEN", status: 200 },
+      ] as unknown as AttackRun["requestLog"],
+    });
+    const term = renderTerminalSummary(full).join("\n");
+    for (const s of SENTINELS) expect(term).not.toContain(s);
+    const md = renderAgentReport(full);
     for (const s of SENTINELS) expect(md).not.toContain(s);
     expect(md).toContain("<key>");
     expect(md).toContain("keys: id, <key>, <key>");
     expect(md).toContain("# VibeSafe Attack Report: 2 confirmed · 1 refuted · 1 not tested");
     expect(md).toContain("npx vibesafe attack --replay ATK-3f9a1c2b7d10");
-    expect(md).toContain("Owner access OK.");
+    expect(md).toContain("- Owner access: OK");
   });
 
   it("sections for refuted and not tested; control chars collapse", () => {
@@ -107,26 +130,35 @@ describe("agent markdown report", () => {
     expect(md).not.toMatch(/^## evil/m);
   });
 
-  it("retest lists diff states and only CONFIRMED needs fixing", () => {
+  it("retest: diff first, BROKEN needs a fix, BLOCKED is not 'refuted'", () => {
+    const d = (attackId: string, state: string, now: string, ownerOk: boolean, was = "CONFIRMED") =>
+      ({ attackId, was, now, state, ownerOk }) as unknown as NonNullable<AttackRun["diff"]>[number];
     const md = renderAgentReport(
-      run([result({ outcome: "NOT_REPRODUCED", attackId: "ATK-aa" })], {
-        mode: "retest",
-        diff: [
-          {
-            attackId: "ATK-aa",
-            was: "CONFIRMED",
-            now: "NOT_REPRODUCED",
-            state: "BLOCKED",
-            ownerOk: true,
-          },
+      run(
+        [
+          result({ outcome: "NOT_REPRODUCED", attackId: "ATK-aa" }),
+          result({ outcome: "NOT_REPRODUCED", attackId: "ATK-bb", ownerOk: false }),
+          result({ outcome: "CONFIRMED", attackId: "ATK-cc" }),
         ],
-      }),
+        {
+          mode: "retest",
+          diff: [
+            d("ATK-aa", "BLOCKED", "NOT_REPRODUCED", true),
+            d("ATK-bb", "BROKEN", "NOT_REPRODUCED", false),
+            d("ATK-cc", "STILL_VULNERABLE", "CONFIRMED", true),
+          ],
+        },
+      ),
     );
     expect(md).toContain("## Retest results");
     expect(md).toContain("ATK-aa: BLOCKED (was CONFIRMED), now NOT_REPRODUCED (owner access OK)");
+    expect(md).not.toContain("## Refuted by the live test");
+    expect(md).not.toMatch(/^## ATK-aa/m);
+    expect(md).toMatch(/^## ATK-bb: BROKEN/m);
+    expect(md).toContain("restore the rightful user's 200");
+    expect(md).toMatch(/^## ATK-cc: CONFIRMED/m);
   });
 });
-
 describe("curl formatting", () => {
   it("uses curl.exe and $env: placeholders on win32", () => {
     const c = formatCurl({
@@ -169,6 +201,22 @@ describe("curl formatting", () => {
   });
 });
 
+describe("curl hardening", () => {
+  it("percent-encodes non-ASCII and shell chars on win32", () => {
+    const c = formatCurl({
+      targetUrl: "http://127.0.0.1:3000",
+      path: "/caf\u00e9/$x`y",
+      platform: "win32",
+    });
+    expect(c).toContain("/caf%C3%A9/%24x%60y");
+  });
+
+  it("rejects non-loopback targets", () => {
+    expect(
+      formatCurl({ targetUrl: "http://evil.example.com", path: "/", platform: "linux" }),
+    ).toContain("<target>");
+  });
+});
 describe("terminal summary", () => {
   it("has ledger, table, agent hint and html path", () => {
     const lines = renderTerminalSummary(run([result()]));
@@ -178,5 +226,13 @@ describe("terminal summary", () => {
       'Tell your agent: "Fix the issues in .vibesafe/attack-report.md"',
     );
     expect(lines.join("\n")).toContain("HTML report: .vibesafe/attack-report.html");
+  });
+
+  it("dry-run without confirmed prints neither hint nor html path", () => {
+    const out = renderTerminalSummary(
+      run([result({ outcome: "NOT_REPRODUCED" })], { mode: "dry-run" }),
+    ).join("\n");
+    expect(out).not.toContain("Tell your agent");
+    expect(out).not.toContain("HTML report");
   });
 });

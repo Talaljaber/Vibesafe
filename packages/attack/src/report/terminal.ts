@@ -26,7 +26,14 @@ export function renderTerminalSummary(run: AttackRun, options: TerminalOptions =
     lines.push(`${state.padEnd(w0)}  ${id.padEnd(w1)}  ${title}${route ? `  ${route}` : ""}`);
   }
   if (rows.length > 0) lines.push("");
-  lines.push(`Tell your agent: "Fix the issues in ${oneLine(md, 160)}"`);
-  lines.push(`HTML report: ${oneLine(html, 160)}`);
+  if (run.ledger.errors > 0) lines.push(`Errors: ${run.ledger.errors}`);
+  const needsFix = run.results.some((r) => {
+    const s = diffFor(run, r.attackId)?.state;
+    return s !== undefined
+      ? s === "STILL_VULNERABLE" || s === "NEW" || s === "BROKEN"
+      : r.outcome === "CONFIRMED";
+  });
+  if (needsFix) lines.push(`Tell your agent: "Fix the issues in ${oneLine(md, 160)}"`);
+  if (run.mode !== "dry-run") lines.push(`HTML report: ${oneLine(html, 160)}`);
   return lines;
 }

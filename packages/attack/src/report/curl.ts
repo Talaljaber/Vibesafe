@@ -1,4 +1,6 @@
-﻿/** Builds copy-paste curl lines that use environment placeholders, never credential values. */
+import { safeId } from "./text.js";
+
+/** Builds copy-paste curl lines that use environment placeholders, never credential values. */
 
 export interface CurlOptions {
   /** Base URL of the target as stored in the run (the run's targetUrl). */
@@ -29,13 +31,22 @@ function safePath(path: string): string {
   const p = path.startsWith("/") ? path : `/${path}`;
   return p.replace(/[^A-Za-z0-9\-._~/%?=&:@,+]/g, (c) => {
     const code = c.codePointAt(0) ?? 0;
-    return code < 128 ? `%${code.toString(16).toUpperCase().padStart(2, "0")}` : "_";
+    return code < 128
+      ? `%${code.toString(16).toUpperCase().padStart(2, "0")}`
+      : encodeURIComponent(c);
   });
 }
 
 function safeBase(targetUrl: string): string {
   const trimmed = targetUrl.replace(/\/+$/, "");
-  return /^[A-Za-z][A-Za-z0-9+.-]*:\/\/[A-Za-z0-9.:[\]-]+$/.test(trimmed) ? trimmed : "<target>";
+  const m = /^https?:\/\/([A-Za-z0-9.:[\]-]+)$/.exec(trimmed);
+  const host = (m?.[1] ?? "").replace(/:\d+$/, "").toLowerCase();
+  const ok =
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "[::1]" ||
+    /^[a-z0-9-]+\.supabase\.co$/.test(host);
+  return ok ? trimmed : "<target>";
 }
 
 export function formatCurl(o: CurlOptions): string {
@@ -53,5 +64,5 @@ export function formatCurl(o: CurlOptions): string {
 
 /** The replay line avoids shell-quoting problems entirely. */
 export function replayLine(attackId: string): string {
-  return `npx vibesafe attack --replay ${attackId}`;
+  return `npx vibesafe attack --replay ${safeId(attackId)}`;
 }
