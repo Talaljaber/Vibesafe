@@ -378,6 +378,8 @@ describe("PackageExistenceDetector: npm silent cases", () => {
         express: "^4.18.0",
         [typosquat!]: "1.0.0",
         expresss: "^1.0.0",
+        lodahs: "^1.0.0",
+        axioos: "^1.0.0",
       }),
     };
     const { findings, calls } = await detect(files, npmRoutes({}));

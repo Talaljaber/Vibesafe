@@ -45,7 +45,7 @@ import {
   type RegistryConfig,
 } from "./utils/package-registry.js";
 import { KNOWN_TYPOSQUATS, POPULAR_PACKAGES } from "./patterns/npm-typosquats.js";
-import { lookAlikeTarget } from "./typosquat-detector.js";
+import { lookAlikeTarget, topLookAlikeTarget } from "./typosquat-detector.js";
 import { parseRequirementsTxt, parseToml } from "./python-dependency-detector.js";
 
 export const NEW_PACKAGE_DAYS = 30;
@@ -269,7 +269,7 @@ export class PackageExistenceDetector implements Detector {
           continue;
         }
         if (nonDefault.has(name) || POPULAR.has(name) || TYPOSQUATS.has(name)) continue;
-        if (lookAlikeTarget(name) !== undefined) continue;
+        if (lookAlikeTarget(name) !== undefined || topLookAlikeTarget(name) !== undefined) continue;
         const inLockfile = lock.versions.has(name);
         const existing = out.get(name);
         if (existing) {
