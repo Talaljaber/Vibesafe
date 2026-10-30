@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add the Attack Mode host gate, safe GET-only HTTP client and rate limiter, and harden the network chokepoint (eval, inspector and online-scan checks).
 - Add Attack Mode negative controls and response fingerprinting (`controls.ts`) so bland 200s are not mistaken for leaks.
 - Add `scripts/create-attack-demo.mjs`, which copies the attack demo app into a fresh git repo with `main` (vulnerable) and `fixed` branches and a demo CLAUDE.md.
+- Add the Attack Mode `idor` check: plans four reads (anonymous, owner x2, cross-user) per unscoped-lookup finding and confirms only when another user's record is really returned.
 
 ### Changed
 

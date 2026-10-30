@@ -1,13 +1,320 @@
-import type { AttackCheck } from "../types.js";
+import { createHash } from "node:crypto";
+import type { Finding } from "@talaljaber/vibesafe-shared";
+import { normalizeBody } from "../controls.js";
+import { preflightGet } from "../plan/preflight.js";
+import { enclosingHandler } from "../target/enclosing-handler.js";
+import { concretePath, dynamicSegmentsOf } from "../target/route-map.js";
+import type {
+  AttackCheck,
+  AttackResult,
+  ControlSet,
+  PlanContext,
+  ProbeGroup,
+  ProbeRequest,
+  ProbeResponse,
+  ResponseShape,
+  RouteEntry,
+  SessionSpec,
+  StaticRef,
+} from "../types.js";
 
-/** Stub: implemented in a later PR. */
+const RULE_ID = "authorization/idor-unscoped-lookup";
+const READ_PREFIX = "This handler reads";
+const REASON_WRITE = "write path, not tested (attack mode only sends reads)";
+const REASON_ROUTE = "route not resolved (Next.js app router only)";
+const REASON_SESSIONS = "needs two test sessions with an id each; see .vibesafe/sessions.json";
+const REASON_NO_ID_SEGMENT = "route has no id segment to swap between two users";
+const MAY_WRITE = "handler may write";
+const FIX_GUIDANCE =
+  'Load the record filtered by both its id and the signed-in user\'s id (for example `.eq("user_id", session.userId)`), and return 404 when no row matches.';
+const LOGIN_RE = /log-?in|sign-?in|signin|\/auth\b/i;
+const SAFE_KEY_RE = /^[\w.-]{1,64}$/;
+
+const norm = (p: string): string => p.replace(/\\/g, "/");
+
+/** Same scheme as the shared attack id (spec 9); kept private until the ids module lands. */
+function attackIdOf(method: string, pattern: string): string {
+  let dyn = 0;
+  let rest = 0;
+  const normalized = pattern
+    .split("/")
+    .map((s) => {
+      if (/^\[\[?\.\.\.[^\]]+\]\]?$/.test(s)) return `*${++rest}`;
+      if (/^\[[^\]]+\]$/.test(s)) return `:${++dyn}`;
+      return s;
+    })
+    .join("/");
+  const input = `idor|${method.toUpperCase()}|${normalized}`;
+  return `ATK-${createHash("sha256").update(input).digest("hex").slice(0, 12)}`;
+}
+
+function refOf(f: Finding): StaticRef {
+  return {
+    findingId: f.id,
+    ruleId: f.ruleId,
+    title: f.title,
+    file: f.file ?? "",
+    line: f.line,
+    severity: f.severity,
+  };
+}
+
+/** The table name from the detector's problem text ("a row of notes by an id"). */
+function recordOf(problem: string | undefined): string {
+  const m = /\brow of ([\w.-]{1,64}) by\b/.exec(problem ?? "");
+  return m?.[1] ?? "record";
+}
+
+function skipGroup(base: Omit<ProbeGroup, "requests" | "skip">, reason: string): ProbeGroup {
+  return { ...base, requests: [], skip: { outcome: "INCONCLUSIVE", reason } };
+}
+
+function req(label: string, path: string, session?: SessionSpec): ProbeRequest {
+  const r: ProbeRequest = { label, method: "GET", host: "target", path };
+  if (session) r.session = session.label;
+  return r;
+}
+
+function planOne(f: Finding, ctx: PlanContext): ProbeGroup {
+  const file = norm(f.file ?? "");
+  const route: RouteEntry | undefined = ctx.routes.find((r) => r.sourceFile === file);
+  const staticRef = refOf(f);
+  const record = recordOf(f.plainEnglishProblem);
+  const title = `One signed-in user can read another user's ${record}.`;
+  if (!route) {
+    return skipGroup(
+      { attackId: attackIdOf("GET", file), checkId: "idor", title, staticRef },
+      REASON_ROUTE,
+    );
+  }
+  const content = ctx.readSource(f.file ?? "") ?? ctx.readSource(file) ?? "";
+  const handler = f.line === undefined ? undefined : enclosingHandler(content, f.line);
+  const method = handler?.method ?? "GET";
+  const base = {
+    attackId: attackIdOf(method, route.pattern),
+    checkId: "idor" as const,
+    title,
+    route: route.pattern,
+    method,
+    staticRef,
+    ownerLabels: ["R1", "R2"],
+  };
+  if (handler?.method !== "GET" || !f.plainEnglishProblem.startsWith(READ_PREFIX)) {
+    return skipGroup(base, REASON_WRITE);
+  }
+  if (preflightGet(route.pattern, content).skip) return skipGroup(base, MAY_WRITE);
+  if (dynamicSegmentsOf(route.pattern).length === 0) return skipGroup(base, REASON_NO_ID_SEGMENT);
+  const a = ctx.sessions[0];
+  const b = ctx.sessions[1];
+  const pa = a && concretePath(route.pattern, a);
+  const pb = b && concretePath(route.pattern, b);
+  if (!a || !b || !pa || !pb || !("path" in pa) || !("path" in pb)) {
+    return skipGroup(base, REASON_SESSIONS);
+  }
+  return {
+    ...base,
+    requests: [
+      req("R0", pb.path),
+      req("R1", pa.path, a),
+      req("R2", pb.path, b),
+      req("R3", pb.path, a),
+    ],
+  };
+}
+
+// ---------------------------------------------------------------- evaluation helpers
+
+function parse(body: string): unknown {
+  try {
+    return JSON.parse(body);
+  } catch {
+    return undefined;
+  }
+}
+
+interface Shape {
+  keys: string[];
+  rows?: number;
+  id?: string;
+}
+
+const ID_KEYS = ["id", "_id", "uuid"];
+
+function shapeOf(r: ProbeResponse): Shape | undefined {
+  const parsed = parse(r.body);
+  if (parsed === null || typeof parsed !== "object") return undefined;
+  let obj: unknown = parsed;
+  const out: Shape = { keys: [] };
+  if (Array.isArray(parsed)) {
+    out.rows = parsed.length;
+    obj = parsed[0];
+  }
+  if (obj !== null && typeof obj === "object" && !Array.isArray(obj)) {
+    const rec = obj as Record<string, unknown>;
+    out.keys = Object.keys(rec).sort();
+    const key =
+      ID_KEYS.find((k) => k in rec) ?? out.keys.find((k) => /[a-z]Id$/.test(k) || k === "Id");
+    const v = key === undefined ? undefined : rec[key];
+    if (typeof v === "string" || typeof v === "number") out.id = String(v);
+  }
+  return out;
+}
+
+const is2xx = (r: ProbeResponse): boolean => r.status >= 200 && r.status < 300;
+const isBad = (r: ProbeResponse): boolean => r.status === 0 || r.status >= 500;
+
+function decodedLastSegment(path: string): string {
+  const seg = path.split("?")[0]!.split("/").pop() ?? "";
+  try {
+    return decodeURIComponent(seg);
+  } catch {
+    return seg;
+  }
+}
+
+/** The "shape match" of spec 7: 200s, same key set (and row count), ids equal the target id. */
+function similar(a: ProbeResponse, b: ProbeResponse, targetId: string): boolean {
+  if (a.status !== 200 || b.status !== 200) return false;
+  const sa = shapeOf(a);
+  const sb = shapeOf(b);
+  if (!sa || !sb) return false;
+  if (sa.keys.length === 0 || sa.keys.join("\0") !== sb.keys.join("\0")) return false;
+  if (sa.rows !== sb.rows) return false;
+  if (sa.id !== undefined && sb.id !== undefined) return sa.id === targetId && sb.id === targetId;
+  return true;
+}
+
+function hasId(r: ProbeResponse): boolean {
+  return shapeOf(r)?.id !== undefined;
+}
+
+function toShape(r: ProbeResponse): ResponseShape {
+  const s = shapeOf(r);
+  const out: ResponseShape = {
+    label: r.label,
+    status: r.status,
+    keys: (s?.keys ?? []).map((k) => (SAFE_KEY_RE.test(k) ? k : "<key>")),
+  };
+  if (s?.rows !== undefined) out.rowCount = s.rows;
+  return out;
+}
+
+function curlLines(group: ProbeGroup): string[] {
+  return group.requests.map((r) => {
+    const who = r.session ? ` -H "Cookie: <${r.session.toUpperCase()}_COOKIE>"` : "";
+    return `curl -s${who} "<TARGET>${r.path}"`;
+  });
+}
+
+function evaluateIdor(
+  group: ProbeGroup,
+  responses: readonly ProbeResponse[],
+  controls: ControlSet,
+): AttackResult {
+  const sev = group.staticRef?.severity ?? "high";
+  const result = (
+    outcome: AttackResult["outcome"],
+    reasoning: string,
+    extra: Partial<AttackResult> = {},
+  ): AttackResult => {
+    const out: AttackResult = {
+      attackId: group.attackId,
+      checkId: "idor",
+      title: group.title,
+      outcome,
+      severity: sev,
+      reasoning,
+      shapes: responses.map(toShape),
+      curl: curlLines(group),
+      fixGuidance: FIX_GUIDANCE,
+      ...extra,
+    };
+    if (group.route !== undefined) out.route = group.route;
+    if (group.method !== undefined) out.method = group.method;
+    if (group.staticRef) {
+      out.staticRef = group.staticRef;
+      out.sourceFile = group.staticRef.file;
+      if (group.staticRef.line !== undefined) out.line = group.staticRef.line;
+    }
+    return out;
+  };
+
+  if (group.skip) {
+    return result(group.skip.outcome, group.skip.reason, { shapes: [], curl: [] });
+  }
+  const by = (label: string): ProbeResponse | undefined => responses.find((r) => r.label === label);
+  const r0 = by("R0");
+  const r1 = by("R1");
+  const r2 = by("R2");
+  const r3 = by("R3");
+  if (!r0 || !r1 || !r2 || !r3) return result("ERROR", "a deciding request did not complete");
+  const ownerOk = r1.status === 200 && r2.status === 200;
+  if (isBad(r2) || isBad(r3)) {
+    return result("ERROR", "a deciding request failed or returned a server error", { ownerOk });
+  }
+  if (r2.status !== 200 || controls.matches(r2.fingerprint)) {
+    return result("INCONCLUSIVE", "owner request failed; can't judge", { ownerOk });
+  }
+  const noun = /user's (.+)\.$/.exec(group.title)?.[1] ?? "record";
+  const targetId = decodedLastSegment(group.requests.find((q) => q.label === "R2")?.path ?? "");
+
+  if (is2xx(r0) && !controls.matches(r0.fingerprint) && similar(r0, r2, targetId)) {
+    return result(
+      "CONFIRMED",
+      "A logged-out request received the same kind of record the owner receives.",
+      {
+        severity: "critical",
+        title: `Anyone, even logged out, can read another user's ${noun}.`,
+        ownerOk,
+      },
+    );
+  }
+  const loginRedirect = r3.status >= 300 && r3.status < 400 && LOGIN_RE.test(r3.location ?? "");
+  if (
+    r3.status === 401 ||
+    r3.status === 403 ||
+    r3.status === 404 ||
+    loginRedirect ||
+    controls.matches(r3.fingerprint)
+  ) {
+    return result(
+      "NOT_REPRODUCED",
+      "The other user's record was refused to the first user while its owner still got it, or the answer matches a not-found/auth-wall control.",
+      { ownerOk },
+    );
+  }
+  if (similar(r3, r2, targetId)) {
+    // Without an id in the body, only an exact copy of the owner's response that differs
+    // from the first user's own record shows that this is the other user's record.
+    if (!hasId(r3) || !hasId(r2)) {
+      const n = (r: ProbeResponse): string => normalizeBody(r.body);
+      if (n(r3) !== n(r2) || n(r3) === n(r1)) {
+        return result("NOT_REPRODUCED", "response is not Bob's record", { ownerOk });
+      }
+    }
+    return result(
+      "CONFIRMED",
+      "A signed-in user received the same kind of record another user owns.",
+      { severity: "high", title: `One signed-in user can read another user's ${noun}.`, ownerOk },
+    );
+  }
+  return result("NOT_REPRODUCED", "response is not Bob's record", { ownerOk });
+}
+
 export const idor: AttackCheck = {
   id: "idor",
-  title: "idor",
-  plan() {
-    throw new Error("not implemented");
+  title: "Insecure direct object reference",
+  plan(ctx) {
+    const seen = new Set<string>();
+    const groups: ProbeGroup[] = [];
+    for (const f of ctx.findings) {
+      if (f.ruleId !== RULE_ID) continue;
+      const g = planOne(f, ctx);
+      if (seen.has(g.attackId)) continue;
+      seen.add(g.attackId);
+      groups.push(g);
+    }
+    return groups;
   },
-  evaluate() {
-    throw new Error("not implemented");
-  },
+  evaluate: evaluateIdor,
 };
