@@ -39,6 +39,9 @@ export type FileKind =
   | "workflow"
   | "gh-action"
   | "shell"
+  | "terraform"
+  | "tfvars"
+  | "k8s-manifest"
   | "env"
   | "env-example"
   | "env-vault"
@@ -92,6 +95,9 @@ const RUNTIME: Record<FileKind, FileRuntime> = {
   workflow: "infra",
   "gh-action": "infra",
   shell: "infra",
+  terraform: "infra",
+  tfvars: "infra",
+  "k8s-manifest": "infra",
   env: "infra",
   "env-example": "infra",
   "env-vault": "infra",
