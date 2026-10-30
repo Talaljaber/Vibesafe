@@ -338,6 +338,66 @@ describe("PackageExistenceDetector: npm silent cases", () => {
     ).toBe(true);
   });
 
+  it("stays silent for a scoped 404 when the lockfile resolves it from the default registry (private org package)", async () => {
+    const files = {
+      "package.json": pkg({ "@acmeprobe-co/design-tokens": "^1.0.0" }),
+      "package-lock.json": JSON.stringify({
+        lockfileVersion: 3,
+        packages: {
+          "": {},
+          "node_modules/@acmeprobe-co/design-tokens": {
+            version: "1.2.0",
+            resolved: "https://registry.npmjs.org/@acmeprobe-co/design-tokens/-/dt-1.2.0.tgz",
+          },
+        },
+      }),
+    };
+    const { findings } = await detect(files, npmRoutes({}));
+    expect(findings).toEqual([]);
+  });
+
+  it("still reports an unscoped lockfile package that got a 404, and a scoped one with no lockfile at medium confidence", async () => {
+    const unscoped = await detect(
+      {
+        "package.json": pkg({ "leftpadx-ai-helper": "^1.0.0" }),
+        "package-lock.json": JSON.stringify({
+          lockfileVersion: 3,
+          packages: { "": {}, "node_modules/leftpadx-ai-helper": { version: "1.0.3" } },
+        }),
+      },
+      npmRoutes({}),
+    );
+    expect(unscoped.findings).toHaveLength(1);
+    const scoped = await detect(
+      { "package.json": pkg({ "@acme-ai/magic": "1.0.0" }) },
+      npmRoutes({}),
+    );
+    expect(scoped.findings).toHaveLength(1);
+    expect(scoped.findings[0]!.confidence).toBe("medium");
+    expect(scoped.findings[0]!.plainEnglishProblem).toContain("private package");
+  });
+
+  it("skips scopes and defaults whose registry is an unresolved env placeholder", async () => {
+    const npmrc = await detect(
+      {
+        "package.json": pkg({ "@acmeprobe/ui-kit": "^1.0.0" }),
+        ".npmrc": "@acmeprobe:registry=${ACME_REGISTRY_URL}\n",
+      },
+      npmRoutes({}),
+    );
+    expect(npmrc.findings).toEqual([]);
+    expect(npmrc.calls).toEqual([]);
+    const yarnrc = await detect(
+      {
+        "package.json": pkg({ "@acmeprobe/ui-kit": "^1.0.0" }),
+        ".yarnrc.yml": "npmScopes:\n  acmeprobe:\n    npmRegistryServer: ${ACME_REGISTRY_URL}\n",
+      },
+      npmRoutes({}),
+    );
+    expect(yarnrc.findings).toEqual([]);
+    expect(yarnrc.calls).toEqual([]);
+  });
+
   it("reads .yarnrc.yml from a parent directory", async () => {
     const files = {
       "apps/web/package.json": pkg({ "@acme/ui": "^1.0.0" }),
@@ -614,6 +674,43 @@ describe("PackageExistenceDetector: PyPI", () => {
     expect(pub.findings).toHaveLength(1);
   });
 
+  it("never sends a pyproject's own name (self-referencing extras) to PyPI", async () => {
+    const files = {
+      "pyproject.toml":
+        '[project]\nname = "My_Internal.Lib"\ndependencies = ["requests>=2"]\n\n[project.optional-dependencies]\ntest = ["pytest"]\nall = ["my-internal-lib[test]"]\n',
+    };
+    const { findings, calls } = await detect(files, pypi({}));
+    expect(calls.some((u) => u.includes("my-internal-lib"))).toBe(false);
+    expect(findings.some((f) => f.title.includes("my-internal-lib"))).toBe(false);
+  });
+
+  it("never sends the [tool.poetry] name to PyPI", async () => {
+    const files = {
+      "pyproject.toml":
+        '[tool.poetry]\nname = "acme-core"\n\n[tool.poetry.dependencies]\nacme-core = "^1.0"\n',
+    };
+    const { calls } = await detect(files, pypi({}));
+    expect(calls).toEqual([]);
+  });
+
+  it("never sends [tool.uv.sources] workspace, path and git members to PyPI", async () => {
+    const files = {
+      "pyproject.toml":
+        '[project]\nname = "root"\ndependencies = ["member-a", "local-path-pkg", "gitdep", "tbl-member", "fastapi-auth-magic"]\n\n[tool.uv.sources]\nmember-a = { workspace = true }\nlocal-path-pkg = { path = "../local" }\n"gitdep" = { git = "https://example.com/x.git" }\n\n[tool.uv.sources.tbl-member]\nworkspace = true\n',
+    };
+    const { calls } = await detect(files, pypi({}));
+    expect(calls).toEqual(["https://pypi.org/pypi/fastapi-auth-magic/json"]);
+  });
+
+  it("skips poetry path and git entries without a version but still checks versioned ones", async () => {
+    const files = {
+      "pyproject.toml":
+        '[tool.poetry.dependencies]\nlocal-lib = { path = "../lib" }\ngit-lib = { git = "https://example.com/x.git" }\nmade-up-lib = "^1.0"\n',
+    };
+    const { calls } = await detect(files, pypi({}));
+    expect(calls).toEqual(["https://pypi.org/pypi/made-up-lib/json"]);
+  });
+
   it("degrades on a malformed PyPI body", async () => {
     const warnings: string[] = [];
     const { findings } = await detect(
@@ -722,6 +819,21 @@ describe("PackageExistenceDetector: network behaviour", () => {
       warnings.some((w) => /stopped after 10s; \d+ package\(s\) were not checked/.test(w)),
     ).toBe(true);
     expect(m.calls.length).toBeLessThan(40);
+  });
+
+  it("checks npm and PyPI concurrently so a slow npm phase cannot starve PyPI", async () => {
+    const files = {
+      "package.json": pkg({ "leftpadx-ai-helper": "^1.0.0" }),
+      "requirements.txt": "fastapi-auth-magic==0.1.0\n",
+    };
+    const order: string[] = [];
+    const m = mockFetch((url) => {
+      order.push(url.startsWith("https://pypi.org") ? "pypi" : "npm");
+      return undefined;
+    });
+    await new PackageExistenceDetector(m.fn, () => NOW).detect(context(files));
+    expect(order[0]).toBe("npm");
+    expect(order.indexOf("pypi")).toBeLessThan(order.length - 1);
   });
 
   it("warns and returns nothing when fetch is unavailable", async () => {

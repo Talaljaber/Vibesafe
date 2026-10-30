@@ -42,10 +42,15 @@ function hostOf(url: string): string | undefined {
   }
 }
 
-/** True when `url` parses and points at a host other than the public npm registries. */
+/**
+ * True unless `url` parses and points at a public npm registry host. Values that do not
+ * parse or contain an env placeholder (`${ACME_REGISTRY_URL}`) are private: the real
+ * registry is only known at install time, so the public one must not be assumed.
+ */
 function isPrivateRegistryUrl(url: string): boolean {
+  if (url.includes("${")) return true;
   const host = hostOf(url);
-  return host !== undefined && !DEFAULT_NPM_REGISTRY_HOSTS.includes(host);
+  return host === undefined || !DEFAULT_NPM_REGISTRY_HOSTS.includes(host);
 }
 
 const unquote = (s: string): string => s.trim().replace(/^(["'])(.*)\1$/, "$2");

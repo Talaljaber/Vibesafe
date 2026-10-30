@@ -55,6 +55,25 @@ describe("registry config", () => {
   });
 });
 
+describe("unparseable registry values", () => {
+  it("treats env placeholders and garbage in .npmrc as private", () => {
+    const c = parseNpmrc("@acme:registry=${ACME_REGISTRY_URL}\n");
+    expect(c.privateScopes.has("@acme")).toBe(true);
+    expect(parseNpmrc("registry=${NPM_REGISTRY}\n").defaultIsPrivate).toBe(true);
+    expect(parseNpmrc("registry=not a url\n").defaultIsPrivate).toBe(true);
+    expect(parseNpmrc("@a:registry=https://registry.npmjs.org/\n").privateScopes.size).toBe(0);
+  });
+
+  it("treats env placeholders and garbage in .yarnrc.yml as private", () => {
+    expect(parseYarnrc("npmRegistryServer: ${REG}\n").defaultIsPrivate).toBe(true);
+    const c = parseYarnrc("npmScopes:\n  acme:\n    npmRegistryServer: ${ACME_URL}\n");
+    expect(c.privateScopes.has("@acme")).toBe(true);
+    expect(
+      parseYarnrc('npmRegistryServer: "https://registry.yarnpkg.com"\n').defaultIsPrivate,
+    ).toBe(false);
+  });
+});
+
 describe("nonDefaultRegistryNames", () => {
   it("reads package-lock resolved hosts", () => {
     const lock = JSON.stringify(

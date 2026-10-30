@@ -156,8 +156,10 @@ export class PackageExistenceDetector implements Detector {
     const get = (url: string): Promise<Reply> => this.request(doFetch, url, overall, state);
     const verdicts = new Map<Candidate, Verdict>();
     try {
-      await this.checkNpm(npm, get, overall.signal, verdicts, state, warn);
-      await this.checkPypi(py, get, overall.signal, verdicts, state);
+      await Promise.all([
+        this.checkNpm(npm, get, overall.signal, verdicts, state, warn),
+        this.checkPypi(py, get, overall.signal, verdicts, state),
+      ]);
     } finally {
       clearTimeout(deadline);
     }
@@ -292,6 +294,7 @@ export class PackageExistenceDetector implements Detector {
 
   private async collectPyPi(context: ScanContext, warn: (m: string) => void): Promise<Candidate[]> {
     const out = new Map<string, Candidate>();
+    const local = await localPythonNames(context);
     for (const file of context.files) {
       const base = file.replace(/\\/g, "/").split("/").pop() ?? "";
       const kind = isPythonRequirementsFile(file)
@@ -316,6 +319,7 @@ export class PackageExistenceDetector implements Detector {
         for (const req of reqs) {
           const name = normalizePypiName(req.name);
           if (name === "python" || !PYPI_NAME_RE.test(name) || out.has(name)) continue;
+          if (local.has(name)) continue;
           out.set(name, {
             ecosystem: "PyPI",
             name,
@@ -435,7 +439,10 @@ export class PackageExistenceDetector implements Detector {
     const packument = async (c: Candidate): Promise<void> => {
       const reply = await get(npmPackumentUrl(c.name));
       if (reply.kind === "status" && reply.status === 404) {
-        verdicts.set(c, { kind: "not-found", removed: c.inLockfile });
+        // The public registry answers 404 for private scoped packages when unauthenticated, and a
+        // lockfile entry means the project installed it before: not evidence of a made-up name.
+        if (c.name.startsWith("@") && c.inLockfile) verdicts.set(c, { kind: "fine" });
+        else verdicts.set(c, { kind: "not-found", removed: c.inLockfile });
       } else if (reply.kind === "ok") {
         const p = parsePackument(reply.json);
         if (p.unpublished || p.securityHolder)
@@ -529,6 +536,7 @@ export class PackageExistenceDetector implements Detector {
     const registry = c.ecosystem === "npm" ? "npm" : "PyPI";
     const discriminator = `${c.ecosystem}:${c.name}`;
     const label = `\`${c.display}\``;
+    const scoped = c.ecosystem === "npm" && c.name.startsWith("@");
     if (verdict.kind === "not-found") {
       const removed = verdict.removed;
       return makeFinding({
@@ -536,14 +544,14 @@ export class PackageExistenceDetector implements Detector {
         ruleId: "dependency/package-not-found",
         title: removed ? `${label} was removed from npm` : `${label} does not exist on ${registry}`,
         severity: "high",
-        confidence: "high",
+        confidence: scoped ? "medium" : "high",
         file: c.file,
         line: c.line,
         evidence: c.evidence,
         discriminator,
         plainEnglishProblem: removed
           ? `${label} was installed before but is no longer on npm. npm removes packages after malware reports; check your lockfile's version against security advisories and rotate secrets if it ran install scripts.`
-          : `${label} is listed in \`${c.file}\` but the ${registry} registry has no package with that name. AI assistants often invent plausible package names; attackers register those names ("slopsquatting") so the next install runs their code.`,
+          : `${label} is listed in \`${c.file}\` but the ${registry} registry has no package with that name. AI assistants often invent plausible package names; attackers register those names ("slopsquatting") so the next install runs their code.${scoped ? " If this is a private package from your organization's own registry, ignore this finding and point the scope at that registry in .npmrc." : ""}`,
         whyItMatters:
           "The install fails today, and anyone can publish a package under that name tomorrow, after which your next install would run their code on your machine and your CI.",
         fixSteps: [
@@ -589,6 +597,48 @@ export class PackageExistenceDetector implements Detector {
       aiFixPrompt: VERY_NEW_PROMPT,
     });
   }
+}
+
+/**
+ * Normalised names local to the project, which must never be sent to PyPI: the `[project]` and
+ * `[tool.poetry]` name of every pyproject.toml (self-referencing extras such as
+ * `all = ["me[test]"]`) and every key under `[tool.uv.sources]` (workspace, path, git, url).
+ */
+async function localPythonNames(context: ScanContext): Promise<Set<string>> {
+  const names = new Set<string>();
+  const add = (raw: string): void => {
+    const n = normalizePypiName(raw.trim().replace(/^["']|["']$/g, ""));
+    if (n !== "") names.add(n);
+  };
+  for (const file of context.files) {
+    if ((file.replace(/\\/g, "/").split("/").pop() ?? "") !== "pyproject.toml") continue;
+    let content = "";
+    try {
+      content = await context.readFile(file);
+    } catch {
+      continue;
+    }
+    if (typeof content !== "string") continue;
+    let section = "";
+    for (const line of content.split(/\r?\n/)) {
+      const header = /^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(?:#.*)?$/.exec(line);
+      if (header) {
+        section = header[1]!.replace(/["']/g, "");
+        const sub = /^tool\.uv\.sources\.(.+)$/.exec(section);
+        if (sub?.[1]) add(sub[1]);
+        continue;
+      }
+      if (section === "project" || section === "tool.poetry") {
+        const m = /^\s*name\s*=\s*["']([^"']+)["']/.exec(line);
+        if (m?.[1]) add(m[1]);
+      } else if (section === "tool.uv.sources") {
+        const m = /^\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9._-]+))\s*=/.exec(line);
+        const key = m?.[1] ?? m?.[2] ?? m?.[3];
+        if (key) add(key);
+      }
+    }
+  }
+  return names;
 }
 
 /** The name as written on the manifest line (PEP 503 normalisation lowercases it). */
