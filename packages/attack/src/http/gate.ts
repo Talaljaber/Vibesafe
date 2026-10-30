@@ -51,8 +51,8 @@ const ALLOWED_HEADERS = new Set([
 const LOOPBACK_RAW_HOSTS = new Set(["127.0.0.1", "[::1]", "localhost"]);
 const SUPABASE_PATH_RE = /^\/rest\/v1\/[A-Za-z0-9_]{1,63}$/;
 const SUPABASE_HOST_RE = /^([a-z0-9]{1,63})\.supabase\.co$/;
-// whitespace, backslash, control characters, DEL, anything non-ASCII, and an encoded NUL
-const MALFORMED_RE = /[\\\s\u0000-\u001f\u007f-ï¿¿]|%00/i;
+// anything outside printable ASCII (whitespace, control characters, non-ASCII), a backslash, or an encoded NUL
+const MALFORMED_RE = /[^\x21-\x7e]|\\|%00/i;
 
 function deny(reason: GateReason, detail?: string): GateDecision {
   return detail === undefined ? { allowed: false, reason } : { allowed: false, reason, detail };
