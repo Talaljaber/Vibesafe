@@ -24,19 +24,26 @@ const overlayArg = argVal("--overlay");
 let root = baseRoot;
 let mergedDir;
 if (overlayArg) {
-  // Windows kill() skips exit handlers: sweep stale dirs from earlier runs, and announce ours.
+  // Windows kill() skips exit handlers: sweep dirs whose owning harness is dead, and announce ours.
+  const pidAlive = (pid) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch (e) {
+      return e.code === "EPERM";
+    }
+  };
   try {
     for (const d of fs.readdirSync(os.tmpdir())) {
       const p = path.join(os.tmpdir(), d);
-      if (d.startsWith("vibesafe-harness-") && Date.now() - fs.statSync(p).mtimeMs > 600000) {
-        fs.rmSync(p, { recursive: true, force: true });
-      }
+      const m = /^vibesafe-harness-(\d+)-/.exec(d);
+      if (m && !pidAlive(Number(m[1]))) fs.rmSync(p, { recursive: true, force: true });
     }
   } catch {
     // best effort
   }
-  mergedDir = fs.mkdtempSync(path.join(os.tmpdir(), "vibesafe-harness-"));
-  console.error(`MERGED ${mergedDir}`);
+  mergedDir = fs.mkdtempSync(path.join(os.tmpdir(), `vibesafe-harness-${process.pid}-`));
+  console.log(`MERGED ${mergedDir}`);
   const skip = (src) => !src.split(path.sep).includes("node_modules");
   fs.cpSync(baseRoot, mergedDir, { recursive: true, filter: skip });
   fs.cpSync(path.resolve(overlayArg), mergedDir, { recursive: true, filter: skip });

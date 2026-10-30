@@ -33,6 +33,12 @@ const idor = (fs_: Finding[], file: string): Finding[] =>
 const missingAuth = (fs_: Finding[], file: string): Finding[] =>
   fs_.filter((f) => f.ruleId === "auth/missing-route-auth" && f.file === file);
 
+const ledger = (fs_: Finding[]): Finding[] =>
+  fs_.filter(
+    (f) =>
+      f.ruleId === "authorization/idor-unscoped-lookup" || f.ruleId === "auth/missing-route-auth",
+  );
+
 describe("attack-demo-app fixture: static findings", () => {
   it("emits the four expected findings", async () => {
     const findings = await scan(demoDir);
@@ -52,6 +58,14 @@ describe("attack-demo-app fixture: static findings", () => {
     expect(idor(findings, INVOICES)[0]!.plainEnglishProblem).toMatch(/^This handler reads/);
     expect(idor(findings, INVOICES)).toHaveLength(1);
     expect(missingAuth(findings, ADMIN)).toHaveLength(1);
+    expect(ledger(findings)).toHaveLength(4);
+  });
+
+  it("package.json has no BOM and the scan detects nextjs", async () => {
+    const raw = fs.readFileSync(path.join(demoDir, "package.json"));
+    expect(raw[0]).toBe(0x7b);
+    const result = await new ScannerPipeline(createDefaultRegistry()).scan({ rootPath: demoDir });
+    expect(result.projectContext.framework).toBe("nextjs");
   });
 
   it("ships a sessions file matching the SessionsFile shape", () => {
@@ -78,6 +92,7 @@ describe("attack-demo-app fixture: static findings", () => {
       expect(idor(findings, NOTES)).toHaveLength(0);
       expect(missingAuth(findings, ADMIN)).toHaveLength(0);
       expect(idor(findings, INVOICES)).toHaveLength(1);
+      expect(ledger(findings)).toHaveLength(1);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
@@ -145,7 +160,7 @@ function startHarness(
           child,
           port: Number(m[1]),
           stdout,
-          merged: /^MERGED (.+)$/m.exec(stderr)?.[1]?.trim(),
+          merged: /^MERGED (.+)$/m.exec(stdout)?.[1]?.trim(),
         });
       }
     });
@@ -169,9 +184,21 @@ describe("attack-demo-app harness", () => {
     lineSeen = h.stdout;
   });
 
-  afterAll(() => {
-    for (const c of children) c.kill();
-    for (const d of mergedDirs) fs.rmSync(d, { recursive: true, force: true });
+  afterAll(async () => {
+    await Promise.all(
+      children.map(
+        (c) =>
+          new Promise<void>((res) => {
+            if (c.exitCode !== null) return res();
+            const t = setTimeout(res, 3000);
+            c.once("exit", () => (clearTimeout(t), res()));
+            c.kill();
+          }),
+      ),
+    );
+    for (const d of mergedDirs) {
+      fs.rmSync(d, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
   });
 
   it("prints LISTENING <port>", () => {
