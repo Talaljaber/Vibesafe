@@ -1,6 +1,6 @@
 {
   "name": "@talaljaber/vibesafe-mcp",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "The don't-deploy-that-yet tool for vibe-coded apps — MCP server",
   "license": "MIT",
   "author": "Talal Jaber",

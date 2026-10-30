@@ -9,6 +9,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Security
+
+## [0.4.0] - 2026-10-30
+
+Detection hardening (epic #106). On the internal shopsaas benchmark the strict catch rate went from 18/70 to 66/70 (67/70 lenient). On a blind holdout app that no implementing agent saw, it went from 13/90 to 52/90 strict (22/90 to 58/90 lenient), with the decoy hits unchanged at 4/18. Engine time on shopsaas with `--deep` is about 0.6 s. Everything below is static, offline analysis; the only network access is the opt-in `--online` flag.
+
+### Added
+
+- **Infrastructure** (`security_config`)
+  - Dockerfile: `security_config/docker-runs-as-root`, `docker-unpinned-base-image`, `docker-secret-in-env`, `docker-copy-without-dockerignore`.
+  - docker-compose: `security_config/compose-db-port-exposed`, `compose-default-db-password`, `compose-privileged-service`.
+  - GitHub workflows: `security_config/gha-pull-request-target-checkout`, `gha-unpinned-action`, `gha-write-all-permissions`.
+  - Shell scripts: `security_config/shell-curl-pipe-sh`, `shell-hardcoded-credential`.
+  - Next.js config: `security_config/nextjs-browser-source-maps`, `nextjs-ignore-build-errors`, `nextjs-image-wildcard-host`.
+  - Error responses that leak stack traces or internals (`security_config/error-stack-leak`).
+- **Injection** (new `injection` category): untrusted input reaching an interpreter or sink, with taint tracking from request input.
+  - SQL: `injection/sql-built-from-input`, `injection/sql-built-from-parameter`, `injection/postgrest-filter-interpolation`. Parameterized queries stay clean.
+  - SSRF (`injection/ssrf-user-controlled-url`), path traversal (`injection/path-traversal`), code execution (`injection/dynamic-code-eval`), command execution (`injection/command-exec-interpolation`) and open redirects (`injection/open-redirect`).
+  - GitHub Actions script injection (`injection/gha-script-injection`).
+- **Client code**
+  - Dynamic code and open redirects in the browser (`injection/client-dynamic-code`, `injection/client-open-redirect`).
+  - `javascript:` hrefs (`xss/javascript-url-href`) and `postMessage` listeners without an origin check (`xss/postmessage-no-origin-check`).
+  - Secrets in `localStorage`/`sessionStorage` and sensitive data in `console.log` (`frontend_exposure/secret-in-web-storage`, `frontend_exposure/sensitive-data-console-log`).
+  - Role checks that only run in the client (`authorization/client-side-role-check`).
+- **Authorization and auth**
+  - IDOR on unscoped lookups (`authorization/idor-unscoped-lookup`), mass assignment (`authorization/mass-assignment`) and auth checks that run after the write (`authorization/auth-check-after-write`).
+  - Hardcoded route secrets and non-constant-time comparisons (`auth/hardcoded-route-secret`, `auth/non-constant-time-compare`).
+  - Middleware gaps: cookie-presence-only checks and matchers that skip protected routes (`auth/middleware-cookie-presence-only`, `auth/middleware-matcher-gap`).
+- **Crypto** (new `crypto` category)
+  - Insecure random tokens (`crypto/insecure-random-token`) and hardcoded secret fallbacks such as `process.env.X || "dev-secret"` (`crypto/hardcoded-secret-fallback`).
+  - Plaintext credentials: `crypto/plaintext-api-key-storage`, `crypto/plaintext-seed-password`, `crypto/weak-password-hash`.
+  - JWT misuse: `crypto/jwt-algorithm-none`, `crypto/jwt-decode-for-auth`, `crypto/jwt-literal-secret`, `crypto/jwt-verify-without-algorithms`.
+- **Supabase** (`authorization`): `authorization/supabase-select-using-true`, `supabase-self-referential-policy`, `supabase-policy-self-promotion`, `supabase-grant-to-anon`, `supabase-security-definer-no-search-path`, `supabase-definer-missing-caller-check`.
+- **Dependencies**
+  - Offline npm advisories (`dependency/known-vulnerable-version`) and typosquatted package names (`dependency/typosquat-package`).
+  - `--online`: opt-in lookup of dependency versions in the OSV advisory database (`dependency/osv-advisory`). It sends package names and versions to `api.osv.dev` and is the only network access VibeSafe has; it is off by default.
+- **Tooling and hygiene**
+  - Placeholder-only tests (`structure/placeholder-only-tests`) and `.gitignore` files that ignore `.env` but not its variants (`security_config/gitignore-env-variants`).
+  - Provider keys, database URLs and admin keys under public env prefixes (extends `frontend_exposure/public-secret-var`) and whole sensitive rows passed from server code to client components (`frontend_exposure/full-row-client-prop`).
+  - Check-then-act races (`validation/check-then-act-race`) and prices trusted from the client (`validation/client-trusted-price`).
+  - `vibesafe hook claude` prints a Claude Code `PostToolUse` hook that re-scans after each edit (`--write` merges it into `.claude/settings.json`), with an example in `examples/claude-code/`.
+- **Engine**
+  - Precedence: a specific finding hides the generic one reported for the same problem, so one issue is not reported twice.
+  - File kinds: detectors only read the files they apply to (Dockerfiles, compose files, workflows, shell scripts, SQL, route files, client files).
+  - `pnpm bench`: a harness that measures a scan against a seeded app and its answer key, with a baseline delta and decoy tracking.
+
+### Changed
+
+- New categories `injection` and `crypto` are available in config `categories`, the MCP `category` filter, reports and the VS Code extension.
+- All packages share one version, 0.4.0.
+
+## [0.3.1]
+
+### Added
+
 - **Detectors**
   - New `security_config` category; `.py` and `.sql` files are now discovered (#77).
   - Insecure CORS configuration: reflected origins without an allowlist, wildcard origins with credentials, any-origin `cors()` in cookie-based apps and `Access-Control-Allow-Origin: *` (`security_config/cors-*`, #78).
