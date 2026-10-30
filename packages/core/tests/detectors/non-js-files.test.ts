@@ -211,6 +211,17 @@ const K8S = [
   "  ADMIN_PASSWORD: Tr0ub4dor-and-more",
 ].join("\n");
 
+const SUPABASE_CONFIG = [
+  'project_id = "acme"',
+  "[auth]",
+  'site_url = "http://127.0.0.1:3000"',
+  "jwt_expiry = 604800",
+  "minimum_password_length = 6",
+  "[auth.email]",
+  "enable_confirmations = false",
+  ...JS_BAIT.map((l) => `# ${l}`),
+].join("\n");
+
 const SAMPLES: { kind: FileKind; files: Record<string, string> }[] = [
   {
     kind: "python",
@@ -229,6 +240,13 @@ const SAMPLES: { kind: FileKind; files: Record<string, string> }[] = [
   { kind: "terraform", files: { "infra/main.tf": TERRAFORM, "app/api/db.tf": TERRAFORM } },
   { kind: "tfvars", files: { "infra/prod.tfvars": TFVARS, "env.auto.tfvars": TFVARS } },
   { kind: "k8s-manifest", files: { "infra/k8s/app.yaml": K8S, "deploy/app.yml": K8S } },
+  {
+    kind: "supabase-config",
+    files: {
+      "supabase/config.toml": SUPABASE_CONFIG,
+      "apps/web/supabase/config.toml": SUPABASE_CONFIG,
+    },
+  },
 ];
 
 describe("non-JS files", () => {
