@@ -455,3 +455,71 @@ describe("idor.evaluate review fixes", () => {
     expect(joined).toMatch(/ALICE_COOKIE/);
   });
 });
+
+describe("idor.evaluate review round 3", () => {
+  const A = { id: "u-1", slug: "n_alice_1", title: "SENTINEL_VALUE_x9", body: "b" };
+  const B = { id: "u-2", slug: "n_bob_1", title: "SENTINEL_VALUE_x9", body: "c" };
+  it("slug route whose body id is not the url id is not refuted", () => {
+    const r = run([denied("R0"), res("R1", 200, A), res("R2", 200, B), res("R3", 200, B)]);
+    expect(r.outcome).toBe("CONFIRMED");
+  });
+  it("a lone userId key does not refute a real IDOR", () => {
+    const a = { userId: "u_alice", title: "t", body: "a" };
+    const b = { userId: "u_bob", title: "t", body: "b" };
+    const r = run([denied("R0"), res("R1", 200, a), res("R2", 200, b), res("R3", 200, b)]);
+    expect(r.outcome).toBe("CONFIRMED");
+  });
+  it("empty owner response is INCONCLUSIVE", () => {
+    for (const body of [[], {}]) {
+      const r = run([
+        denied("R0"),
+        res("R1", 200, body),
+        res("R2", 200, body),
+        res("R3", 200, body),
+      ]);
+      expect(r.outcome).toBe("INCONCLUSIVE");
+    }
+  });
+  it("a clear refusal wins over a non-JSON owner response", () => {
+    const r = run([
+      denied("R0"),
+      res("R1", 200, "hello", "text/plain"),
+      res("R2", 200, "world", "text/plain"),
+      denied("R3", 404),
+    ]);
+    expect(r.outcome).toBe("NOT_REPRODUCED");
+  });
+  it("never leaks response values or session headers", () => {
+    const r = run([denied("R0"), res("R1", 200, A), res("R2", 200, B), res("R3", 200, B)]);
+    const j = JSON.stringify(r);
+    expect(j).not.toContain("SENTINEL_VALUE_x9");
+    expect(j).not.toContain("b=1");
+    expect(j).not.toContain("a=1");
+  });
+  it("skips dot-segment resource ids", () => {
+    const g = idor.plan(
+      ctx({ sessions: [alice, { ...bob, resources: { "/api/notes/[id]": ".." } }] }),
+    )[0]!;
+    expect(g.requests).toEqual([]);
+    expect(g.skip?.outcome).toBe("INCONCLUSIVE");
+  });
+  it("multi-segment routes get their own skip reason", () => {
+    const file = "app/api/orgs/[orgId]/notes/[id]/route.js";
+    const g = idor.plan(
+      ctx({
+        findings: [finding(2, "reads", file)],
+        routes: [
+          {
+            pattern: "/api/orgs/[orgId]/notes/[id]",
+            sourceFile: file,
+            methods: ["GET"],
+            dynamicSegments: ["[orgId]", "[id]"],
+            findingRefs: [],
+          },
+        ],
+        readSource: () => SRC,
+      }),
+    )[0]!;
+    expect(g.skip?.reason).toMatch(/several id segments/);
+  });
+});

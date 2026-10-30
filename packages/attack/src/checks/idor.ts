@@ -96,7 +96,9 @@ function planOne(f: Finding, ctx: PlanContext): ProbeGroup {
     );
   }
   if (preflightGet(route.pattern, content).skip) return skipGroup(base, MAY_WRITE);
-  if (dynamicSegmentsOf(route.pattern).length === 0) return skipGroup(base, REASON_NO_ID_SEGMENT);
+  const nDyn = dynamicSegmentsOf(route.pattern).length;
+  if (nDyn === 0) return skipGroup(base, REASON_NO_ID_SEGMENT);
+  if (nDyn > 1) return skipGroup(base, "route has several id segments; not supported yet");
   const a = ctx.sessions[0];
   const b = ctx.sessions[1];
   const pa = a && concretePath(route.pattern, a);
@@ -104,6 +106,12 @@ function planOne(f: Finding, ctx: PlanContext): ProbeGroup {
   if (!a || !b || !pa || !pb || !("path" in pa) || !("path" in pb)) {
     return skipGroup(base, REASON_SESSIONS);
   }
+  const dot = (p: string): boolean =>
+    p
+      .split("?")[0]!
+      .split("/")
+      .some((x) => x === "." || x === ".." || /^%2e(%2e)?$/i.test(x));
+  if (dot(pa.path) || dot(pb.path)) return skipGroup(base, REASON_SESSIONS);
   if (pa.path === pb.path) return skipGroup(base, REASON_SAME_ID);
   return {
     ...base,
@@ -153,10 +161,7 @@ function shapeOf(r: ProbeResponse, targetId?: string): Shape | undefined {
         const x = rec[k];
         return typeof x === "string" || typeof x === "number" ? String(x) : undefined;
       };
-      key =
-        cands.length === 1
-          ? cands[0]
-          : cands.find((k) => targetId !== undefined && idVal(k) === targetId);
+      key = cands.find((k) => targetId !== undefined && idVal(k) === targetId);
     }
     const v = key === undefined ? undefined : rec[key];
     if (typeof v === "string" || typeof v === "number") out.id = String(v);
@@ -186,19 +191,20 @@ function targetIdOf(pattern: string | undefined, path: string): string {
 }
 
 /** The "shape match" of spec 7: 200s, same key set (and row count), ids equal the target id. */
-function similar(a: ProbeResponse, b: ProbeResponse, targetId: string): boolean {
+function similar(a: ProbeResponse, b: ProbeResponse, targetId: string, useId: boolean): boolean {
   if (a.status !== 200 || b.status !== 200) return false;
   const sa = shapeOf(a, targetId);
   const sb = shapeOf(b, targetId);
   if (!sa || !sb) return false;
   if (sa.keys.length === 0 || sa.keys.join("\0") !== sb.keys.join("\0")) return false;
   if (sa.rows !== sb.rows) return false;
-  if (sa.id !== undefined && sb.id !== undefined) return sa.id === targetId && sb.id === targetId;
+  if (useId && sa.id !== undefined && sb.id !== undefined)
+    return sa.id === targetId && sb.id === targetId;
   return true;
 }
 
-function hasId(r: ProbeResponse, targetId: string): boolean {
-  return shapeOf(r, targetId)?.id !== undefined;
+function hasId(r: ProbeResponse, targetId: string, useId: boolean): boolean {
+  return useId && shapeOf(r, targetId)?.id !== undefined;
 }
 
 function toShape(r: ProbeResponse): ResponseShape {
@@ -271,17 +277,13 @@ function evaluateIdor(
     group.requests.find((q) => q.label === "R2")?.path ?? "",
   );
 
-  if (r2.bodyTruncated || r3.bodyTruncated || shapeOf(r2) === undefined) {
-    return result("INCONCLUSIVE", "owner response is not comparable JSON; can't judge", {
-      ownerOk,
-    });
-  }
+  const useId = shapeOf(r2, targetId)?.id === targetId;
   const n = (r: ProbeResponse): string => normalizeBody(r.body);
   const anonOk =
     is2xx(r0) &&
     !controls.matches(r0.fingerprint) &&
-    similar(r0, r2, targetId) &&
-    (hasId(r0, targetId) && hasId(r2, targetId) ? true : n(r0) === n(r2));
+    similar(r0, r2, targetId, useId) &&
+    (hasId(r0, targetId, useId) && hasId(r2, targetId, useId) ? true : n(r0) === n(r2));
   if (anonOk) {
     return result(
       "CONFIRMED",
@@ -308,10 +310,15 @@ function evaluateIdor(
       { ownerOk },
     );
   }
-  if (similar(r3, r2, targetId)) {
+  if (r2.bodyTruncated || r3.bodyTruncated || (shapeOf(r2)?.keys.length ?? 0) === 0) {
+    return result("INCONCLUSIVE", "owner response is empty or not comparable JSON; can't judge", {
+      ownerOk,
+    });
+  }
+  if (similar(r3, r2, targetId, useId)) {
     // Without an id in the body, only an exact copy of the owner's response that differs
     // from the first user's own record shows that this is the other user's record.
-    if (!hasId(r3, targetId) || !hasId(r2, targetId)) {
+    if (!hasId(r3, targetId, useId) || !hasId(r2, targetId, useId)) {
       if (n(r1) === n(r2)) {
         return result("INCONCLUSIVE", "the owners' records are indistinguishable; can't judge", {
           ownerOk,
