@@ -290,6 +290,7 @@ describe("docs hygiene", () => {
       core: "@talaljaber/vibesafe-core",
       cli: "@talaljaber/vibesafe-cli",
       mcp: "@talaljaber/vibesafe-mcp",
+      attack: "@talaljaber/vibesafe-attack",
     };
     const names = new Set(Object.values(publishable));
     expect(read("LICENSE")).toMatch(/^MIT License/);

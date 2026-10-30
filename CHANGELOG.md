@@ -10,12 +10,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Core now exports the Next.js route helpers (nextRoutePath, findHandlerLine, isPublicRoutePath, isApiRoute, isRiskyRoutePattern) for Attack Mode.
+- Scaffold the `@talaljaber/vibesafe-attack` package (types, API stubs, network chokepoint lint rule and test) for Attack Mode.
 
 ### Changed
 
 ### Fixed
 
 ### Security
+
+## [0.5.0] - 2026-10-30
+
+Harborline hardening. This release adds a third benchmark, Harborline, a multi-language monorepo whose 151-issue answer key came from three independent AI reviews, and closes many of the gaps it exposed: Python, shell, Terraform, Kubernetes, Firebase and Supabase config, cookies and uploads. Measured on main at 8d61453: on Harborline the strict catch rate went from 44/151 (0.4.0) to 78/151. The internal shopsaas benchmark stays at 66/70 strict. On the blind holdout app it went from 52/90 to 56/90 strict, with the decoy hits unchanged at 4/18. Everything below is static, offline analysis; the only network access is the opt-in `--online` flag (OSV advisories and, new in this release, the package-existence check on the npm and PyPI registries).
+
+### Added
+
+- **Python** (#122)
+  - New request-taint tracking for Python (Django, DRF and Flask sources, bounded per function) behind `injection/python-shell-command`, `python-sql-interpolation`, `python-unsafe-yaml-load`, `python-unsafe-deserialization`, `python-xxe-parser` and `python-path-traversal`.
+  - Celery configured with the pickle serializer (`security_config/celery-pickle-serializer`).
+- **Terraform and Kubernetes** (#126): `*.tf`, `*.tfvars` and Kubernetes manifests are now discovered and scanned.
+  - Credentials: `secret/terraform-literal-credential`, `secret/k8s-secret-manifest` (the decoded value is never shown) and `secret/k8s-configmap-credential`.
+  - Terraform: `security_config/tf-public-s3-acl`, `tf-s3-public-access-unblocked`, `tf-s3-public-policy`, `tf-db-publicly-accessible`, `tf-open-ingress`, `tf-iam-wildcard-policy`, `tf-oidc-wildcard-subject`, `tf-storage-unencrypted`, `tf-cloudfront-allows-http`, `tf-mutable-image-tags`.
+  - Kubernetes: `security_config/k8s-privileged-container`, `k8s-host-namespace`, `k8s-host-path-mount`, `k8s-runs-as-root`, `k8s-cluster-admin-binding`, `k8s-wildcard-rbac`, `k8s-debug-enabled`, `k8s-ingress-plain-http`, `k8s-mutable-image-tag`.
+- **Shell scripts** (#125)
+  - Remote content passed to `eval` and SQL built from script arguments (`injection/shell-eval-remote-content`, `injection/shell-sql-interpolation`).
+  - Pipes of remote scripts into a shell and public cloud uploads (`security_config/shell-remote-script-pipe`, `security_config/shell-public-cloud-upload`).
+- **Authentication** (#124)
+  - `auth/jwt-decode-without-verify` (unverified token claims gating access), `auth/auth-disabled-outside-production` (auth middleware skipped by an env check), `auth/secret-check-fails-open` (`if (SECRET && x !== SECRET)`) and `auth/unprotected-queue-dashboard` (Bull Board, Arena or Agendash mounted without auth).
+- **Firebase rules** (#129): Firestore, Cloud Storage and Realtime Database rules files (`firestore*.rules`, `storage*.rules`, `database.rules.json`, and the files named in `firebase.json`) are now scanned: `authorization/firebase-rules-public-write`, `firebase-rules-public-read`, `firebase-rules-any-signed-in`, `firebase-rules-test-mode`.
+- **Supabase config** (#130): `supabase/config.toml` auth settings: `security_config/supabase-email-confirm-off`, `supabase-weak-password`, `supabase-signup-no-captcha`, `supabase-password-change-unsafe`, `supabase-long-jwt-expiry`, `supabase-email-change-unconfirmed`. Untouched `supabase init` defaults stay silent unless the file drives a deployed project.
+- **Cookies and CSRF** (#131): session cookies without `HttpOnly` or `Secure`, or with `SameSite=None`, and Express apps that use cookie sessions without CSRF protection (`security_config/session-cookie-no-httponly`, `session-cookie-not-secure`, `session-cookie-samesite-none`, `csrf-cookie-session-unprotected`).
+- **File uploads** (#128): `validation/upload-no-size-limit`, `validation/upload-no-type-check` and `validation/upload-unsafe-filename` for multer, busboy, express-fileupload, formidable and Next.js handlers writing to S3, Supabase Storage, GCS and Vercel Blob.
+- **Code evaluation** (#123): `injection/code-eval-from-parameter` for exported functions whose parameter reaches `eval`, `new Function` or `vm`.
+- **Dependencies** (#132): with `--online`, each direct npm and PyPI dependency is checked against its registry: `dependency/package-not-found` (made-up, removed or placeholder packages) and `dependency/package-very-new` (published under 30 days ago with almost no use). Only package names are sent; requests are bounded and failures become warnings, never findings. Offline scans are unchanged.
+
+### Changed
+
+- Supply-chain severity (#125): an install script that downloads and runs remote code (`curl | sh`, `sh -c "$(curl ...)"`, `npx -y <url>`) is now critical (`dependency/risky-install-script`, same finding id), and a transposed, doubled or dropped letter of a top package name is a high-severity typosquat.
+- File discovery now includes Terraform (`.tf`, `.tfvars`), Kubernetes manifests, Firebase rules files and `supabase/config.toml` (#126, #129, #130); `vibesafe watch` re-scans on changes to them.
+- The `--online` help, CLI notice and MCP `online` option now name both uses: OSV advisories and the npm and PyPI existence check (#132).
+- All packages share one version, 0.5.0.
+
+### Fixed
+
+- Git history scans (#133): the `git` availability and root probes now allow 30 s instead of 5 s and 10 s, so `--deep` no longer silently skips history on a loaded machine.
+- Injection sinks hidden behind TypeScript generic type arguments, bare project query wrappers (`query`, `execute`, `*Query`) and queue job payloads (bullmq, bull, agenda, pg-boss and others) are now found (#123).
+- Removed the `.github/workflows` files so the root `action.yml` can be listed on GitHub Marketplace; the local gate is the CI (#133).
 
 ## [0.4.0] - 2026-10-30
 
