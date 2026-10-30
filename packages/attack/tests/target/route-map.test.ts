@@ -66,3 +66,21 @@ describe("concretePath", () => {
     expect(concretePath("/api/x/[id]", session)).toHaveProperty("skip");
   });
 });
+
+describe("concretePath encoding", () => {
+  const sess = (pattern: string, id: string) => ({ resources: { [pattern]: id } }) as never;
+  it("encodes reserved characters in [x] ids", () => {
+    expect(concretePath("/api/n/[id]", sess("/api/n/[id]", "a b#c?d/../x"))).toEqual({
+      path: "/api/n/a%20b%23c%3Fd%2F..%2Fx",
+    });
+  });
+  it("keeps slashes between catch-all parts", () => {
+    expect(concretePath("/api/f/[...p]", sess("/api/f/[...p]", "a b/c"))).toEqual({
+      path: "/api/f/a%20b/c",
+    });
+  });
+  it("skips patterns with several dynamic segments", () => {
+    const p = "/api/o/[org]/n/[id]";
+    expect(concretePath(p, sess(p, "n1"))).toHaveProperty("skip");
+  });
+});

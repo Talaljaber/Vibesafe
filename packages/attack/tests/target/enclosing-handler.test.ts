@@ -37,3 +37,16 @@ describe("enclosingHandler", () => {
     expect(handlerSpan(TWO, "DELETE")).toBeUndefined();
   });
 });
+
+describe("export-only boundaries", () => {
+  it("a quoted method string is not a handler", () => {
+    const src =
+      'export async function GET(req) {\n  console.log(req.method);\n  fetch(u, { method: "POST" });\n}\n';
+    expect(handlerSpan(src, "POST")).toBeUndefined();
+    expect(handlerSpan(src, "GET")?.endLine).toBe(5);
+  });
+  it("shared export line resolves to the non-GET method", () => {
+    const src = "function h() {}\nexport { h as GET, h as POST };\n";
+    expect(enclosingHandler(src, 2)?.method).toBe("POST");
+  });
+});

@@ -1,7 +1,7 @@
-import { isPublicRoutePath, nextRoutePath, findHandlerLine } from "@talaljaber/vibesafe-core";
+import { isPublicRoutePath, nextRoutePath } from "@talaljaber/vibesafe-core";
 import type { Finding } from "@talaljaber/vibesafe-shared";
 import type { RouteEntry, SessionSpec, StaticRef } from "../types.js";
-import { HANDLER_METHODS } from "./enclosing-handler.js";
+import { handlerLines } from "./enclosing-handler.js";
 
 const APP_ROUTE_FILE_RE = /(?:^|\/)app\/(?:.*\/)?route\.(?:ts|js|mjs)$/;
 
@@ -40,7 +40,7 @@ export function buildRouteMap(
     const pattern = nextRoutePath(rel);
     if (pattern === undefined || isPublicRoutePath(pattern)) continue;
     const content = readSource(file) ?? "";
-    const methods = HANDLER_METHODS.filter((m) => findHandlerLine(content, [m]) !== undefined);
+    const methods = handlerLines(content).map((h) => h.method);
     routes.push({
       pattern,
       sourceFile: rel,
@@ -49,7 +49,7 @@ export function buildRouteMap(
       findingRefs: findings.filter((f) => f.file !== undefined && norm(f.file) === rel).map(toRef),
     });
   }
-  return routes.sort((a, b) => a.pattern.localeCompare(b.pattern));
+  return routes.sort((a, b) => (a.pattern < b.pattern ? -1 : a.pattern > b.pattern ? 1 : 0));
 }
 
 export type ConcretePath = { path: string } | { skip: { outcome: "INCONCLUSIVE"; reason: string } };
@@ -64,7 +64,15 @@ export function concretePath(pattern: string, session: SessionSpec | undefined):
   if (id === undefined || id === "") {
     return { skip: { outcome: "INCONCLUSIVE", reason: "no test id for this route" } };
   }
-  const dynamic = new Set(dynamicSegmentsOf(pattern));
-  const filled = pattern.split("/").map((s) => (dynamic.has(s) ? encodeURI(id) : s));
+  // SessionSpec.resources holds one id per pattern, so several dynamic segments cannot be filled.
+  if (dynamicSegmentsOf(pattern).length > 1) {
+    return { skip: { outcome: "INCONCLUSIVE", reason: "no test id for this route" } };
+  }
+  const filled = pattern.split("/").map((s) => {
+    if (!/^\[.+\]$/.test(s)) return s;
+    return s.startsWith("[...") || s.startsWith("[[...")
+      ? id.split("/").map(encodeURIComponent).join("/")
+      : encodeURIComponent(id);
+  });
   return { path: filled.join("/") };
 }

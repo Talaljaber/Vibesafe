@@ -1,5 +1,3 @@
-import { findHandlerLine } from "@talaljaber/vibesafe-core";
-
 /** HTTP methods a route file can export a handler for. */
 export const HANDLER_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"] as const;
 
@@ -13,12 +11,25 @@ export interface HandlerSpan {
   body: string;
 }
 
-/** Export line of every handler in the file, sorted by line. */
-function handlerLines(content: string): { method: string; line: number }[] {
+function exportRes(method: string): RegExp[] {
+  return [
+    new RegExp(`^\\s*export\\s+(?:async\\s+)?function\\s*\\*?\\s*${method}\\b`),
+    new RegExp(`^\\s*export\\s+(?:const|let|var)\\s+${method}\\b`),
+    new RegExp(`^\\s*export\\s*\\{[^}]*\\b${method}\\b[^}]*\\}`),
+  ];
+}
+
+/**
+ * Export line of every handler in the file, sorted by line. Only real `export` forms count as
+ * boundaries (a quoted "POST" string in a GET body must not cut the GET span).
+ */
+export function handlerLines(content: string): { method: string; line: number }[] {
+  const lines = content.split(/\r?\n/);
   const out: { method: string; line: number }[] = [];
   for (const method of HANDLER_METHODS) {
-    const line = findHandlerLine(content, [method]);
-    if (line !== undefined) out.push({ method, line });
+    const res = exportRes(method);
+    const idx = lines.findIndex((l) => res.some((re) => re.test(l)));
+    if (idx >= 0) out.push({ method, line: idx + 1 });
   }
   return out.sort((a, b) => a.line - b.line);
 }
@@ -38,7 +49,9 @@ function spanOf(content: string, handlers: { method: string; line: number }[], i
 
 /**
  * The handler enclosing `line`: the method whose export line is the largest value at or before
- * `line`. Undefined when no handler starts at or before it.
+ * `line`. Undefined when no handler starts at or before it. When several methods share one
+ * export line (`export { h as GET, h as POST }`) the last in HANDLER_METHODS order wins, i.e. a
+ * non-GET method (the safe direction: the planner will not treat it as a readable GET).
  */
 export function enclosingHandler(content: string, line: number): HandlerSpan | undefined {
   const handlers = handlerLines(content);

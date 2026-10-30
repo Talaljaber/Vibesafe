@@ -1,4 +1,4 @@
-import { handlerSpan } from "../target/enclosing-handler.js";
+import { handlerLines } from "../target/enclosing-handler.js";
 
 export const MAY_WRITE_REASON = "handler may write";
 
@@ -21,13 +21,32 @@ export interface PreflightResult {
 }
 
 /**
+ * The text a GET may execute: the whole file minus the spans of the other handlers (each runs
+ * from its export line to the next handler export). Prelude, helpers, aliased and wrapped
+ * handler definitions stay in, so a false "may write" is the only error direction.
+ */
+function getReachableText(content: string): string {
+  const handlers = handlerLines(content);
+  const getLines = new Set(handlers.filter((h) => h.method === "GET").map((h) => h.line));
+  if (getLines.size === 0) return content;
+  const lines = content.split(/\r?\n/);
+  const drop = new Set<number>();
+  handlers.forEach((h, i) => {
+    if (h.method === "GET" || getLines.has(h.line)) return;
+    const next = handlers.slice(i + 1).find((n) => n.line > h.line);
+    const end = next ? next.line - 1 : lines.length;
+    for (let l = h.line; l <= end; l++) drop.add(l);
+  });
+  return lines.filter((_, i) => !drop.has(i + 1)).join("\n");
+}
+
+/**
  * GET side-effect pre-flight. A GET handler is skipped (INCONCLUSIVE "handler may write") when
- * its own body, not the whole file, matches a write pattern, or its route path has a risky
- * segment. A false "may write" is the safe direction. When the file has no GET handler export
- * (e.g. an unrecognised shape) the whole file is checked.
+ * code it can reach (see getReachableText) matches a write pattern, or its route path has a
+ * risky segment. A false "may write" is the safe direction.
  */
 export function preflightGet(routePattern: string, content: string): PreflightResult {
-  const body = handlerSpan(content, "GET")?.body ?? content;
+  const body = getReachableText(content);
   const hit = WRITE_PATTERNS.some((re) => re.test(body)) || RISKY_SEGMENT_RE.test(routePattern);
   return hit ? { skip: true, reason: MAY_WRITE_REASON } : { skip: false };
 }
