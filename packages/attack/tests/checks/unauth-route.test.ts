@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { Finding } from "@talaljaber/vibesafe-shared";
 import { buildControlSet, fingerprintResponse } from "../../src/controls.js";
 import { unauthRoute } from "../../src/checks/unauth-route.js";
@@ -112,6 +112,23 @@ describe("unauth-route.plan", () => {
 });
 
 describe("unauth-route.evaluate", () => {
+  it.each(['{"users":[]}', '{"data":null}', '{"error":"unauthorized","code":401}'])(
+    "INCONCLUSIVE on a risky route when the 200 body %s carries no data",
+    (body) => {
+      expect(run([resp("U1", 200, body)]).outcome).toBe("INCONCLUSIVE");
+    },
+  );
+  it("ownerOk is false when the signed-in control is refused with 401", () => {
+    const g = unauthRoute.plan(ctx([finding("app/api/admin/users/route.js", 1)], [alice]))[0]!;
+    const r = unauthRoute.evaluate(g, [resp("U1", 401, "{}"), resp("U2", 401, "{}")], none);
+    expect(r.ownerOk).toBe(false);
+  });
+  it("labels a write-path skip with its handler method", () => {
+    const g = unauthRoute.plan(ctx([finding("app/api/notes/[id]/route.js", 2)]))[0]!;
+    const r = unauthRoute.evaluate(g, [], none);
+    expect(g.title).toContain(g.method ?? "?");
+    expect(r.method).toBe(g.method);
+  });
   it("CONFIRMED on a sensitive route returning 200 JSON", () => {
     const r = run([resp("U1", 200, '{"users":[{"id":1}]}')]);
     expect(r.outcome).toBe("CONFIRMED");

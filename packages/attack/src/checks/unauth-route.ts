@@ -1,4 +1,4 @@
-﻿import { isRiskyRoutePattern } from "@talaljaber/vibesafe-core";
+import { isRiskyRoutePattern } from "@talaljaber/vibesafe-core";
 import type {
   AttackCheck,
   AttackOutcome,
@@ -47,7 +47,7 @@ function skipGroup(
   return {
     attackId,
     checkId: "unauth-route",
-    title: `Unauthenticated GET ${route ?? ref.file}`,
+    title: `Unauthenticated ${method} ${route ?? ref.file}`,
     route,
     method,
     requests: [],
@@ -186,12 +186,51 @@ function looksLikeValue(k: string): boolean {
   );
 }
 
+const ERROR_ONLY_KEYS = ["error", "errors", "message", "ok", "success", "status"];
+const ERROR_COMPANION_KEYS = [
+  "code",
+  "statusCode",
+  "message",
+  "msg",
+  "details",
+  "status",
+  "ok",
+  "success",
+];
+
 function isErrorOnly(v: unknown): boolean {
   if (v === null || typeof v !== "object" || Array.isArray(v)) return false;
-  const keys = Object.keys(v as object);
+  const o = v as Record<string, unknown>;
+  const keys = Object.keys(o);
+  if (keys.length === 0) return false;
+  if (keys.every((k) => ERROR_ONLY_KEYS.includes(k))) return true;
   return (
-    keys.length > 0 &&
-    keys.every((k) => ["error", "errors", "message", "ok", "success", "status"].includes(k))
+    (Boolean(o["error"]) || Boolean(o["errors"])) &&
+    keys.every((k) => k === "error" || k === "errors" || ERROR_COMPANION_KEYS.includes(k))
+  );
+}
+
+function isEmptyValue(x: unknown): boolean {
+  if (x === null || x === undefined || x === "") return true;
+  if (Array.isArray(x)) return x.length === 0;
+  return typeof x === "object" && Object.keys(x as object).length === 0;
+}
+
+/** True when the body carries no data: every top-level value is null or empty (array: element 0 too). */
+function carriesNoData(v: unknown): boolean {
+  if (isEmptyJson(v)) return true;
+  if (Array.isArray(v)) return carriesNoData(v[0]) || isEmptyValue(v[0]);
+  if (v !== null && typeof v === "object") {
+    return Object.values(v as Record<string, unknown>).every(isEmptyValue);
+  }
+  return false;
+}
+
+function isLoginRedirect(r: ProbeResponse): boolean {
+  return (
+    r.status >= 300 &&
+    r.status < 400 &&
+    LOGIN_PATH_RE.test(r.location ?? r.headers["location"] ?? "")
   );
 }
 
@@ -232,7 +271,7 @@ function evaluate(
     title: group.title,
     severity: ref?.severity ?? "high",
     route: group.route,
-    method: "GET",
+    method: group.method ?? "GET",
     sourceFile: ref?.file,
     line: ref?.line,
     staticRef: ref,
@@ -258,17 +297,19 @@ function evaluate(
   const u2 = responses.find((r) => r.label === "U2");
   const ownerOk =
     u2 === undefined ||
-    (u2.status !== 0 && u2.status !== 404 && u2.status < 500 && !controls.matches(u2.fingerprint));
+    (u2.status !== 0 &&
+      u2.status !== 401 &&
+      u2.status !== 404 &&
+      u2.status < 500 &&
+      !isLoginRedirect(u2) &&
+      !controls.matches(u2.fingerprint));
 
   if (u1 === undefined || u1.status === 0 || u1.status >= 500) {
     return done("ERROR", "The logged-out request failed or the server errored; can't judge.", {
       ownerOk,
     });
   }
-  const loginRedirect =
-    u1.status >= 300 &&
-    u1.status < 400 &&
-    LOGIN_PATH_RE.test(u1.location ?? u1.headers["location"] ?? "");
+  const loginRedirect = isLoginRedirect(u1);
   if (u1.status === 401 || u1.status === 403 || loginRedirect || controls.matches(u1.fingerprint)) {
     return done("NOT_REPRODUCED", "Refused without login.", { ownerOk });
   }
@@ -285,7 +326,7 @@ function evaluate(
     });
   }
   const parsed = parseJson(u1.body);
-  if (!parsed.ok || isEmptyJson(parsed.value)) {
+  if (!parsed.ok || carriesNoData(parsed.value)) {
     return done("INCONCLUSIVE", "Returned 200 with an empty or unreadable JSON body.", {
       ownerOk,
     });
@@ -295,6 +336,8 @@ function evaluate(
       ownerOk,
     });
   }
+  // Limitation: SafeHttpClient follows same-host redirects and reports only the final hop, so a followed
+  // redirect to a login page or JSON auth endpoint cannot be seen here (follow-up: expose `redirected`).
   // Deliberate deviation from spec 7.2 step 3: empty JSON and error-only bodies are never CONFIRMED.
   const risky = ref !== undefined && isRiskyRoutePattern(ref.file);
   if (risky || sensitiveKeysWithin(parsed.value, 0)) {

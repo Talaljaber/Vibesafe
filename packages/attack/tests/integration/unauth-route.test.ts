@@ -66,7 +66,7 @@ describe("unauth-route against the demo harness", () => {
     const admin = groups.find((g) => g.route === "/api/admin/users");
     expect(admin).toBeDefined();
     expect(admin?.skip).toBeUndefined();
-    expect(groups.every((g) => g.route !== "/api/notes/[id]" || g.skip !== undefined)).toBe(true);
+    expect(groups.map((g) => g.route)).toEqual(["/api/admin/users"]);
 
     const client = new SafeHttpClient({ rate: 1000 });
     const send = async (r: ProbeRequest): Promise<ProbeResponse> => {
