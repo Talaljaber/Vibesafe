@@ -57,14 +57,26 @@ export function buildGitLogArgs(maxCommits: number = DEFAULT_MAX_COMMITS): strin
 }
 
 /**
+ * Timeout for the quick git probes below. Spawning git can take several seconds on a
+ * loaded machine (CI runners, antivirus scanning on Windows); a short timeout made a
+ * deep scan silently skip history there.
+ */
+const GIT_PROBE_TIMEOUT_MS = 30_000;
+
+/**
  * Confirms the `git` binary is actually runnable on this machine.
  * Never throws, resolves false on any failure (missing binary, PATH issues, etc).
  */
 export function isGitAvailable(): Promise<boolean> {
   return new Promise((resolve) => {
-    execFile("git", ["--version"], { timeout: 5000, windowsHide: true }, (error) => {
-      resolve(!error);
-    });
+    execFile(
+      "git",
+      ["--version"],
+      { timeout: GIT_PROBE_TIMEOUT_MS, windowsHide: true },
+      (error) => {
+        resolve(!error);
+      },
+    );
   });
 }
 
@@ -77,7 +89,7 @@ export function resolveGitRoot(cwd: string): Promise<string | null> {
     execFile(
       "git",
       [...HARDENED_CONFIG_ARGS, "rev-parse", "--show-toplevel"],
-      { cwd, timeout: 10000, windowsHide: true, env: buildGitEnv() },
+      { cwd, timeout: GIT_PROBE_TIMEOUT_MS, windowsHide: true, env: buildGitEnv() },
       (error, stdout) => {
         const root = stdout.trim();
         resolve(error || !root ? null : root);
