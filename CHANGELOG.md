@@ -64,7 +64,7 @@ Detection hardening (epic #106). On the internal shopsaas benchmark the strict c
 - New categories `injection` and `crypto` are available in config `categories`, the MCP `category` filter, reports and the VS Code extension.
 - All packages share one version, 0.4.0.
 
-## [0.3.1]
+## [0.3.1] - 2026-10-29
 
 ### Added
 
