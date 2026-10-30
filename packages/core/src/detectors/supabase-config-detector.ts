@@ -44,15 +44,15 @@ function remoteHost(url: string, httpsOnly: boolean): string | undefined {
 function hostedEvidence(entries: readonly TomlEntry[]): string | undefined {
   const site = tomlGet(entries, "auth", "site_url")?.value;
   if (site?.kind === "string") {
-    if (ENV_REF_RE.test(site.value)) return "an environment-variable value";
+    if (ENV_REF_RE.test(site.value)) return "`site_url` is set from an environment variable";
     const host = remoteHost(site.value, false);
-    if (host) return host;
+    if (host) return "`site_url` points at " + host;
   }
   const redirects = tomlGet(entries, "auth", "additional_redirect_urls")?.value;
   if (redirects?.kind === "string-array") {
     for (const u of redirects.values) {
       const host = remoteHost(u, true);
-      if (host) return host;
+      if (host) return "`additional_redirect_urls` includes https://" + host;
     }
   }
   return undefined;
@@ -126,7 +126,7 @@ export class SupabaseConfigDetector implements Detector {
     const hits: Hit[] = [];
     const host = hostedEvidence(entries);
     const gateText = host
-      ? ` The \`site_url\` points at ${host}, so this file drives a deployed project.`
+      ? ` ${host.charAt(0).toUpperCase()}${host.slice(1)}, so this file drives a deployed project.`
       : "";
     const at = (e: TomlEntry): { line: number; evidence: string } => ({
       line: e.line,

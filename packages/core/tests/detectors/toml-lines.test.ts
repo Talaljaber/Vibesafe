@@ -77,4 +77,19 @@ describe("scanTomlLines", () => {
     expect(tomlGet(entries, "a", "k")?.value).toEqual({ kind: "int", value: 2 });
     expect(tomlGet(entries, "a", "s")?.value.kind).toBe("other");
   });
+
+  it("fails fast on pathological header-like lines", () => {
+    for (const pad of [" ", "\t", "[ ", " ] "]) {
+      const t0 = Date.now();
+      const r = scanTomlLines("[auth]\n[" + pad.repeat(50_000));
+      expect(Date.now() - t0).toBeLessThan(500);
+      expect(r.tables.has("auth")).toBe(true);
+    }
+  });
+
+  it("ignores headers with an empty name and keeps the current table", () => {
+    const { entries, tables } = scanTomlLines("[a]\n[ ]\n[]\nk = 1\n");
+    expect([...tables.keys()]).toEqual(["a"]);
+    expect(tomlGet(entries, "a", "k")?.value).toEqual({ kind: "int", value: 1 });
+  });
 });

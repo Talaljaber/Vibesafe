@@ -167,6 +167,15 @@ describe("SupabaseConfigDetector", () => {
       );
       const f = await scan({ [FILE]: text });
       expect(rules(f)).toEqual(GATED);
+      const blob = JSON.stringify(f);
+      expect(blob).toContain("additional_redirect_urls");
+      expect(blob).not.toContain("site_url` points at");
+    });
+
+    it("names the site_url env reference as gate evidence", async () => {
+      const f = await scan({ [FILE]: template({ site_url: '"env(SITE_URL)"' }) });
+      expect(JSON.stringify(f)).toContain("set from an environment variable");
+      expect(JSON.stringify(f)).not.toContain("points at an environment");
     });
 
     it("minimum_password_length below 6 on hosted config reports once", async () => {

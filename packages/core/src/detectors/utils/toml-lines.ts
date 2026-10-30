@@ -19,7 +19,7 @@ export interface TomlEntry {
 /** Arrays and inline tables are followed over at most this many lines. */
 const MAX_VALUE_LINES = 200;
 
-const HEADER_RE = /^\s*\[\[?\s*([^[\]]+?)\s*\]\]?\s*(?:#.*)?$/;
+const HEADER_RE = /^\s*\[\[?([^[\]]*)\]\]?\s*(?:#.*)?$/;
 const KEY_RE =
   /^\s*((?:[A-Za-z0-9_-]+|"[^"]*"|'[^']*')(?:\s*\.\s*(?:[A-Za-z0-9_-]+|"[^"]*"|'[^']*'))*)\s*=/;
 const INT_RE = /^[+-]?\d(?:_?\d)*$/;
@@ -156,7 +156,9 @@ export function scanTomlLines(content: string): {
       if (!raw.includes("=") && !raw.includes("[")) continue;
       const header = HEADER_RE.exec(raw);
       if (header && raw.trimStart().startsWith("[")) {
-        table = unquoteKey(header[1]!);
+        const name = header[1]!.trim();
+        if (name === "") continue;
+        table = unquoteKey(name);
         if (!tables.has(table)) tables.set(table, i + 1);
         continue;
       }
