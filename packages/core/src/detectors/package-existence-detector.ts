@@ -215,7 +215,7 @@ export class PackageExistenceDetector implements Detector {
       if (cached !== undefined) return cached;
       let text = "";
       try {
-        text = await context.readFile(dir ? `/.npmrc` : ".npmrc");
+        text = await context.readFile(dir ? `${dir}/.npmrc` : ".npmrc");
       } catch {
         text = "";
       }
@@ -642,7 +642,7 @@ async function localPythonNames(context: ScanContext): Promise<Set<string>> {
     if (typeof content !== "string") continue;
     let section = "";
     for (const line of content.split(/\r?\n/)) {
-      const header = /^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(?:#.*)?$/.exec(line);
+      const header = /^\s*\[\[?\s*([A-Za-z0-9_.\-]+)\s*\]\]?\s*(?:#.*)?$/.exec(line);
       if (header) {
         section = header[1]!.replace(/["']/g, "");
         const sub = /^tool\.uv\.sources\.(.+)$/.exec(section);
@@ -678,7 +678,7 @@ function isIncludeGroupRef(evidence: string, name: string): boolean {
   return false;
 }
 
-const NPMRC_AUTH_RE = /^\s*\/\/registry\.npmjs\.org\/:_auth(?:Token)?\s*=/im;
+const NPMRC_AUTH_RE = /^\s*\/\/registry\.npmjs\.org\/:(?:_auth(?:Token)?|_password|username)\s*=/im;
 
 /** A requirements / pyproject / Pipfile that installs from somewhere other than public PyPI. */
 function hasCustomPythonIndex(
@@ -700,7 +700,7 @@ function hasCustomPythonIndex(
   if (kind === "pyproject") {
     let inUv = false;
     for (const line of content.split(/\r?\n/)) {
-      const header = /^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(?:#.*)?$/.exec(line);
+      const header = /^\s*\[\[?\s*([A-Za-z0-9_.\-]+)\s*\]\]?\s*(?:#.*)?$/.exec(line);
       if (header) {
         inUv = /^tool\.uv(?:\.pip)?$/.test(header[1]!);
         continue;
@@ -712,7 +712,7 @@ function hasCustomPythonIndex(
   if (kind !== "pipfile") return false;
   let inSource = false;
   for (const line of content.split(/\r?\n/)) {
-    const header = /^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(?:#.*)?$/.exec(line);
+    const header = /^\s*\[\[?\s*([A-Za-z0-9_.\-]+)\s*\]\]?\s*(?:#.*)?$/.exec(line);
     if (header) {
       inSource = /^\[\[\s*source\s*\]\]/.test(line.trim());
       continue;

@@ -737,6 +737,37 @@ describe("PackageExistenceDetector: PyPI", () => {
     );
     expect(unscoped.findings).toHaveLength(1);
   });
+  it("reads the .npmrc auth token beside a sub-directory manifest and from a parent directory", async () => {
+    const tok = "//registry.npmjs.org/:_authToken=${NPM_TOKEN}\n";
+    const m = pkg({ "@acme/internal": "^1.0.0" });
+    const beside = await detect(
+      { "frontend/package.json": m, "frontend/.npmrc": tok },
+      npmRoutes({ downloads: {} }),
+    );
+    expect(beside.findings).toEqual([]);
+    const parent = await detect(
+      { "apps/web/package.json": m, "apps/.npmrc": tok },
+      npmRoutes({ downloads: {} }),
+    );
+    expect(parent.findings).toEqual([]);
+    const sibling = await detect(
+      { "frontend/package.json": m, "backend/.npmrc": tok },
+      npmRoutes({ downloads: {} }),
+    );
+    expect(sibling.findings).toHaveLength(1);
+  });
+
+  it("accepts basic-auth keys for the public registry host in .npmrc", async () => {
+    const { findings } = await detect(
+      {
+        "package.json": pkg({ "@acme/internal": "^1.0.0" }),
+        ".npmrc": "//registry.npmjs.org/:_password=abc\n//registry.npmjs.org/:username=bot\n",
+      },
+      npmRoutes({ downloads: {} }),
+    );
+    expect(findings).toEqual([]);
+  });
+
   it("never sends a pyproject's own name (self-referencing extras) to PyPI", async () => {
     const files = {
       "pyproject.toml":
