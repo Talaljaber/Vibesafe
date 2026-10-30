@@ -49,18 +49,26 @@ function stripShellComment(line: string): string {
   return line;
 }
 
-/** True when index `at` of `s` sits inside a quoted string. */
+/** True when index `at` of `s` sits inside a quoted string (`$(` inside double quotes opens an unquoted context). */
 function insideQuotes(s: string, at: number): boolean {
-  let quote: string | null = null;
+  // Open contexts: '"' and "'" quotes, "(" for a command substitution.
+  const stack: string[] = [];
   for (let i = 0; i < at; i++) {
     const ch = s[i];
-    if (quote) {
-      if (ch === quote) quote = null;
-      else if (ch === "\\" && quote === '"') i++;
+    const top = stack[stack.length - 1];
+    if (top === "'") {
+      if (ch === "'") stack.pop();
     } else if (ch === "\\") i++;
-    else if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === "$" && s[i + 1] === "(") {
+      stack.push("(");
+      i++;
+    } else if (top === '"') {
+      if (ch === '"') stack.pop();
+    } else if (ch === '"' || ch === "'") stack.push(ch);
+    else if (top === "(" && ch === ")") stack.pop();
   }
-  return quote !== null;
+  const top = stack[stack.length - 1];
+  return top === '"' || top === "'";
 }
 
 /** Cuts an assignment value at the first `;`, `&` or `|` outside quotes. */
@@ -290,8 +298,9 @@ export class ShellInjectionDetector implements Detector {
       // The command, with backslash-newline continuations.
       let last = i;
       while ((lines[last] ?? "").trimEnd().endsWith("\\") && last + 1 < lines.length) last++;
-      const from = (starts[i] ?? 0) + client.index;
-      if (!COMMAND_POSITION_RE.test(code.slice(0, client.index + client[0].search(/\S/)))) continue;
+      const from = (starts[i] ?? 0) + client.index + client[0].search(/[a-z]/);
+      if (!COMMAND_POSITION_RE.test(code.slice(0, client.index + client[0].search(/[a-z]/))))
+        continue;
       const cmdText = cutValue(
         joined.slice(from, (starts[last] ?? 0) + (lines[last] ?? "").length),
       );

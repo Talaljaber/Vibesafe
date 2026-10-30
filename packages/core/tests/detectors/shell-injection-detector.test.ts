@@ -114,6 +114,25 @@ describe("injection/shell-sql-interpolation", () => {
     ]);
   });
 
+  it("flags a client captured via command substitution, backticks or a bare separator", async () => {
+    const f = rule(
+      await run({
+        "db/a.sh": sh('count=$(psql "$DB" -tAc "SELECT 1 FROM t WHERE a = \'$1\'")'),
+        "db/b.sh": sh("n=`psql -tAc \"SELECT 1 FROM t WHERE a = '$1'\"`"),
+        "db/c.sh": sh('true;psql -c "DELETE FROM t WHERE id = $1"'),
+        "db/d.sh": sh('count="$(psql "$DB" -tAc "SELECT 1 FROM t WHERE a = \'$1\'")"'),
+      }),
+      "shell-sql-interpolation",
+    );
+    expect(f.map((x) => x.file).sort()).toEqual(["db/a.sh", "db/b.sh", "db/c.sh", "db/d.sh"]);
+  });
+
+  it("stays silent for a client name that is only quoted text", async () => {
+    const f = await run({
+      "q.sh": sh('msg="run psql -c SELECT $1 now"', 'echo "$(date) psql -c SELECT $1"'),
+    });
+    expect(rule(f, "shell-sql-interpolation")).toEqual([]);
+  });
   it("spans multi-line -c commands and reports one finding per statement", async () => {
     const f = rule(
       await run({

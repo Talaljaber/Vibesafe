@@ -1,4 +1,4 @@
-﻿import type { Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared";
+import type { Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared";
 import { redactSecret } from "@talaljaber/vibesafe-shared";
 import { classifyPath, isTestOrFixturePath } from "./utils/file-kind.js";
 import { makeFinding } from "./utils/finding.js";

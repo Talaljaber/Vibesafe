@@ -20,7 +20,7 @@ const DOWNLOAD_PIPE_RE =
 /** `sh -c "$(curl ...)"`, `node -e "$(curl ...)"`, `eval "$(wget ...)"`, `bash <(curl ...)`. */
 const DOWNLOAD_SUBST_RE = new RegExp(
   [
-    String.raw`\b(?:(?:ba|z|da|k)?sh|node|python3?)\b[^;&|]*?\s(?:-[A-Za-z]*[ce]|--eval)\s*["']?\$\(`,
+    String.raw`\b(?:(?:ba|z|da|k)?sh|node|python3?)\b(?:\s+-\S+)*?\s+(?:-[A-Za-z]*[ce]|--eval)\s*["']?\$\(`,
     String.raw`\beval\s+["']?(?:\$\(|\x60)`,
     String.raw`\b(?:(?:ba|z|da|k)?sh|node|python3?)\b[^;&|]*?<\(`,
   ]
