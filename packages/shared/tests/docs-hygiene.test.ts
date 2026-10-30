@@ -91,9 +91,15 @@ describe("docs hygiene", () => {
     expect(src).not.toContain("SEC-001");
   });
 
-  it("repository ships .gitattributes forcing LF and CI checks formatting", () => {
+  it("repository ships .gitattributes forcing LF and a format check script", () => {
     expect(read(".gitattributes")).toMatch(/^\* text=auto eol=lf$/m);
-    expect(read(".github/workflows/ci.yml")).toContain("pnpm format:check");
+    const root = JSON.parse(read("package.json")) as { scripts: Record<string, string> };
+    expect(root.scripts["format:check"]).toBeDefined();
+  });
+
+  it("ships no workflow files, so the root action.yml can be listed on GitHub Marketplace", () => {
+    expect(fs.existsSync(path.join(repoRoot, ".github/workflows"))).toBe(false);
+    expect(fs.existsSync(path.join(repoRoot, "action.yml"))).toBe(true);
   });
 
   it("README and the example workflow do not pin the GitHub Action to a mutable branch", () => {
@@ -192,41 +198,6 @@ describe("docs hygiene", () => {
     expect(m, root.packageManager).not.toBeNull();
     const hexLength = { sha1: 40, sha224: 56, sha256: 64, sha512: 128 }[m![2] as "sha512"];
     expect(m![3]).toHaveLength(hexLength);
-    // pnpm/action-setup refuses a `version:` input that differs from packageManager.
-    const ci = read(".github/workflows/ci.yml");
-    const setup = /uses: pnpm\/action-setup@\S+(?: #[^\n]*)?\n((?: {8}.*\n)*)/.exec(ci);
-    expect(setup, "pnpm/action-setup step not found").not.toBeNull();
-    expect(setup![1]).not.toMatch(/^\s*version:/m);
-  });
-
-  it("CI pins every third-party action to a full commit SHA with its version tag", () => {
-    const ci = read(".github/workflows/ci.yml");
-    const uses = [...ci.matchAll(/^\s*(?:- )?uses:\s*(\S+)(.*)$/gm)];
-    expect(uses.length).toBeGreaterThan(0);
-    for (const [line, ref, rest] of uses) {
-      expect(ref, line).toMatch(/@[0-9a-f]{40}$/);
-      expect(rest, line).toMatch(/^ # v\d+\.\d+\.\d+$/);
-    }
-  });
-
-  it("a self-test workflow runs the action from this checkout on every runner OS", () => {
-    const wf = read(".github/workflows/action-self-test.yml");
-    expect(wf).toMatch(/^on:\n {2}workflow_dispatch:\n {2}pull_request:\n/m);
-    for (const p of ['"action.yml"', '"packages/**"']) expect(wf, p).toContain(`- ${p}`);
-    expect(wf).toMatch(/^permissions:\n {2}contents: read\n/m);
-    expect(wf).toContain("os: [ubuntu-latest, windows-latest, macos-latest]");
-    expect(wf).toContain("runs-on: ${{ matrix.os }}");
-    expect(wf).toMatch(/id: vibesafe\n\s+uses: \.\/\n/);
-    expect(wf).toContain("path: fixtures/nextjs-vibecoded-bad-app");
-    expect(wf).toContain('comment: "false"');
-    expect(wf).toContain("fail-on: none");
-    expect(wf).toContain("VS_STATUS: ${{ steps.vibesafe.outputs.status }}");
-    expect(wf).toContain('if [ -z "$VS_STATUS" ]; then');
-    expect(fs.existsSync(path.join(repoRoot, "fixtures/nextjs-vibecoded-bad-app"))).toBe(true);
-    // Remote actions are pinned by full commit SHA; the only other `uses:` is the local action.
-    const uses = [...wf.matchAll(/^\s*(?:- )?uses:\s*(\S+)/gm)].map((m) => m[1]!);
-    expect(uses).toContain("./");
-    for (const u of uses.filter((u) => u !== "./")) expect(u, u).toMatch(/@[0-9a-f]{40}$/);
   });
 
   it("CONTRIBUTING renormalizes line endings without the redundant git add step", () => {
