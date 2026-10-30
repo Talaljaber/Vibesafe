@@ -330,3 +330,12 @@ describe("CsrfDetector review extra round 2", () => {
     expect(Date.now() - t0).toBeLessThan(1500);
   });
 });
+
+describe("CsrfDetector review extra round 3", () => {
+  it("a Stripe checkout session id cookie is not CSRF cookie-token evidence", () => {
+    const files = {
+      "server.js": `const express = require("express");\nconst app = express();\napp.post("/checkout", async (req, res) => {\n  const session = await stripe.checkout.sessions.create({});\n  res.cookie("checkout", session.id, { maxAge: 1000 });\n  res.json({ ok: true });\n});\n`,
+    };
+    return go(files).then((f) => expect(f).toHaveLength(0));
+  });
+});

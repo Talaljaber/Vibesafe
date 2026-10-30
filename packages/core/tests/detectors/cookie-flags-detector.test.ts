@@ -359,3 +359,65 @@ describe("CookieFlagsDetector review extra round 2", () => {
     expect(findings.length).toBeGreaterThan(0);
   });
 });
+
+describe("CookieFlagsDetector review extra round 3", () => {
+  it.each([
+    [
+      "authjs session.user.orgId",
+      `const session = await auth();\n(await cookies()).set("active_org", session.user.orgId, { path: "/" });`,
+    ],
+    [
+      "authjs session.user.name",
+      `const session = await auth();\n(await cookies()).set("display_name", session.user.name ?? "", { path: "/" });`,
+    ],
+    [
+      "stripe session.id",
+      `const session = await stripe.checkout.sessions.create({});\nres.cookie("checkout", session.id, { maxAge: 1000 });`,
+    ],
+    ["req.session.user.name", `res.cookie("username", req.session.user.name, { maxAge: 1000 });`],
+    ["cart count", `res.cookie("cartCount", String(req.session.cart.length));`],
+    ["stringified display", `res.cookie("user", JSON.stringify({ name: req.session.user.name }));`],
+    [
+      "koa session views",
+      `ctx.cookies.set("visits", String(ctx.session.views), { httpOnly: false });`,
+    ],
+    ["role from session", `res.cookie("role", session.user.role);`],
+    ["expiry metadata ident", `res.cookie("expiresAt", accessTokenExpiresAt);`],
+    ["decoded token id", `res.cookie("userId", decodedToken.id);`],
+  ])("stays silent for %s", async (_n, code) => {
+    expect(await one("server.js", code)).toHaveLength(0);
+  });
+  it.each([
+    ["req.session.token", `res.cookie("x", req.session.token);`],
+    ["sessionToken ident", `res.cookie("x", sessionToken);`],
+    ["user.token", `res.cookie("x", user.token);`],
+  ])("still flags %s", async (_n, code) => {
+    const f = await one("server.js", code);
+    expect(f[0]).toMatchObject({ ruleId: NO_HTTPONLY });
+  });
+  it("an unresolved spread after an explicit false flag is dynamic", async () => {
+    const f = await one(
+      "server.js",
+      `res.cookie("session", t, { httpOnly: true, secure: false, ...(isProd ? { secure: true } : {}) });`,
+    );
+    expect(f.filter((x) => x.ruleId === NOT_SECURE)).toHaveLength(0);
+  });
+  it("self-spreading and chained spread objects stay fast", async () => {
+    const self = `const o = { ${Array.from({ length: 400 }, () => "...o").join(", ")} };\nres.cookie("token", token, o);`;
+    const mk = (n: string, p: string) =>
+      `const ${n} = { ${Array.from({ length: 150 }, () => `...${p}`).join(", ")} };\n`;
+    const chain = mk("a", "o") + mk("b", "a") + mk("c", "b") + `res.cookie("token", token, c);`;
+    const t = Date.now();
+    await one("server.js", self);
+    await one("server.js", chain);
+    expect(Date.now() - t).toBeLessThan(1000);
+  });
+  it("a long a$ run in a next/server file stays fast", async () => {
+    const t = Date.now();
+    await one(
+      "route.ts",
+      `import { NextResponse } from "next/server";\n// cookie\nconst x = "${"a$".repeat(20_000)}";`,
+    );
+    expect(Date.now() - t).toBeLessThan(1000);
+  });
+});

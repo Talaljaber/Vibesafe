@@ -84,8 +84,16 @@ export function isSessionCookieName(name: string): boolean {
 
 /** Session/auth cookie by the value expression's text (identifiers and calls). `jwtLibImported`: the file imports/requires `jsonwebtoken` or `jose` (enables a bare `sign(` call). */
 export function isSessionCookieValue(valueText: string, jwtLibImported: boolean): boolean {
-  const ids = valueText.match(/[A-Za-z_$][\w$]*/g) ?? [];
-  const tokens = ids.flatMap((id) => cookieNameTokens(id));
+  // Classify each member chain by its last property only (`req.session.user.name` -> `name`), and
+  // skip identifiers that are metadata (`expiresAt`, `tokenExpiry`).
+  const chains = valueText.match(/[A-Za-z_$][\w$]*(?:\s*\??\.\s*[A-Za-z_$][\w$]*)*/g) ?? [];
+  const tokens: string[] = [];
+  for (const chain of chains) {
+    const last = chain.slice(chain.lastIndexOf(".") + 1).trim();
+    const t = cookieNameTokens(last);
+    if (t.some((x) => METADATA_TOKENS.has(x))) continue;
+    tokens.push(...t);
+  }
   if (hasDeny(tokens)) return false;
   if (tokens.some((t) => VALUE_TOKENS.has(t))) return true;
   if (VALUE_CALL_RE.test(valueText)) return true;
@@ -272,6 +280,8 @@ interface FlagAcc {
   sameSite: SameSiteState | undefined;
   deletes: boolean;
   unresolved: boolean;
+  /** Object literal offsets already walked (bounds spread cycles and fan-out). */
+  visited: Set<number>;
 }
 
 function boolState(code: string): FlagState {
@@ -296,22 +306,35 @@ function flagValue(text: string, r: Range): string {
     .trim();
 }
 
+/** An unknown spread/computed key may override earlier explicit keys: make them dynamic. */
+function markUnresolved(acc: FlagAcc): void {
+  acc.unresolved = true;
+  if (acc.httpOnly !== undefined) acc.httpOnly = "dynamic";
+  if (acc.secure !== undefined) acc.secure = "dynamic";
+  if (acc.sameSite !== undefined) acc.sameSite = "dynamic";
+}
+
 function collectFlags(src: JsSource, open: number, depth: number, acc: FlagAcc): void {
+  if (acc.visited.has(open) || acc.visited.size >= 64) {
+    markUnresolved(acc);
+    return;
+  }
+  acc.visited.add(open);
   const entries = objectEntries(src, open);
   if (entries === undefined) {
-    acc.unresolved = true;
+    markUnresolved(acc);
     return;
   }
   for (const e of entries) {
     if (e.computed) {
-      acc.unresolved = true;
+      markUnresolved(acc);
       continue;
     }
     if (e.spread !== undefined) {
       const expr = src.code.slice(e.spread.start, e.spread.end).trim();
       const decl =
         IDENT_RE.test(expr) && depth < 2 ? findObjectDecl(src, expr, e.spread.start) : undefined;
-      if (decl === undefined) acc.unresolved = true;
+      if (decl === undefined) markUnresolved(acc);
       else collectFlags(src, decl, depth + 1, acc);
       continue;
     }
@@ -354,6 +377,7 @@ export function readCookieFlags(src: JsSource, open: number): CookieFlags {
     sameSite: undefined,
     deletes: false,
     unresolved: false,
+    visited: new Set(),
   };
   collectFlags(src, open, 0, acc);
   const miss = acc.unresolved ? "dynamic" : "missing";
@@ -473,7 +497,7 @@ const NEXT_HEADERS_RES = [
 ];
 const COOKIES_BINDING_RE =
   /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?cookies\s*\(\s*\)/g;
-const NEXT_RESPONSE_RE = /\b([A-Za-z_$][\w$]*)\s*\.\s*cookies\s*\.\s*set\s*\(/g;
+const NEXT_RESPONSE_RE = /(?<![\w$])([A-Za-z_$][\w$]*)\s*\.\s*cookies\s*\.\s*set\s*\(/g;
 const NEXT_SERVER_RE = /(?:from\s*|require\s*\(\s*)["']next\/server["']/g;
 const KOA_RE = /\bctx\s*\.\s*cookies\s*\.\s*set\s*\(/g;
 const SERIALIZE_RE = /\b(?:cookie|cookies)\s*\.\s*serialize\s*\(/g;
