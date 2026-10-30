@@ -80,10 +80,10 @@ describe("TyposquatDetector", () => {
   });
 
   it("hints at a one-edit look-alike of a popular package at medium/low", async () => {
-    const findings = await run({ "package.json": pkg({ loadsh: "^4.17.21", expres: "^4.0.0" }) });
+    const findings = await run({ "package.json": pkg({ lodesh: "^4.17.21", expresz: "^4.0.0" }) });
     expect(findings.map((f) => f.title).sort()).toEqual([
-      '"expres" looks like a misspelling of "express"',
-      '"loadsh" looks like a misspelling of "lodash"',
+      '"expresz" looks like a misspelling of "express"',
+      '"lodesh" looks like a misspelling of "lodash"',
     ]);
     for (const f of findings) {
       expect(f.severity).toBe("medium");
