@@ -32,6 +32,7 @@ const SENSITIVE_WORDS = new Set([
   "ssn",
   "card",
 ]);
+const SENSITIVE_SUBSTRINGS = ["email", "password", "token", "secret", "phone", "address"];
 const LOGIN_PATH_RE = /\/(login|log-in|signin|sign-in|sign_in|signup|auth)(\/|\?|#|$)/i;
 const MAX_SHAPE_KEYS = 20;
 
@@ -145,7 +146,11 @@ function isSensitiveKey(key: string): boolean {
     .toLowerCase()
     .split(/[^a-z0-9]+/)
     .filter(Boolean);
-  return words.some((w) => SENSITIVE_WORDS.has(w) || SENSITIVE_WORDS.has(w.replace(/s$/, "")));
+  const lower = key.toLowerCase();
+  return (
+    SENSITIVE_SUBSTRINGS.some((s) => lower.includes(s)) ||
+    words.some((w) => SENSITIVE_WORDS.has(w) || SENSITIVE_WORDS.has(w.replace(/s$/, "")))
+  );
 }
 
 /** Looks for sensitive key names at depth 0..2 (arrays are looked into without costing depth). */
@@ -210,10 +215,15 @@ function isErrorOnly(v: unknown): boolean {
   );
 }
 
-function isEmptyValue(x: unknown): boolean {
+/** Empty or metadata-only: null, "", [] and {} (recursively), plus numbers and booleans (count, total, hasMore). */
+function isEmptyValue(x: unknown, depth = 0): boolean {
   if (x === null || x === undefined || x === "") return true;
+  if (typeof x === "number" || typeof x === "boolean") return true;
   if (Array.isArray(x)) return x.length === 0;
-  return typeof x === "object" && Object.keys(x as object).length === 0;
+  if (typeof x === "object") {
+    return depth < 3 && Object.values(x as object).every((v) => isEmptyValue(v, depth + 1));
+  }
+  return false;
 }
 
 /** True when the body carries no data: every top-level value is null or empty (array: element 0 too). */
@@ -326,7 +336,7 @@ function evaluate(
     });
   }
   const parsed = parseJson(u1.body);
-  if (!parsed.ok || carriesNoData(parsed.value)) {
+  if (!parsed.ok || typeof parsed.value !== "object" || carriesNoData(parsed.value)) {
     return done("INCONCLUSIVE", "Returned 200 with an empty or unreadable JSON body.", {
       ownerOk,
     });

@@ -126,8 +126,25 @@ describe("unauth-route.evaluate", () => {
   it("labels a write-path skip with its handler method", () => {
     const g = unauthRoute.plan(ctx([finding("app/api/notes/[id]/route.js", 2)]))[0]!;
     const r = unauthRoute.evaluate(g, [], none);
-    expect(g.title).toContain(g.method ?? "?");
-    expect(r.method).toBe(g.method);
+    expect(g.method).toBe("PATCH");
+    expect(g.title).toBe("Unauthenticated PATCH /api/notes/[id]");
+    expect(r.method).toBe("PATCH");
+  });
+  it.each([
+    '{"data":[],"count":0}',
+    '{"users":[],"total":0,"page":1}',
+    '{"items":[],"hasMore":false}',
+    '{"data":[],"meta":{"total":0}}',
+    '"Unauthorized"',
+    "true",
+    "0",
+  ])("INCONCLUSIVE for empty-with-metadata or primitive body %s on a risky route", (body) => {
+    expect(run([resp("U1", 200, body)]).outcome).toBe("INCONCLUSIVE");
+  });
+  it("CONFIRMED on a lowercase concatenated sensitive key on a non-risky route", () => {
+    const g = unauthRoute.plan(ctx([finding("app/api/health-data/route.js", 1)]))[0]!;
+    const r = unauthRoute.evaluate(g, [resp("U1", 200, '{"accesstoken":"x"}')], none);
+    expect(r.outcome).toBe("CONFIRMED");
   });
   it("CONFIRMED on a sensitive route returning 200 JSON", () => {
     const r = run([resp("U1", 200, '{"users":[{"id":1}]}')]);
