@@ -241,3 +241,30 @@ describe("parseDatabaseRules / classifyRtdbValue", () => {
     expect(classifyRtdbValue("auth != null && newData.isString()", NOW).cls).toBe("signed-in");
   });
 });
+
+describe("parseRulesFile resource limits", () => {
+  const head = "rules_version = '2';\nservice cloud.firestore {\n";
+  it("handles deep match nesting with many allows quickly", () => {
+    const text = head + "match /a{\n".repeat(5000) + "allow read;\n".repeat(20000) + "}".repeat(5000);
+    const t0 = Date.now();
+    const out = parseRulesFile(text.slice(0, 490_000));
+    expect(Date.now() - t0).toBeLessThan(500);
+    expect(out.length).toBeLessThanOrEqual(5000);
+  });
+  it("caps recorded statements and scanned allow text", () => {
+    const text = head + "match /docs/{id} {\n" + "allow read: if (\n".repeat(30000) + "}}";
+    const t0 = Date.now();
+    parseRulesFile(text);
+    expect(Date.now() - t0).toBeLessThan(500);
+    const many = head + "match /x/{id} {\n" + "allow read: if true;\n".repeat(20000) + "}}";
+    expect(parseRulesFile(many).length).toBeLessThanOrEqual(5000);
+  });
+  it("still parses ordinary nested matches and shares paths", () => {
+    const out = parseRulesFile(
+      head +
+        "match /databases/{d}/documents {\n match /users/{uid} {\n allow read: if request.auth.uid == uid;\n allow write: if request.auth.uid == uid;\n }\n}\n}",
+    );
+    expect(out).toHaveLength(2);
+    expect(out[0]?.segments).toEqual(["users", "{uid}"]);
+  });
+});

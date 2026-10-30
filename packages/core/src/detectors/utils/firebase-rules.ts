@@ -170,9 +170,15 @@ const FUNCTION_HEAD_RE = /function\s+[A-Za-z_]\w*\s*\([^)]{0,200}\)\s*\{/y;
 const IDENT_BEFORE_RE = /[\w.$]/;
 
 interface Frame {
-  segments: string[];
+  /** Full match path (prefix-stripped), computed once on push and shared by statements. */
+  path: string[];
+  full: string[];
   depthAtOpen: number;
 }
+
+const MAX_MATCH_DEPTH = 64;
+const MAX_ALLOW_STATEMENTS = 5000;
+const MAX_ALLOW_SCAN_CHARS = 150_000;
 
 /** Parses a firestore/storage rules file; [] when no `service` header. Never throws. */
 export function parseRulesFile(text: string): AllowStatement[] {
@@ -187,6 +193,7 @@ export function parseRulesFile(text: string): AllowStatement[] {
     const out: AllowStatement[] = [];
     const stack: Frame[] = [];
     let depth = 0;
+    let scanned = 0;
     const n = masked.length;
     let i = svc.index + svc[0].length;
     while (i < n) {
@@ -250,7 +257,10 @@ export function parseRulesFile(text: string): AllowStatement[] {
             const segments = (raw.slice(start, found).trim().split("/") as string[]).filter(
               (s) => s !== "",
             );
-            stack.push({ segments, depthAtOpen: depth });
+            if (stack.length >= MAX_MATCH_DEPTH) break;
+            const parent = stack.length > 0 ? (stack[stack.length - 1] as Frame).full : [];
+            const full = parent.concat(segments);
+            stack.push({ full, path: stripPrefix(service, full), depthAtOpen: depth });
             i = found;
             continue;
           }
@@ -261,7 +271,7 @@ export function parseRulesFile(text: string): AllowStatement[] {
       if (c === "a") {
         ALLOW_RE.lastIndex = i;
         const am = ALLOW_RE.exec(masked);
-        if (am) {
+        if (am && out.length < MAX_ALLOW_STATEMENTS && scanned < MAX_ALLOW_SCAN_CHARS) {
           const start = i + am[0].length;
           const limit = Math.min(n, start + 2000);
           let paren = 0;
@@ -275,15 +285,13 @@ export function parseRulesFile(text: string): AllowStatement[] {
               break;
             }
           }
+          scanned += (end === -1 ? limit : end) - start;
           if (end !== -1) {
             const stmt = parseAllow(masked, raw, start, end);
             if (stmt) {
               out.push({
                 service,
-                segments: stripPrefix(
-                  service,
-                  stack.flatMap((f) => f.segments),
-                ),
+                segments: stack.length > 0 ? (stack[stack.length - 1] as Frame).path : [],
                 methods: stmt.methods,
                 condition: stmt.condition,
                 line: lineOf(starts, i),
