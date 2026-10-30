@@ -55,6 +55,9 @@ export function matchSecretPattern(pattern: SecretPattern, line: string): RegExp
   return null;
 }
 
+/** Supabase CLI / similar config substitutions such as "env(OPENAI_API_KEY)" are references, not values. */
+const ENV_REFERENCE_VALUE_RE = /["']env\([A-Za-z_][A-Za-z0-9_]*\)["']$/;
+
 const AWS_DOC_EXAMPLE_SECRET = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
 
 /**
@@ -293,6 +296,7 @@ export const SECRET_PATTERNS: SecretPattern[] = [
     id: "sec-generic-password",
     name: "Generic Password Assignment",
     regex: /(password|passwd|pwd)\s*[:=]\s*['"]([^'"]+)['"]/i,
+    validate: (match) => !ENV_REFERENCE_VALUE_RE.test(match),
     severity: "low",
     confidence: "low",
     valueGroup: 2,
@@ -301,6 +305,7 @@ export const SECRET_PATTERNS: SecretPattern[] = [
     id: "sec-generic-secret",
     name: "Generic Secret Assignment",
     regex: /(secret|token|api_key|apikey|access_token)\s*[:=]\s*['"]([^'"]{10,})['"]/i,
+    validate: (match) => !ENV_REFERENCE_VALUE_RE.test(match),
     severity: "medium",
     confidence: "low",
     valueGroup: 2,
