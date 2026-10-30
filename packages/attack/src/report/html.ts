@@ -108,8 +108,8 @@ function ledgerTiles(run: AttackRun): string {
     tile(l.refuted, "Refuted", l.refuted > 0 ? "ok" : "") +
     tile(l.untested, "Couldn't test", "") +
     `</div>` +
-    `<p class="ledger">Static flagged ${esc(l.staticFlagged)} · live confirmed ${esc(l.confirmed)} · refuted ${esc(l.refuted)} · couldn't test ${esc(l.untested)}` +
-    (l.errors > 0 ? ` · errors ${esc(l.errors)}` : "") +
+    `<p class="ledger">Static flagged ${esc(l.staticFlagged)} Â· live confirmed ${esc(l.confirmed)} Â· refuted ${esc(l.refuted)} Â· couldn't test ${esc(l.untested)}` +
+    (l.errors > 0 ? ` Â· errors ${esc(l.errors)}` : "") +
     `</p>`
   );
 }
@@ -177,7 +177,7 @@ function resultCard(
     : "";
   const live = `<p class="meta"><b>${esc(OUTCOME_LABEL[result.outcome])}:</b> ${esc(result.reasoning)}</p>`;
   const route = result.route
-    ? `<p class="meta">Check: ${esc(result.checkId)} · Route: ${esc(result.method ?? "GET")} ${esc(result.route)}</p>`
+    ? `<p class="meta">Check: ${esc(result.checkId)} Â· Route: ${esc(result.method ?? "GET")} ${esc(result.route)}</p>`
     : `<p class="meta">Check: ${esc(result.checkId)}</p>`;
   const fix =
     result.outcome === "CONFIRMED" && result.fixGuidance
@@ -230,7 +230,7 @@ export function renderHtmlReport(run: AttackRun): string {
   const groups = new Map<string, ProbeGroup>(run.groups.map((g) => [g.attackId, g]));
   const diffs = new Map<string, RetestDiff>((run.diff ?? []).map((d) => [d.attackId, d]));
   const l = run.ledger;
-  const heading = `${l.confirmed} confirmed · ${l.refuted} refuted · ${l.untested} not tested`;
+  const heading = `${l.confirmed} confirmed Â· ${l.refuted} refuted Â· ${l.untested} not tested`;
 
   const body = SECTIONS.map(({ outcome, title }) => {
     const items = run.results.filter((r) => r.outcome === outcome);
@@ -262,14 +262,14 @@ export function renderHtmlReport(run: AttackRun): string {
     `<meta name="viewport" content="width=device-width,initial-scale=1">` +
     `<title>VibeSafe Attack Report</title><style>${CSS}</style></head><body><main>` +
     `<h1>VibeSafe Attack Report: ${esc(heading)}</h1>` +
-    `<p class="sub">${esc(run.mode)} run · ${esc(run.finishedAt)} · target ${esc(run.targetUrl)} · VibeSafe ${esc(run.vibesafeVersion)}</p>` +
+    `<p class="sub">${esc(run.mode)} run Â· ${esc(run.finishedAt)} Â· target ${esc(run.targetUrl)} Â· VibeSafe ${esc(run.vibesafeVersion)}</p>` +
     ledgerTiles(run) +
     body +
     gone +
     `<h2>Request log</h2>` +
     requestLog(run) +
     `<footer>Attack Mode sends a few safe GET requests to your own app on localhost, aimed by VibeSafe's static findings. ` +
-    `It never sends writes, never leaves your machine, and a result of "no longer reproduces" means this exploit was not reproduced, not that the app is secure.</footer>` +
+    `It never sends writes, never leaves your machine, and a result of "no longer reproduces" means this exploit was not reproduced, and says nothing about the rest of the app.</footer>` +
     `</main></body></html>\n`
   );
 }

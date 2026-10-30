@@ -80,9 +80,9 @@ describe("renderHtmlReport", () => {
 
   it("renders ledger tiles and the ledger line", () => {
     const html = renderHtmlReport(run());
-    expect(html).toContain("Static flagged 4 · live confirmed 1 · refuted 1 · couldn't test 1");
-    expect(html).toContain("1 confirmed · 1 refuted · 1 not tested");
-    expect(html.match(/class="tile/g)?.length).toBe(4);
+    expect(html).toContain("Static flagged 4 Â· live confirmed 1 Â· refuted 1 Â· couldn't test 1");
+    expect(html).toContain("1 confirmed Â· 1 refuted Â· 1 not tested");
+    expect(html.match(/class="tile /g)?.length).toBe(4);
   });
 
   it("renders sections and the requests table with sessions and shapes", () => {
