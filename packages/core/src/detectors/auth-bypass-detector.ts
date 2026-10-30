@@ -152,6 +152,8 @@ function bodyRange(span: FunctionSpan | undefined, src: JsSource): [number, numb
 }
 
 const MAX_DECLS = 1500;
+/** Marker for names bound to a bare-request call result; only the whole value is request data. */
+const BARE_PREFIX = "@bare:";
 const MAX_RHS = 400;
 const MAX_TAINTED = 800;
 const MAX_SITES = 200;
@@ -189,6 +191,7 @@ function requestBindings(src: JsSource): Set<string> {
   interface Decl {
     names: string[];
     direct: boolean;
+    bare: boolean;
     ids: string[];
   }
   const decls: Decl[] = [];
@@ -211,25 +214,35 @@ function requestBindings(src: JsSource): Set<string> {
     // callee itself hangs off the request (`await req.json()`, `await formData.get(..)`)
     let ids = rhs.match(/[A-Za-z_$][\w$]*/g) ?? [];
     let direct = REQUEST_SOURCE_RE.test(rhs);
+    let bare = false;
     if (/^\s*\(?\s*await\b/.test(rhs)) {
-      const call = /^\s*\(?\s*await\s+([\w$.\s]*?)\s*(?:<[^>()]*>)?\s*\(\s*([\w$]*)\s*([,)])?/.exec(
-        rhs,
-      );
+      const call =
+        /^\s*\(?\s*await\s+([\w$]+(?:\s*\.\s*[\w$]+)*)\s*(?:<[^>()]*>\s*)?\(\s*([\w$]*)\s*([,)])?/.exec(
+          rhs,
+        );
       const callee = call?.[1];
       if (callee !== undefined) {
         ids = callee.match(/[A-Za-z_$][\w$]*/g) ?? [];
         // only the callee (or a bare request argument) carries request taint, never inline
         // request reads inside the call arguments (token exchange bodies)
-        direct =
-          /^(?:req|request|ctx|event)\b/.test(callee) ||
-          (/^(?:req|request|ctx|event)$/.test(call?.[2] ?? "") && call?.[3] !== undefined);
+        direct = /^(?:req|request|ctx|event)\b/.test(callee);
+        // `getBearerToken(req)`: the call result itself is request data, but members of it
+        // (a server-verified session's `session.accessToken`) are not
+        bare =
+          !direct &&
+          /^(?:req|request|ctx|event)$/.test(call?.[2] ?? "") &&
+          call?.[3] !== undefined &&
+          !/session|^auth$|currentuser|^getuser$/i.test(callee);
       }
     }
-    decls.push({ names, direct, ids });
+    decls.push({ names, direct, bare, ids });
   }
   for (let pass = 0; pass < 4; pass++) {
     let changed = false;
     for (const d of decls) {
+      if (d.bare) {
+        for (const n of d.names) tainted.add(`${BARE_PREFIX}${n}`);
+      }
       if (d.names.every((n) => tainted.has(n))) continue;
       if (d.direct || d.ids.some((id) => tainted.has(id))) {
         for (const n of d.names) {
@@ -380,7 +393,8 @@ function jwtFindings(
     const root = site.ident?.split(/[.]/)[0];
     let requestDerived = REQUEST_SOURCE_RE.test(site.argText);
     if (!requestDerived && root !== undefined) {
-      requestDerived = getBindings().has(root);
+      const b = getBindings();
+      requestDerived = b.has(root) || (site.ident === root && b.has(`${BARE_PREFIX}${root}`));
     }
     let tokenParam = false;
     if (!requestDerived && root !== undefined && span) {

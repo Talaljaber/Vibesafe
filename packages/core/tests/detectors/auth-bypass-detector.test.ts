@@ -744,3 +744,47 @@ describe("auth-bypass review round 3", () => {
     expect(rule(f, JWT).length).toBeGreaterThan(0);
   });
 });
+
+describe("auth-bypass extra round 2", () => {
+  it("does not flag decoding a member of a server-verified session", async () => {
+    const f = await run({
+      "pages/api/admin.ts": [
+        'import { jwtDecode } from "jwt-decode";',
+        "export default async function handler(req: any, res: any) {",
+        "  const session = await getServerSession(req, res, authOptions);",
+        "  if (!session) return res.status(401).end();",
+        "  const claims: any = jwtDecode(session.accessToken);",
+        "  if (!claims.realm_access.roles.includes('admin')) return res.status(403).end();",
+        "  return res.json({ ok: 1 });",
+        "}",
+      ].join("\n"),
+    });
+    expect(rule(f, JWT)).toHaveLength(0);
+  });
+
+  it("does not flag a member of a bare-request helper result", async () => {
+    const f = await run({
+      "app/api/admin/route.ts": [
+        'import jwt from "jsonwebtoken";',
+        "export async function GET(req: Request) {",
+        "  const auth = await loadAuthInfo(req);",
+        "  const payload: any = jwt.decode(auth.accessToken);",
+        "  if (payload.role !== 'admin') return new Response('no', { status: 403 });",
+        "  return Response.json({ secret: 1 });",
+        "}",
+      ].join("\n"),
+    });
+    expect(rule(f, JWT)).toHaveLength(0);
+  });
+
+  it("scans long-whitespace awaited declarations quickly", async () => {
+    const ws = " ".repeat(380);
+    const lines = ['import jwt from "jsonwebtoken";', "export async function GET(req: Request) {"];
+    for (let i = 0; i < 150; i++) lines.push(`  const v${i} = await a${ws}.b${i};`);
+    lines.push("  const t = await getBearerToken(req);", "  const p: any = jwt.decode(t);");
+    lines.push("  if (p.role !== 'admin') return new Response('no', { status: 403 });", "}");
+    const start = Date.now();
+    await run({ "app/api/x/route.ts": lines.join("\n") });
+    expect(Date.now() - start).toBeLessThan(1500);
+  });
+});
