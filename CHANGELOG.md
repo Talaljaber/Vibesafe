@@ -1,4 +1,4 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to VibeSafe will be documented in this file.
 
@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Attack demo app fixture (`fixtures/attack-demo-app/`), its fixed-twin overlay and a zero-dependency harness for Attack Mode.
 - Core now exports the Next.js route helpers (nextRoutePath, findHandlerLine, isPublicRoutePath, isApiRoute, isRiskyRoutePattern) for Attack Mode.
 - Scaffold the `@talaljaber/vibesafe-attack` package (types, API stubs, network chokepoint lint rule and test) for Attack Mode.
+- Add Attack Mode negative controls and response fingerprinting (`controls.ts`) so bland 200s are not mistaken for leaks.
 - Add `scripts/create-attack-demo.mjs`, which copies the attack demo app into a fresh git repo with `main` (vulnerable) and `fixed` branches and a demo CLAUDE.md.
 
 ### Changed
