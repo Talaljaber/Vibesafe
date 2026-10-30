@@ -414,6 +414,23 @@ export function hclStringList(value: string): string[] | undefined {
   return out;
 }
 
+/**
+ * Like {@link hclStringList} but keeps interpolated strings and non-literal items
+ * (references) as their raw text, so callers can still see what a list refers to.
+ */
+export function hclStringListLoose(value: string): string[] {
+  const v = value.trim();
+  if (v.startsWith('"')) return [hclStringShape(v, "${x}") ?? v];
+  if (!v.startsWith("[")) return v === "" ? [] : [v];
+  const nodes = parseExpr(v, 0);
+  if (nodes.kind !== "list") return [v];
+  const out: string[] = [];
+  for (const item of nodes.items) {
+    if (item.kind === "str" || item.kind === "raw") out.push(item.text);
+  }
+  return out;
+}
+
 // ─── Expression mini parser (objects, lists, strings) ───────────────────────
 
 export type HNode =
@@ -740,7 +757,7 @@ function statementsOfDocument(block: HclBlock): PolicyStatement[] {
     let principalLine = st.line;
     for (const p of st.blocks.filter((b) => b.type === "principals")) {
       const ids = attrOf(p, "identifiers");
-      const vals = ids ? (hclStringList(ids.value) ?? [ids.value.trim()]) : [];
+      const vals = ids ? hclStringListLoose(ids.value) : [];
       principals.push(...vals);
       if (hclString(attrOf(p, "type")?.value ?? "") === "Federated") federated.push(...vals);
       principalLine = ids?.line ?? p.line;
@@ -750,8 +767,8 @@ function statementsOfDocument(block: HclBlock): PolicyStatement[] {
       const variable = attrOf(c, "variable");
       conditionEntries.push({
         operator: hclString(attrOf(c, "test")?.value ?? "") ?? "",
-        key: hclString(variable?.value ?? "") ?? "",
-        values: hclStringList(attrOf(c, "values")?.value ?? "") ?? [],
+        key: hclStringShape(variable?.value ?? "") ?? variable?.value.trim() ?? "",
+        values: hclStringListLoose(attrOf(c, "values")?.value ?? ""),
         line: attrOf(c, "values")?.line ?? c.line,
       });
     }

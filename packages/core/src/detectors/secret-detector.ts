@@ -5,6 +5,12 @@ import { SECRET_PATTERNS, matchSecretPattern } from "./patterns/secret-patterns.
 import path from "path";
 import ignore from "ignore";
 
+/** Rule ids of the low-confidence generic assignment patterns that precedence rules may hide. */
+export const GENERIC_ASSIGNMENT_RULE_IDS = [
+  "secret/sec-generic-password",
+  "secret/sec-generic-secret",
+] as const;
+
 export class SecretDetector implements Detector {
   id = "secret-detector";
   name = "Secret Detection";

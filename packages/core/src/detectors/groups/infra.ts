@@ -47,10 +47,29 @@ export const infraDetectors = (): Detector[] => [
 
 /**
  * Cross-owner precedence rules declared by this group (see scanner/precedence.ts).
- * None: overlaps with the secret detector are avoided inside the detectors (lines a
- * known secret pattern matches are skipped).
+ * The IaC secret rules are specific, so they hide the low-confidence generic
+ * password/secret assignment findings reported on the same line.
  */
-export const infraPrecedence: readonly PrecedenceRule[] = [];
+export const infraPrecedence: readonly PrecedenceRule[] = [
+  {
+    winner: "secret/terraform-literal-credential",
+    losers: ["secret/sec-generic-password", "secret/sec-generic-secret"],
+    scope: "line",
+    reason: "The Terraform credential rule already reports the literal on this line.",
+  },
+  {
+    winner: "secret/k8s-secret-manifest",
+    losers: ["secret/sec-generic-password", "secret/sec-generic-secret"],
+    scope: "line",
+    reason: "The Kubernetes Secret rule already reports this value.",
+  },
+  {
+    winner: "secret/k8s-configmap-credential",
+    losers: ["secret/sec-generic-password", "secret/sec-generic-secret"],
+    scope: "line",
+    reason: "The ConfigMap credential rule already reports this value.",
+  },
+];
 
 /** Detector id -> non-JS file kinds it legitimately reports on (used by non-js-files.test.ts). */
 export const infraNonJsExempt: Readonly<Record<string, readonly FileKind[]>> = {

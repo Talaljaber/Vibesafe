@@ -89,6 +89,10 @@ type Emit = (
 const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 const PUBLIC_CERT_KEY_RE = /(?:^|[./_-])(?:crt|cert|cer|certificate|ca)(?:$|[./_-])|\.pem$/i;
 
+/** Secret keys that carry connection details rather than credentials. */
+const PLAIN_CONFIG_KEY_RE =
+  /(?:^|[._-])(?:host|hostname|port|user|username|login|database|dbname|region|endpoint|bucket|domain)$/i;
+
 function printable(s: string): boolean {
   return !/[\u0000-\u0008\u000b\u000c\u000e-\u001f�]/.test(s);
 }
@@ -192,7 +196,8 @@ export class IacSecretDetector implements Detector {
       const trimmed = value.trim();
       if (trimmed.length < 8 || isPlaceholderValue(trimmed) || trimmed.includes("${")) continue;
       const strong = hasSpecificSecret(trimmed) || findUrlCredential(trimmed) !== undefined;
-      emit("secretManifest", e.line, strong ? "critical" : "high", "high", `${e.key}: <redacted>`);
+      const sev = strong ? "critical" : PLAIN_CONFIG_KEY_RE.test(e.key) ? "medium" : "high";
+      emit("secretManifest", e.line, sev, "high", `${e.key}: <redacted>`);
     }
   }
 
@@ -222,6 +227,7 @@ export class IacSecretDetector implements Detector {
       if (nameKind === undefined) return;
       const value = hclString(valueRaw);
       if (value === undefined || known(line)) return;
+      if (/^(?:alias\/|arn:)/i.test(value.trim())) return;
       if (!looksLikeSecretValue(value) || isPlaceholderValue(value)) return;
       if (nameKind === "connection" && findUrlCredential(value) === undefined) return;
       emit("terraformCredential", line, "high", "high", `${name} = <redacted>`);

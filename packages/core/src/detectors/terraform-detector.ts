@@ -198,10 +198,6 @@ const FLAG_NAMES = [
   "restrict_public_buckets",
 ];
 
-function flowOf(text: string, line: number): string {
-  return text.split(/\r?\n/)[line - 1] ?? "";
-}
-
 /**
  * Terraform (`*.tf`) rules: public S3 buckets and policies, open security groups,
  * publicly accessible databases, wildcard IAM and OIDC trust policies, disabled
@@ -224,6 +220,7 @@ export class TerraformDetector implements Detector {
         const text = await context.readFile(file);
         if (text.trim() === "") continue;
         const blocks = parseHcl(text);
+        const textLines = text.split(/\r?\n/);
         const emit = (
           rule: RuleKey,
           line: number,
@@ -242,7 +239,7 @@ export class TerraformDetector implements Detector {
               file,
               line,
               endLine: extra?.endLine,
-              evidence: flowOf(text, line).trim(),
+              evidence: (textLines[line - 1] ?? "").trim(),
               discriminator: extra?.discriminator,
               plainEnglishProblem: r.problem,
               whyItMatters: r.why,
@@ -387,7 +384,14 @@ export class TerraformDetector implements Detector {
       type === "aws_efs_file_system"
     ) {
       const k = boolAttr("kms_key_id");
-      if (k && hclString(k.value) === "") emit("storageUnencrypted", k.line, "medium", "high");
+      const flag = boolAttr(
+        type === "aws_ebs_volume" || type === "aws_efs_file_system"
+          ? "encrypted"
+          : "storage_encrypted",
+      );
+      const encrypted = flag !== undefined && hclBool(flag.value) === true;
+      if (k && !encrypted && hclString(k.value) === "")
+        emit("storageUnencrypted", k.line, "medium", "high");
     }
 
     if (type === "aws_cloudfront_distribution") {
@@ -465,7 +469,12 @@ export class TerraformDetector implements Detector {
     for (const st of statements) {
       if (st.effect.toLowerCase() !== "allow") continue;
       if (!st.actions.some((a) => /AssumeRoleWithWebIdentity$/i.test(a))) continue;
-      const subs = st.conditionEntries.filter((c) => OIDC_SUB_RE.test(c.key));
+      const ci =
+        st.conditionEntries.some((c) => OIDC_ISSUER_RE.test(c.key)) ||
+        st.federated.some((f) => isCiProvider(f, oidcProviders));
+      const subs = st.conditionEntries.filter(
+        (c) => OIDC_SUB_RE.test(c.key) || (ci && /:sub$/.test(shape(c.key))),
+      );
       if (subs.length > 0) {
         for (const c of subs) {
           if (!/like/i.test(c.operator)) continue;
@@ -484,9 +493,6 @@ export class TerraformDetector implements Detector {
         continue;
       }
       // No :sub condition at all: only when the federated principal is a CI OIDC provider.
-      const ci =
-        st.conditionEntries.some((c) => OIDC_ISSUER_RE.test(c.key)) ||
-        st.federated.some((f) => isCiProvider(f, oidcProviders));
       if (ci) emit("oidcSubject", st.principalLine, "high", "high");
     }
   }

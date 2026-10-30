@@ -412,6 +412,62 @@ describe("TerraformDetector: tf-oidc-wildcard-subject", () => {
     expect(rule(await run(trust(sub)), "tf-oidc-wildcard-subject")).toEqual([]);
   });
 
+  const docTrust = (
+    key: string,
+    values: string,
+    ids = "aws_iam_openid_connect_provider.github.arn",
+  ) =>
+    hcl(
+      'data "aws_iam_policy_document" "trust" {',
+      "  statement {",
+      '    actions = ["sts:AssumeRoleWithWebIdentity"]',
+      "    principals {",
+      '      type        = "Federated"',
+      `      identifiers = [${ids}]`,
+      "    }",
+      "    condition {",
+      '      test     = "StringLike"',
+      `      variable = ${key}`,
+      `      values   = ${values}`,
+      "    }",
+      "  }",
+      "}",
+      'resource "aws_iam_role" "ci" {',
+      "  assume_role_policy = data.aws_iam_policy_document.trust.json",
+      "}",
+    );
+
+  it.each([
+    '"${local.oidc_host}:sub"',
+    '"${replace(aws_iam_openid_connect_provider.github.url, \\"https://\\", \\"\\")}:sub"',
+  ])("is silent for a pinned subject under the interpolated key %s (jsonencode)", async (key) => {
+    const tf = trust('"repo:acme/shop:ref:refs/heads/main"').replace(
+      '"token.actions.githubusercontent.com:sub"',
+      key,
+    );
+    expect(rule(await run(tf), "tf-oidc-wildcard-subject")).toEqual([]);
+  });
+
+  it("is silent for a pinned subject under an interpolated key (policy document)", async () => {
+    const tf = docTrust('"${local.oidc_host}:sub"', '["repo:acme/shop:environment:prod"]');
+    expect(rule(await run(tf), "tf-oidc-wildcard-subject")).toEqual([]);
+  });
+
+  it("flags a wildcard subject under an interpolated key", async () => {
+    const json = trust('"repo:acme/*"').replace(
+      '"token.actions.githubusercontent.com:sub"',
+      '"${local.oidc_host}:sub"',
+    );
+    expect(rule(await run(json), "tf-oidc-wildcard-subject")).toHaveLength(1);
+    const doc = docTrust('"${local.oidc_host}:sub"', '["repo:acme/*"]');
+    expect(rule(await run(doc), "tf-oidc-wildcard-subject")).toHaveLength(1);
+  });
+
+  it("flags a policy-document GitHub trust with no :sub when the provider is a reference", async () => {
+    const tf = docTrust('"token.actions.githubusercontent.com:aud"', '["sts.amazonaws.com"]');
+    expect(rule(await run(tf), "tf-oidc-wildcard-subject")).toHaveLength(1);
+  });
+
   it("is silent for a service principal trust policy", async () => {
     const tf = hcl(
       'resource "aws_iam_role" "app" {',
@@ -448,6 +504,20 @@ describe("TerraformDetector: tf-storage-unencrypted", () => {
     );
     expect(f.map((x) => x.line)).toEqual([2, 5, 8]);
     expect(f[0]).toMatchObject({ severity: "medium", confidence: "high" });
+  });
+
+  it("is silent for an empty kms key when encryption is literally on", async () => {
+    const tf = hcl(
+      'resource "aws_db_instance" "a" {',
+      "  storage_encrypted = true",
+      '  kms_key_id        = ""',
+      "}",
+      'resource "aws_ebs_volume" "b" {',
+      "  encrypted  = true",
+      '  kms_key_id = ""',
+      "}",
+    );
+    expect(rule(await run(tf), "tf-storage-unencrypted")).toEqual([]);
   });
 
   it("is silent when the attribute is missing, true, a variable or on another resource", async () => {

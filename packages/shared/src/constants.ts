@@ -118,6 +118,7 @@ function isK8sManifestPath(p: string, base: string): boolean {
   if (KUSTOMIZATION_RE.test(base)) return true;
   const segments = p.split("/");
   segments.pop();
+  if (segments.includes(".github")) return false;
   return segments.some((s) => K8S_DIRS.has(s.toLowerCase()));
 }
 

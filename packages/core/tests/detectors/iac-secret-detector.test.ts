@@ -154,10 +154,7 @@ describe("IacSecretDetector: secret/k8s-configmap-credential", () => {
   });
 
   it.each([
-    [
-      "non-credential keys",
-      ["  S3_BUCKET: shop-documents", "  TWILIO_ACCOUNT_SID: AC4f81c0a93b7e2d"],
-    ],
+    ["non-credential keys", ["  S3_BUCKET: shop-documents", "  TWILIO_ACCOUNT_SID: ACd29e47b6c1f"]],
     ["placeholder", ["  API_TOKEN: changeme"]],
     ["template", ["  API_TOKEN: {{ .Values.token }}"]],
     ["reference", ["  API_TOKEN: ${API_TOKEN}"]],
@@ -184,6 +181,32 @@ describe("IacSecretDetector: secret/terraform-literal-credential", () => {
     ]);
     expect(f[0]!.evidence).toBe("db_password = <redacted>");
     expect(JSON.stringify(f)).not.toContain("Zq8mT4vLw2Rb7YnC5");
+  });
+
+  it("treats KMS aliases and ARNs as references, not secrets", async () => {
+    const f = await run({
+      "main.tf": y(
+        'resource "aws_s3_bucket_server_side_encryption_configuration" "a" {',
+        '  encryption_key = "alias/aws/s3"',
+        '  secret_key_ref = "arn:aws:kms:us-east-1:123456789012:key/1234abcd-12ab-34cd"',
+        "}",
+      ),
+    });
+    expect(f).toEqual([]);
+  });
+
+  it("reports a non-credential key of a Secret as medium and a credential key as high", async () => {
+    const f = await run({
+      "k8s/secret.yaml": secret(
+        "stringData:",
+        "  host: db-primary.internal.example.com",
+        "  password: Zq8mT4vLw2Rb7YnC5dHs1",
+      ),
+    });
+    expect(f.map((x) => [x.line, x.severity])).toEqual([
+      [7, "medium"],
+      [8, "high"],
+    ]);
   });
 
   it("flags variable defaults and resource attributes in .tf files", async () => {
