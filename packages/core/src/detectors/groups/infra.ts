@@ -1,4 +1,4 @@
-// Detector group "infra": Dockerfile, compose, GitHub workflow, shell script, next.config and .gitignore env-variant detectors.
+// Detector group "infra": Dockerfile, compose, GitHub workflow, shell script, next.config and .gitignore env-variant detectors, Supabase config.toml.
 //
 // Owned by one stream. Export ONLY: the group's *Detector classes (re-exported from
 // their detector files), infraDetectors, infraPrecedence and infraNonJsExempt. Never
@@ -17,6 +17,7 @@ import { GitignoreEnvDetector } from "../gitignore-env-detector.js";
 import { TerraformDetector } from "../terraform-detector.js";
 import { K8sManifestDetector } from "../k8s-manifest-detector.js";
 import { IacSecretDetector } from "../iac-secret-detector.js";
+import { SupabaseConfigDetector } from "../supabase-config-detector.js";
 
 export {
   DockerfileDetector,
@@ -29,6 +30,7 @@ export {
   TerraformDetector,
   K8sManifestDetector,
   IacSecretDetector,
+  SupabaseConfigDetector,
 };
 
 /** Fresh instances of this group's detectors, registered after the built-in ones. */
@@ -43,6 +45,7 @@ export const infraDetectors = (): Detector[] => [
   new TerraformDetector(),
   new K8sManifestDetector(),
   new IacSecretDetector(),
+  new SupabaseConfigDetector(),
 ];
 
 /**
@@ -82,4 +85,5 @@ export const infraNonJsExempt: Readonly<Record<string, readonly FileKind[]>> = {
   "terraform-detector": ["terraform"],
   "k8s-manifest-detector": ["k8s-manifest"],
   "iac-secret-detector": ["k8s-manifest", "terraform", "tfvars"],
+  "supabase-config-detector": ["supabase-config"],
 };
