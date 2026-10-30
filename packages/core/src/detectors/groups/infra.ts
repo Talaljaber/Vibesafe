@@ -14,6 +14,9 @@ import { GhaScriptInjectionDetector } from "../gha-script-injection-detector.js"
 import { ShellScriptDetector } from "../shell-script-detector.js";
 import { NextjsConfigDetector } from "../nextjs-config-detector.js";
 import { GitignoreEnvDetector } from "../gitignore-env-detector.js";
+import { TerraformDetector } from "../terraform-detector.js";
+import { K8sManifestDetector } from "../k8s-manifest-detector.js";
+import { IacSecretDetector } from "../iac-secret-detector.js";
 
 export {
   DockerfileDetector,
@@ -23,6 +26,9 @@ export {
   ShellScriptDetector,
   NextjsConfigDetector,
   GitignoreEnvDetector,
+  TerraformDetector,
+  K8sManifestDetector,
+  IacSecretDetector,
 };
 
 /** Fresh instances of this group's detectors, registered after the built-in ones. */
@@ -34,6 +40,9 @@ export const infraDetectors = (): Detector[] => [
   new ShellScriptDetector(),
   new NextjsConfigDetector(),
   new GitignoreEnvDetector(),
+  new TerraformDetector(),
+  new K8sManifestDetector(),
+  new IacSecretDetector(),
 ];
 
 /**
@@ -51,4 +60,7 @@ export const infraNonJsExempt: Readonly<Record<string, readonly FileKind[]>> = {
   "gha-script-injection-detector": ["workflow", "gh-action"],
   "shell-script-detector": ["shell"],
   "gitignore-env-detector": ["gitignore"],
+  "terraform-detector": ["terraform"],
+  "k8s-manifest-detector": ["k8s-manifest"],
+  "iac-secret-detector": ["k8s-manifest", "terraform", "tfvars"],
 };

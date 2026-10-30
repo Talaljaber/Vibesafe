@@ -196,3 +196,51 @@ describe("secret and frontend-exposure detectors on infrastructure files", () =>
     expect(await new FrontendExposureDetector().detect(createContext(SAMPLES))).toEqual([]);
   });
 });
+
+describe("FileDiscovery of Terraform and Kubernetes files", () => {
+  let root: string;
+
+  beforeAll(async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "vibesafe-iac-"));
+    const files = [
+      "infra/main.tf",
+      "infra/prod.tfvars",
+      "infra/env.auto.tfvars",
+      "infra/k8s/app.yaml",
+      "deploy/web.yml",
+      "kustomization.yaml",
+      "config.yml",
+      "openapi.yaml",
+      "src/i18n/en.yaml",
+      "pnpm-lock.yaml",
+      "infra/.terraform/providers/x.tf",
+      "infra/.terraform/modules/m/main.tf",
+      "infra/.terragrunt-cache/abc/main.tf",
+      "infra/terraform.tfstate",
+    ];
+    for (const rel of files) {
+      const full = path.join(root, rel);
+      await fs.mkdir(path.dirname(full), { recursive: true });
+      await fs.writeFile(full, "a = 1\n");
+    }
+  });
+
+  afterAll(async () => {
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it("admits .tf, .tfvars and manifest yaml, and excludes .terraform and unrelated yaml", async () => {
+    const found = (await new FileDiscovery(root).discoverFiles()).map((f) => f.replace(/\\/g, "/"));
+    expect(found.sort()).toEqual(
+      [
+        "deploy/web.yml",
+        "infra/env.auto.tfvars",
+        "infra/k8s/app.yaml",
+        "infra/main.tf",
+        "infra/prod.tfvars",
+        "kustomization.yaml",
+        "pnpm-lock.yaml", // a lockfile: scanned as one, never as a manifest
+      ].sort(),
+    );
+  });
+});

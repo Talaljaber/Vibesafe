@@ -90,6 +90,36 @@ const COMPOSE_RE = /^(?:docker-)?compose(?:\.[\w-]+)*\.ya?ml$/i;
 const WORKFLOW_RE = /(?:^|\/)\.github\/workflows\/[^/]+\.ya?ml$/;
 const ACTION_RE = /^action\.ya?ml$/;
 const SHELL_RE = /\.(?:sh|bash|zsh)$/;
+const TERRAFORM_RE = /\.tf$/i;
+const TFVARS_RE = /\.tfvars$/i;
+const K8S_YAML_RE = /\.ya?ml$/i;
+const KUSTOMIZATION_RE = /^kustomization\.ya?ml$/i;
+/** Directory names that hold Kubernetes manifests (matched case-insensitively). */
+const K8S_DIRS: ReadonlySet<string> = new Set([
+  "k8s",
+  "kubernetes",
+  "kube",
+  "manifests",
+  "deploy",
+  "deployments",
+  "kustomize",
+  "overlays",
+  "base",
+  "helm",
+  "charts",
+  "templates",
+  "argocd",
+  "gitops",
+  "openshift",
+]);
+
+function isK8sManifestPath(p: string, base: string): boolean {
+  if (!K8S_YAML_RE.test(base)) return false;
+  if (KUSTOMIZATION_RE.test(base)) return true;
+  const segments = p.split("/");
+  segments.pop();
+  return segments.some((s) => K8S_DIRS.has(s.toLowerCase()));
+}
 
 /** Kinds of infrastructure file, see {@link classifyInfraFile}. */
 export type InfraFileKind =
@@ -99,6 +129,9 @@ export type InfraFileKind =
   | "workflow"
   | "gh-action"
   | "shell"
+  | "terraform"
+  | "tfvars"
+  | "k8s-manifest"
   | EnvFileKind
   | "next-config-mts";
 
@@ -108,9 +141,12 @@ export type InfraFileKind =
  * (`Dockerfile`, `Dockerfile.prod`, `api.Dockerfile`), `.dockerignore`, compose files
  * (`docker-compose*.yml`, `compose*.yaml`), GitHub workflow files (directly under
  * `.github/workflows/`), composite `action.yml`, shell scripts (`.sh .bash .zsh`), env
- * files of every kind (see classifyEnvFileName) and `next.config.mts`. Returns null
- * for everything else (e.g. `pnpm-lock.yaml`, `.github/ISSUE_TEMPLATE/bug.yml`,
- * `config.yml`, `.envrc`). Accepts `/` or `\` separators.
+ * files of every kind (see classifyEnvFileName), `next.config.mts`, Terraform
+ * (`*.tf`, `*.tfvars`, `*.auto.tfvars`) and Kubernetes manifests (YAML under a
+ * `k8s/`, `kubernetes/`, `manifests/`, `deploy/`, `helm/`, ... directory, or
+ * `kustomization.yaml`; whether a file really is a manifest is decided by content).
+ * Returns null for everything else (e.g. `pnpm-lock.yaml`,
+ * `.github/ISSUE_TEMPLATE/bug.yml`, `config.yml`, `openapi.yaml`, `.envrc`). Accepts `/` or `\` separators.
  */
 export function classifyInfraFile(relativePath: string): InfraFileKind | null {
   const p = relativePath.replace(/\\/g, "/");
@@ -124,6 +160,11 @@ export function classifyInfraFile(relativePath: string): InfraFileKind | null {
   if (DOCKERFILE_RE.test(base) && !NOT_DOCKERFILE_EXT_RE.test(base)) return "dockerfile";
   if (SHELL_RE.test(base)) return "shell";
   if (base === "next.config.mts") return "next-config-mts";
+  if (TERRAFORM_RE.test(base)) return "terraform";
+  if (TFVARS_RE.test(base)) return "tfvars";
+  if (!(LOCKFILE_NAMES as readonly string[]).includes(base) && isK8sManifestPath(p, base)) {
+    return "k8s-manifest";
+  }
   return null;
 }
 
@@ -165,6 +206,8 @@ export const ALWAYS_EXCLUDED_ANYWHERE_DIRS = [
   ".pytest_cache",
   ".ruff_cache",
   ".eggs",
+  ".terraform",
+  ".terragrunt-cache",
 ] as const;
 
 /**
