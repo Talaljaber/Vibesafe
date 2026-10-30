@@ -22,9 +22,13 @@ const FORBIDDEN_MODULES = [
   "module",
   "worker_threads",
   "vm",
+  "inspector",
+  "cluster",
 ];
 const names = FORBIDDEN_MODULES.flatMap((m) => [m, `node:${m}`]).join("|");
 const moduleRe = new RegExp(`["'\u0060](?:${names})(?:/[^"'\u0060]*)?["'\u0060]`);
+const onlineRe =
+  /\bOsvDetector\b|\bPackageExistenceDetector\b|\bonline\s*:\s*(?:true\b|[^\s,}]*(?:\bonline\b|Online))/;
 const fetchRe =
   /(?<![\w$])fetch\s*\(|\bfetch\s*:|["'\u0060]fetch["'\u0060]|(?:globalThis|global|self|window)\s*\.\s*fetch|\b(?:WebSocket|XMLHttpRequest|createRequire|getBuiltinModule)\b|process\s*\.\s*binding/;
 
@@ -48,6 +52,7 @@ function findViolations(root: string): string[] {
     const text = fs.readFileSync(file, "utf8");
     if (moduleRe.test(text)) violations.push(`${file}: network module`);
     if (fetchRe.test(text)) violations.push(`${file}: fetch or socket global`);
+    if (onlineRe.test(text)) violations.push(`${file}: online core scan`);
   }
   return violations;
 }
@@ -85,6 +90,11 @@ describe("network chokepoint", () => {
         "j.ts": 'const m = process.getBuiltinModule("node:tls");\n',
         "k.ts": "const u = await import(`node:http`);\n",
         "l.tsx": 'const r = await globalThis["fetch"](u);\n',
+        "m.ts": 'import inspector from "node:inspector";\n',
+        "n.ts": 'import cluster from "cluster";\n',
+        "o.ts": "const d = new OsvDetector();\n",
+        "p.ts": "const d = new PackageExistenceDetector();\n",
+        "q.ts": "await scan({ projectPath, online: true });\n",
       };
       for (const [name, body] of Object.entries(planted)) {
         fs.writeFileSync(path.join(tmp, name), body);
@@ -95,7 +105,8 @@ describe("network chokepoint", () => {
           found.some(
             (v) =>
               v.endsWith(`${path.sep}${name}: network module`) ||
-              v.includes(`${path.sep}${name}: fetch`),
+              v.includes(`${path.sep}${name}: fetch`) ||
+              v.endsWith(`${path.sep}${name}: online core scan`),
           ),
           name,
         ).toBe(true);
@@ -103,5 +114,27 @@ describe("network chokepoint", () => {
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
+  });
+});
+
+describe("package manifest allowlist", () => {
+  it("dependencies and peerDependencies stay within core and shared", () => {
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(pkgRoot, "package.json"), "utf8"),
+    ) as Record<string, Record<string, string> | undefined>;
+    const allowed = new Set(["@talaljaber/vibesafe-core", "@talaljaber/vibesafe-shared"]);
+    for (const field of ["dependencies", "peerDependencies", "optionalDependencies"]) {
+      const extra = Object.keys(manifest[field] ?? {}).filter((d) => !allowed.has(d));
+      expect(extra, field).toEqual([]);
+    }
+  });
+});
+
+describe("online scans are never started from attack", () => {
+  it("online-core patterns trip the structural check", () => {
+    expect(onlineRe.test("new OsvDetector()")).toBe(true);
+    expect(onlineRe.test("scan({ online: true })")).toBe(true);
+    expect(onlineRe.test("online: opts.online")).toBe(true);
+    expect(onlineRe.test("online: false")).toBe(false);
   });
 });
