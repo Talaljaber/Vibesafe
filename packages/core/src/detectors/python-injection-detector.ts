@@ -10,6 +10,7 @@ import {
   maskPython,
   pythonFunctions,
   splitCallArgs,
+  isConstOpenArg,
   type FunctionTaint,
   type PythonFunction,
 } from "./utils/python-taint.js";
@@ -322,6 +323,11 @@ export class PythonInjectionDetector implements Detector {
         if (first === undefined) continue;
         if (/^[rbuRBU]{0,2}(["'])~*\1$/.test(first)) continue; // literal bytes/path
         if (/^open\s*\(\s*[rbuRBU]{0,2}(["'])~*\1/.test(first)) continue; // literal file
+        const om = /^open\s*\(([\s\S]*)\)$/.exec(first);
+        if (om) {
+          const oa = splitCallArgs("(" + om[1]! + ")", 0)[0];
+          if (oa !== undefined && isConstOpenArg(oa)) continue; // server-owned file
+        }
         const bare = /^([A-Za-z_]\w*)$/.exec(first);
         if (bare && ft().isLiteralHandle(bare[1]!)) continue;
         const tainted = ft().isTainted(first, st.start);

@@ -280,6 +280,19 @@ export interface FunctionTaint {
 
 const ASSIGN_RE =
   /^(\(?\s*[A-Za-z_]\w*(?:\s*,\s*\*?[A-Za-z_]\w*)*(?:\s*,)?(?:\s*\))?)(?:\s*:[^=]+?)?\s*(\+?)=(?!=)\s*([\s\S]+)$/;
+const KWARG_NAME_RE = /(?<![\w.=!<>])[A-Za-z_]\w*\s*=(?!=)/g;
+function stripKwargNames(s: string): string {
+  return s.includes("=") ? s.replace(KWARG_NAME_RE, " ") : s;
+}
+/** `open(` argument that is a literal, an UPPER_CASE constant, or os.path.join of those. */
+export function isConstOpenArg(arg: string): boolean {
+  const a = arg.trim();
+  if (/^[rbuRBU]{0,2}(["'])~*\1$/.test(a)) return true;
+  if (/^[A-Z][A-Z0-9_]*(?:\.[A-Z][A-Z0-9_]*)*$/.test(a)) return true;
+  const j = /^(?:os\s*\.\s*)?path\s*\.\s*join\s*\(([\s\S]*)\)$/.exec(a);
+  if (!j) return false;
+  return splitCallArgs("(" + j[1]! + ")", 0).every(isConstOpenArg);
+}
 const FOR_RE = /^(?:async\s+)?for\s+([\w\s,()]+?)\s+in\s+([\s\S]+?)\s*:\s*[\s\S]*$/;
 const GUARD_NOT_IN_RE = /^(?:el)?if\s+\(?\s*([A-Za-z_]\w*)\s+not\s+in\s+([^:]+):([\s\S]*)$/;
 const GUARD_NOT_IN_PREFIX_RE = /^(?:el)?if\s+not\s+\(?\s*([A-Za-z_]\w*)\s+in\s+([^:]+):([\s\S]*)$/;
@@ -409,6 +422,7 @@ export function analyzeFunction(fn: PythonFunction | undefined): FunctionTaint {
         keep = true;
       else if (recvText === "os.path" || recvText === "path" || recvText === "posixpath")
         keep = PATH_FUNCS.has(last);
+      else if (recvText === "json" && (last === "loads" || last === "load")) keep = true;
       else if (last === "get" || last === "getlist")
         keep = hasRequestSource(recvText) || taintAt(recv[0]!, line) !== undefined;
       else if (STR_METHODS.has(last)) keep = recv.length === 1 || hasRequestSource(recvText);
@@ -481,7 +495,7 @@ export function analyzeFunction(fn: PythonFunction | undefined): FunctionTaint {
       /["']\s*\+|\+\s*[rbufRBUF]{0,2}["']/.test(s) ||
       [...textVars].some((v) => new RegExp(`(?<![\\w.])${v}\\s*\\+|\\+\\s*${v}(?!\\w)`).test(s));
     if (!interpolated && !percent && !format && !plus) return false;
-    const view = s.replace(/[⟦⟧]/g, " ");
+    const view = stripKwargNames(s).replace(/[⟦⟧]/g, " ");
     return identifiers(view).some(
       (id) =>
         !CONSTANT_NAME_RE.test(id) &&
@@ -508,7 +522,12 @@ export function analyzeFunction(fn: PythonFunction | undefined): FunctionTaint {
     const withM = /^(?:async\s+)?with\s+open\s*\(([\s\S]*?)\)\s+as\s+([A-Za-z_]\w*)\s*:/.exec(
       masked,
     );
-    if (withM && OPEN_LITERAL_RE.test("open(" + withM[1]!)) literalHandles.add(withM[2]!);
+    if (withM) {
+      const oa = splitCallArgs("(" + withM[1]! + ")", 0)[0];
+      if (OPEN_LITERAL_RE.test("open(" + withM[1]!) || (oa !== undefined && isConstOpenArg(oa)))
+        literalHandles.add(withM[2]!);
+    }
+    if (!masked.includes("=")) continue;
     const m = ASSIGN_RE.exec(masked);
     if (!m) continue;
     const names = splitNames(m[1]!);

@@ -245,6 +245,83 @@ describe("python-injection-detector: deserialization", () => {
   });
 });
 
+describe("python-injection-detector: round 3 resolutions", () => {
+  it("keeps cleaners working in keyword .format / dict forms", async () => {
+    const f = await run(
+      lines(
+        "import os, shlex",
+        "TABLE_NAME = 'users'",
+        "SQL = 'SELECT * FROM {table}'",
+        "def a(src, cursor, days):",
+        '    os.system("convert {src}".format(src=shlex.quote(src)))',
+        '    cursor.execute("DELETE FROM t WHERE d > {d}".format(d=int(days)))',
+        "    cursor.execute(SQL.format(table=TABLE_NAME))",
+        '    cursor.execute("SELECT %(d)s" % dict(d=int(days)))',
+      ),
+    );
+    expect(f).toHaveLength(0);
+  });
+
+  it("still flags keyword .format with a request-tainted value", async () => {
+    const f = await run(
+      lines(
+        "def v(request, cursor):",
+        '    c = request.GET["col"]',
+        '    cursor.execute("SELECT {col} FROM t".format(col=c))',
+      ),
+    );
+    expect(f).toHaveLength(1);
+  });
+
+  it("is silent for pickle of server-owned constant model paths", async () => {
+    const f = await run(
+      lines(
+        "import os, pickle",
+        "def a():",
+        '    with open(MODEL_PATH, "rb") as fh:',
+        "        return pickle.load(fh)",
+        "def b():",
+        '    with open(os.path.join(BASE_DIR, "model.pkl"), "rb") as fh:',
+        "        return pickle.load(fh)",
+        "def c():",
+        '    return pickle.load(open(os.path.join(BASE_DIR, "m.pkl"), "rb"))',
+      ),
+    );
+    expect(f).toHaveLength(0);
+  });
+
+  it("still flags pickle of a request-derived path", async () => {
+    const f = await run(
+      lines(
+        "import os, pickle",
+        "def a(request):",
+        '    with open(os.path.join(BASE_DIR, request.GET["n"]), "rb") as fh:',
+        "        return pickle.load(fh)",
+      ),
+    );
+    expect(rules(f)).toContain("injection/python-unsafe-deserialization");
+  });
+
+  it("treats json.loads(request.body) as a pass-through", async () => {
+    const f = await run(
+      lines(
+        "import os, json, pickle",
+        "def a(request):",
+        "    data = json.loads(request.body)",
+        '    with open(os.path.join(BASE, data["name"]), "rb") as fh:',
+        "        return pickle.load(fh)",
+      ),
+    );
+    expect(rules(f)).toContain("injection/python-unsafe-deserialization");
+  });
+
+  it("does not go quadratic on whitespace in an annotation without '='", async () => {
+    const t = Date.now();
+    await run("a:" + " ".repeat(40000) + "int\n");
+    expect(Date.now() - t).toBeLessThan(2000);
+  });
+});
+
 describe("python-injection-detector: xxe", () => {
   it("flags lxml XMLParser with entity resolution and SAX external entities", async () => {
     const f = await run(
@@ -480,7 +557,10 @@ describe("python-injection-detector: review round 2", () => {
   it("handles 300 nested defs quickly", async () => {
     const src = lines(
       "def outer(cursor, x):",
-      ...Array.from({ length: 300 }, (_, i) => `    def inner${i}(y):\n        return y`),
+      ...Array.from(
+        { length: 300 },
+        (_, i) => `${"    ".repeat(i + 1)}def inner${i}(y):\n${"    ".repeat(i + 2)}return y`,
+      ),
       '    cursor.execute(f"SELECT {x}")',
     );
     const t = Date.now();
