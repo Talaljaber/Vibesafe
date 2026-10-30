@@ -728,3 +728,78 @@ describe("FileUploadDetector: review round 1", () => {
     expect(byRule(await scan({ "app/actions.ts": a }), TYPE)).toEqual([]);
   });
 });
+
+describe("FileUploadDetector: review round 2", () => {
+  const anyUpload = (fs: Finding[]): Finding[] =>
+    fs.filter((f) => f.ruleId.startsWith("validation/upload-"));
+
+  it("is silent for text-only server actions (as string, slice, getAll of tags)", async () => {
+    const a1 = lines(
+      '"use server";',
+      "export async function createPost(formData: FormData) {",
+      '  const title = formData.get("title") as string;',
+      '  const tags = formData.getAll("tags") as string[];',
+      "  await db.post.save({ title, tags });",
+      "}",
+    );
+    const a2 = lines(
+      '"use server";',
+      "export async function rename(formData: FormData) {",
+      '  const title = formData.get("title") as string;',
+      "  await db.post.save({ title: title.slice(0, 80) });",
+      "}",
+    );
+    const a4 = lines(
+      '"use server";',
+      "export async function tag(formData: FormData) {",
+      '  for (const tag of formData.getAll("tags")) await tagRepo.save({ label: String(tag) });',
+      "}",
+    );
+    for (const [name, code] of [
+      ["a1", a1],
+      ["a2", a2],
+      ["a4", a4],
+    ] as const) {
+      expect(anyUpload(await scan({ [`app/${name}.ts`]: code })), name).toEqual([]);
+    }
+  });
+
+  it("still flags getAll(...) as File[] in a server action", async () => {
+    const fs = await scan({
+      "app/actions.ts": lines(
+        '"use server";',
+        "export async function up(formData: FormData) {",
+        '  const files = formData.getAll("files") as File[];',
+        "  for (const f of files) await store.save(Buffer.from(await f.arrayBuffer()));",
+        "}",
+      ),
+    });
+    expect(byRule(fs, TYPE)).toHaveLength(1);
+  });
+
+  it("does not treat client-supplied owner ids as owner scoping", async () => {
+    const code = lines(
+      'import multer from "multer";',
+      "const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 1 }, fileFilter });",
+      'app.post("/up", upload.single("f"), async (req, res) => {',
+      "  await s3.send(new PutObjectCommand({ Bucket: B, Key: `${req.body.ownerId}/${req.file.originalname}`, Body: req.file.buffer }));",
+      "});",
+    );
+    expect(byRule(await scan({ "s.js": code }), NAME)).toHaveLength(1);
+  });
+
+  it("flags formidable returning originalFilename even if randomUUID is used elsewhere", async () => {
+    const code = lines(
+      'const formidable = require("formidable");',
+      "const form = formidable({",
+      "  maxFileSize: 1000,",
+      "  filename: (n, e, part) => {",
+      "    const id = randomUUID();",
+      "    log(id);",
+      "    return part.originalFilename;",
+      "  },",
+      "});",
+    );
+    expect(byRule(await scan({ "f.js": code }), NAME)).toHaveLength(1);
+  });
+});

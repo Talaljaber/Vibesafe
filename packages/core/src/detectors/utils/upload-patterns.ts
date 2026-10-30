@@ -217,7 +217,6 @@ export function fileBindings(src: JsSource, span: FunctionSpan): Set<string> {
     const formAlt = [...forms].map(escapeRe).join("|");
     const getRe = new RegExp(`(?<![\\w$.])(?:${formAlt})\\s*\\.\\s*(?:get|getAll)\\s*\\(`);
     const reqFileRe = /(?<![\w$.])req\s*\.\s*files?\b/;
-    const isFileExpr = (expr: string): boolean => getRe.test(expr) || reqFileRe.test(expr);
     const bindRe = new RegExp(
       `\\b(?:const|let|var)\\s+(${IDENT})\\s*(?::[^=;\\n]{1,40})?=\\s*([^;\\n]{0,200})`,
       "g",
@@ -256,7 +255,10 @@ export function fileBindings(src: JsSource, span: FunctionSpan): Set<string> {
       if (m[1] === undefined) continue;
       const iter = m[2] ?? "";
       const root = new RegExp(`^\\s*(${IDENT})`).exec(iter)?.[1];
-      if (isFileExpr(iter) || (root !== undefined && out.has(root))) out.add(m[1]);
+      const line = code.slice(m.index, m.index + 300).split("\n")[0] ?? "";
+      const asFile = /\bas\s+\(?\s*(?:File|Blob)\b/.test(line);
+      if (reqFileRe.test(iter) || (root !== undefined && out.has(root))) out.add(m[1]);
+      else if (getRe.test(iter) && (asFile || memberEvidence(code, m[1]))) out.add(m[1]);
     }
   } catch {
     // never throws
@@ -264,12 +266,23 @@ export function fileBindings(src: JsSource, span: FunctionSpan): Set<string> {
   return out;
 }
 
-/** A `.get(` binding counts as a file only with evidence: `as File`, getAll, or file-only member use. */
+const FILE_MEMBER = "(?:arrayBuffer|stream|size|name)";
+
+function memberEvidence(code: string, name: string): boolean {
+  const n = escapeRe(name);
+  return (
+    new RegExp(`(?<![\\w$.])${n}\\s*\\.\\s*${FILE_MEMBER}\\b`).test(code) ||
+    new RegExp(`(?<![\\w$.])${n}\\s+instanceof\\s+(?:File|Blob)\\b`).test(code)
+  );
+}
+
+/** A `.get(` binding counts as a file only with evidence: `as File|Blob`, or file-only member use. Text casts never count. */
 function fileEvidence(code: string, name: string, expr: string): boolean {
-  if (/\bas\s+(?:File|Blob)\b|\.\s*getAll\s*\(/.test(expr)) return true;
-  return new RegExp(
-    `(?<![\\w$.])${escapeRe(name)}\\s*\\.\\s*(?:arrayBuffer|stream|size|name|slice)\\b`,
-  ).test(code);
+  if (/\bas\s+\(?\s*(?:File|Blob)\b/.test(expr)) return true;
+  if (/\bas\s+string\b|(?<![\w$.])String\s*\(|\.\s*toString\s*\(|\?\?\s*["'`]/.test(expr)) {
+    return false;
+  }
+  return memberEvidence(code, name);
 }
 
 /** True when exprText reads the client name: UPLOAD_NAME_MEMBER_RE, `req.file(s)…​.name`, or `X.name` for X in fileVars. */
@@ -321,9 +334,16 @@ export function isSanitizedFilename(exprText: string, clientToken: RegExp): bool
 const UNIQUE_RE =
   /\b(?:randomUUID|uuid\w*|v4|nanoid|cuid2?|createId|ulid|randomBytes|crypto\s*\.\s*random\w*|Date\s*\.\s*now|Math\s*\.\s*random|hash\w*|uid|session\s*\.\s*user|auth\s*\.\s*uid|req\s*\.\s*user|orgId|org\s*\.\s*id|tenantId|ownerId|accountId)\b|[A-Za-z_$]*[Uu]ser\s*[!?]?\s*\.\s*(?:id|uid|sub)\b|\w*(?:User|Org|Owner|Tenant|Account|Team|Workspace)Id\b|\buserId\b/;
 
+/** Removes member chains rooted in client input (`req.body.ownerId`, `formData.get(..)`), which prove no ownership. */
+function stripClientRooted(t: string): string {
+  return t
+    .replace(/\breq\s*\.\s*(?:body|query|params)\b(?:\s*[!?]?\s*\.\s*[\w$]+|\s*\[[^\]]*\])*/g, " ")
+    .replace(/\b(?:formData|form|fd)\s*\.\s*get(?:All)?\s*\([^)]*\)/g, " ");
+}
+
 /** Expression text makes the key unique or owner-scoped. */
 export function hasUniqueOrOwnerPart(exprText: string): boolean {
-  return UNIQUE_RE.test(exprText);
+  return UNIQUE_RE.test(stripClientRooted(exprText));
 }
 
 /** Upload parsers whose filename handling changed with busboy 1.0. */

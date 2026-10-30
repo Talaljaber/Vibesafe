@@ -513,7 +513,11 @@ export class FileUploadDetector implements Detector {
         const own = new RegExp(`(?<![\\w$.])${escapeRe(pName)}\\s*\\.\\s*originalFilename\\b`);
         const body = src.code.slice(span.bodyStart, span.bodyEnd);
         const m = own.exec(body);
-        if (m === null || isSanitizedFilename(body, own) || RANDOM_NAME_RE.test(body)) continue;
+        if (m === null || isSanitizedFilename(body, own)) continue;
+        // the random-name escape applies to the returned expression, not anywhere in the callback
+        const returned = [...body.matchAll(/\breturn\b([^;\n]*)/g)].map((r) => r[1] ?? "");
+        const exprs = returned.length > 0 ? returned : [body];
+        if (exprs.every((e) => RANDOM_NAME_RE.test(e) || !own.test(e))) continue;
         out.push({
           lib: "formidable",
           offset: span.bodyStart + m.index,
