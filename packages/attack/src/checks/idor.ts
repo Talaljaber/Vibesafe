@@ -26,6 +26,9 @@ const REASON_WRITE = "write path, not tested (attack mode only sends reads)";
 const REASON_ROUTE = "route not resolved (Next.js app router only)";
 const REASON_SESSIONS = "needs two test sessions with an id each; see .vibesafe/sessions.json";
 const REASON_NO_ID_SEGMENT = "route has no id segment to swap between two users";
+const REASON_SAME_ID =
+  "the two test sessions use the same id for this route; give each user their own record";
+const MAX_KEYS = 32;
 const MAY_WRITE = "handler may write";
 const FIX_GUIDANCE =
   'Load the record filtered by both its id and the signed-in user\'s id (for example `.eq("user_id", session.userId)`), and return 404 when no row matches.';
@@ -87,7 +90,10 @@ function planOne(f: Finding, ctx: PlanContext): ProbeGroup {
   };
   if (handler === undefined) return skipGroup(base, REASON_UNRESOLVED);
   if (handler.method !== "GET" || !f.plainEnglishProblem.startsWith(READ_PREFIX)) {
-    return skipGroup(base, REASON_WRITE);
+    return skipGroup(
+      { ...base, title: `Write to another user's ${record} (not tested).` },
+      REASON_WRITE,
+    );
   }
   if (preflightGet(route.pattern, content).skip) return skipGroup(base, MAY_WRITE);
   if (dynamicSegmentsOf(route.pattern).length === 0) return skipGroup(base, REASON_NO_ID_SEGMENT);
@@ -98,6 +104,7 @@ function planOne(f: Finding, ctx: PlanContext): ProbeGroup {
   if (!a || !b || !pa || !pb || !("path" in pa) || !("path" in pb)) {
     return skipGroup(base, REASON_SESSIONS);
   }
+  if (pa.path === pb.path) return skipGroup(base, REASON_SAME_ID);
   return {
     ...base,
     requests: [
@@ -127,7 +134,7 @@ interface Shape {
 
 const ID_KEYS = ["id", "_id", "uuid"];
 
-function shapeOf(r: ProbeResponse): Shape | undefined {
+function shapeOf(r: ProbeResponse, targetId?: string): Shape | undefined {
   const parsed = parse(r.body);
   if (parsed === null || typeof parsed !== "object") return undefined;
   let obj: unknown = parsed;
@@ -139,8 +146,18 @@ function shapeOf(r: ProbeResponse): Shape | undefined {
   if (obj !== null && typeof obj === "object" && !Array.isArray(obj)) {
     const rec = obj as Record<string, unknown>;
     out.keys = Object.keys(rec).sort();
-    const key =
-      ID_KEYS.find((k) => k in rec) ?? out.keys.find((k) => /[a-z]Id$/.test(k) || k === "Id");
+    let key = ID_KEYS.find((k) => k in rec);
+    if (key === undefined) {
+      const cands = out.keys.filter((k) => /[a-z]Id$/.test(k) || k === "Id");
+      const idVal = (k: string): string | undefined => {
+        const x = rec[k];
+        return typeof x === "string" || typeof x === "number" ? String(x) : undefined;
+      };
+      key =
+        cands.length === 1
+          ? cands[0]
+          : cands.find((k) => targetId !== undefined && idVal(k) === targetId);
+    }
     const v = key === undefined ? undefined : rec[key];
     if (typeof v === "string" || typeof v === "number") out.id = String(v);
   }
@@ -171,8 +188,8 @@ function targetIdOf(pattern: string | undefined, path: string): string {
 /** The "shape match" of spec 7: 200s, same key set (and row count), ids equal the target id. */
 function similar(a: ProbeResponse, b: ProbeResponse, targetId: string): boolean {
   if (a.status !== 200 || b.status !== 200) return false;
-  const sa = shapeOf(a);
-  const sb = shapeOf(b);
+  const sa = shapeOf(a, targetId);
+  const sb = shapeOf(b, targetId);
   if (!sa || !sb) return false;
   if (sa.keys.length === 0 || sa.keys.join("\0") !== sb.keys.join("\0")) return false;
   if (sa.rows !== sb.rows) return false;
@@ -180,8 +197,8 @@ function similar(a: ProbeResponse, b: ProbeResponse, targetId: string): boolean 
   return true;
 }
 
-function hasId(r: ProbeResponse): boolean {
-  return shapeOf(r)?.id !== undefined;
+function hasId(r: ProbeResponse, targetId: string): boolean {
+  return shapeOf(r, targetId)?.id !== undefined;
 }
 
 function toShape(r: ProbeResponse): ResponseShape {
@@ -189,7 +206,7 @@ function toShape(r: ProbeResponse): ResponseShape {
   const out: ResponseShape = {
     label: r.label,
     status: r.status,
-    keys: (s?.keys ?? []).map((k) => (SAFE_KEY_RE.test(k) ? k : "<key>")),
+    keys: (s?.keys ?? []).slice(0, MAX_KEYS).map((k) => (SAFE_KEY_RE.test(k) ? k : "<key>")),
   };
   if (s?.rows !== undefined) out.rowCount = s.rows;
   return out;
@@ -254,12 +271,17 @@ function evaluateIdor(
     group.requests.find((q) => q.label === "R2")?.path ?? "",
   );
 
+  if (r2.bodyTruncated || r3.bodyTruncated || shapeOf(r2) === undefined) {
+    return result("INCONCLUSIVE", "owner response is not comparable JSON; can't judge", {
+      ownerOk,
+    });
+  }
   const n = (r: ProbeResponse): string => normalizeBody(r.body);
   const anonOk =
     is2xx(r0) &&
     !controls.matches(r0.fingerprint) &&
     similar(r0, r2, targetId) &&
-    (hasId(r0) && hasId(r2) ? true : n(r0) === n(r2));
+    (hasId(r0, targetId) && hasId(r2, targetId) ? true : n(r0) === n(r2));
   if (anonOk) {
     return result(
       "CONFIRMED",
@@ -272,23 +294,29 @@ function evaluateIdor(
     );
   }
   const loginRedirect = r3.status >= 300 && r3.status < 400 && LOGIN_RE.test(r3.location ?? "");
-  if (
-    r3.status === 401 ||
-    r3.status === 403 ||
-    r3.status === 404 ||
-    loginRedirect ||
-    controls.matches(r3.fingerprint)
-  ) {
+  if (r3.status === 401 || r3.status === 403 || r3.status === 404 || loginRedirect) {
     return result(
       "NOT_REPRODUCED",
-      "The other user's record was refused to the first user while its owner still got it, or the answer matches a not-found/auth-wall control.",
+      `The other user's record was refused to the first user (${r3.status}) while its owner still got it.`,
+      { ownerOk },
+    );
+  }
+  if (controls.matches(r3.fingerprint)) {
+    return result(
+      "NOT_REPRODUCED",
+      "The answer to the first user matches a not-found/auth-wall control.",
       { ownerOk },
     );
   }
   if (similar(r3, r2, targetId)) {
     // Without an id in the body, only an exact copy of the owner's response that differs
     // from the first user's own record shows that this is the other user's record.
-    if (!hasId(r3) || !hasId(r2)) {
+    if (!hasId(r3, targetId) || !hasId(r2, targetId)) {
+      if (n(r1) === n(r2)) {
+        return result("INCONCLUSIVE", "the owners' records are indistinguishable; can't judge", {
+          ownerOk,
+        });
+      }
       if (n(r3) === n(r1)) {
         return result("NOT_REPRODUCED", "response is not Bob's record", { ownerOk });
       }

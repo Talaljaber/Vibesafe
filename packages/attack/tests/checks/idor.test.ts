@@ -222,8 +222,73 @@ describe("idor.evaluate scenarios", () => {
 
   it("no id key: identical to the user's own record is not confirmed", () => {
     const own = { title: "same", body: "x" };
-    const r = run([denied("R0"), res("R1", 200, own), res("R2", 200, own), res("R3", 200, own)]);
+    const bobs = { title: "other", body: "y" };
+    const r = run([denied("R0"), res("R1", 200, own), res("R2", 200, bobs), res("R3", 200, own)]);
     expect(r.outcome).toBe("NOT_REPRODUCED");
+  });
+
+  it("no id key: indistinguishable owner records are INCONCLUSIVE", () => {
+    const own = { title: "same", body: "x" };
+    const r = run([denied("R0"), res("R1", 200, own), res("R2", 200, own), res("R3", 200, own)]);
+    expect(r.outcome).toBe("INCONCLUSIVE");
+  });
+
+  it("refusal and control reasoning differ", () => {
+    const base = [
+      denied("R0"),
+      res("R1", 200, note("n_alice_1", "a")),
+      res("R2", 200, note("n_bob_1", "b")),
+    ];
+    expect(run([...base, denied("R3", 403)]).reasoning).toMatch(
+      /refused to the first user \(403\)/,
+    );
+    const html = "<html>shell</html>";
+    const control = buildControlSet([fingerprintResponse(200, "text/html", html)]);
+    const r = run([...base, res("R3", 200, html, "text/html")], control);
+    expect(r.reasoning).toMatch(/matches a not-found\/auth-wall control/);
+  });
+
+  it("non-JSON or truncated owner response is INCONCLUSIVE", () => {
+    const base = [denied("R0"), res("R1", 200, note("n_alice_1", "a"))];
+    const text = run([
+      ...base,
+      res("R2", 200, "plain text", "text/plain"),
+      res("R3", 200, "plain text", "text/plain"),
+    ]);
+    expect(text.outcome).toBe("INCONCLUSIVE");
+    const bob = note("n_bob_1", "b");
+    const trunc = { ...res("R3", 200, bob), bodyTruncated: true };
+    expect(run([...base, res("R2", 200, bob), trunc]).outcome).toBe("INCONCLUSIVE");
+  });
+
+  it("several *Id keys: the one equal to the target id is used", () => {
+    const bobs = { authorId: "u_bob", noteId: "n_bob_1", title: "t" };
+    const r = run([
+      denied("R0"),
+      res("R1", 200, { authorId: "u_alice", noteId: "n_alice_1", title: "s" }),
+      res("R2", 200, bobs),
+      res("R3", 200, bobs),
+    ]);
+    expect(r.outcome).toBe("CONFIRMED");
+  });
+
+  it("caps the stored key list", () => {
+    const big = Object.fromEntries(Array.from({ length: 50 }, (_, i) => [`k${i}`, i]));
+    const r = run([denied("R0"), res("R1", 200, big), res("R2", 200, big), res("R3", 200, big)]);
+    expect(r.shapes.find((s) => s.label === "R2")!.keys.length).toBe(32);
+  });
+
+  it("same id for both sessions is skipped, nothing sent", () => {
+    const same = { ...bob, resources: { "/api/notes/[id]": "n_alice_1" } };
+    const g = idor.plan(ctx({ sessions: [alice, same] })).find((x) => x.method === "GET")!;
+    expect(g.requests).toEqual([]);
+    expect(g.skip?.outcome).toBe("INCONCLUSIVE");
+    expect(g.skip?.reason).toMatch(/same id/);
+  });
+
+  it("skipped write group gets a neutral title", () => {
+    const patch = idor.plan(ctx()).find((g) => g.method === "PATCH")!;
+    expect(patch.title).toBe("Write to another user's notes (not tested).");
   });
 
   it("no id key: exact copy of bob's distinct record is CONFIRMED", () => {
