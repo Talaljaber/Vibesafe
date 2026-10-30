@@ -4,6 +4,8 @@ import { makeFinding } from "./utils/finding.js";
 import {
   SinkAnalyzer,
   capPerRule,
+  isQueueHit,
+  queueSourcesOf,
   findSinkCalls,
   loadSinkFile,
   callKey,
@@ -45,7 +47,7 @@ export class CommandInjectionDetector implements Detector {
       if (f === undefined) continue;
       const calls = findSinkCalls(f.src, patterns, f.aliases);
       if (calls.length === 0) continue;
-      const an = new SinkAnalyzer(f, "command");
+      const an = new SinkAnalyzer(f, "command", { extraSources: queueSourcesOf(f) });
       const out: Finding[] = [];
       for (const call of calls) {
         try {
@@ -94,17 +96,20 @@ export class CommandInjectionDetector implements Detector {
 
   private finding(f: SinkFile, call: SinkCall, t: ArgTaint): Finding {
     const anchor = sinkAnchor(f.src, call, t.hit.offset);
+    const queue = isQueueHit(t);
     const severity = capSeverityForTrust(
-      t.confidence === "high" && t.hit.trust === "remote" ? "critical" : "high",
+      t.confidence === "high" && t.hit.trust === "remote" && !queue ? "critical" : "high",
       t.hit.trust,
     );
     const fromArgv = t.hit.trust === "local";
     return makeFinding({
       category: "injection",
       ruleId: "injection/command-exec-interpolation",
-      title: fromArgv
-        ? "Shell Command Built From Command-Line Arguments"
-        : "Shell Command Built From Request Data",
+      title: queue
+        ? "Shell Command Built From Queue Job Data"
+        : fromArgv
+          ? "Shell Command Built From Command-Line Arguments"
+          : "Shell Command Built From Request Data",
       severity,
       confidence: t.confidence,
       file: f.file,
@@ -113,9 +118,11 @@ export class CommandInjectionDetector implements Detector {
       evidence: anchor.evidence,
       discriminator: callKey(f.src, call.start, call.callee),
       plainEnglishProblem: `Data from the ${t.hit.source.label} is pasted into a command that a shell parses. Quotes do not help: \`$(...)\`, backticks or a closing quote inside the value run extra commands on the machine.`,
-      whyItMatters: fromArgv
-        ? "Whoever controls the argument (a CI job, a cron entry, a teammate pasting a URL or file name) gets arbitrary command execution with this script's permissions and environment secrets."
-        : "Anyone who can send this request can run arbitrary commands on your server: read environment secrets, dump the database, or install malware.",
+      whyItMatters: queue
+        ? "Whoever can enqueue a job (often any user action that reaches the queue) gets arbitrary command execution on the worker, with its environment secrets, one step removed from the request."
+        : fromArgv
+          ? "Whoever controls the argument (a CI job, a cron entry, a teammate pasting a URL or file name) gets arbitrary command execution with this script's permissions and environment secrets."
+          : "Anyone who can send this request can run arbitrary commands on your server: read environment secrets, dump the database, or install malware.",
       fixSteps: [
         'Use `execFile`/`spawn` with an argument array and no `shell: true`, e.g. `execFile("curl", ["-fsSL", url, "-o", dest])`, so the value is one argument and never parsed by a shell.',
         "Validate the value against what you expect (an allowlist of operations, a URL scheme, a file name pattern) before running the command, and pass `--` before positional arguments.",

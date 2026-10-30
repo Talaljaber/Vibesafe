@@ -252,3 +252,16 @@ export const PASS_THROUGH_CALLS: readonly RegExp[] = [
   /^(?:url\.(?:parse|resolve|format)|util\.format|URL|URLSearchParams)$/,
   /\.(?:concat|replace|replaceAll|padStart|padEnd|join|assign|from)$/,
 ];
+
+/**
+ * Payload of a queue job (BullMQ/Bull `job.data`, Agenda `job.attrs.data`, pg-boss
+ * `job.data`). Second-order: whoever enqueued the job controls it. Not part of
+ * {@link SERVER_SOURCES}; the injection detectors add it only to files that import a
+ * queue library.
+ */
+export const QUEUE_JOB_SOURCE: TaintSource = {
+  id: "queue-job-data",
+  label: "queue job payload",
+  trust: "remote",
+  pattern: /\bjob\s*\.\s*(?:data|attrs\s*\.\s*data|payload)\b/,
+};
