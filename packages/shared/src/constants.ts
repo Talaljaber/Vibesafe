@@ -87,7 +87,7 @@ const DOCKERFILE_RE =
 /** `Dockerfile.ts` or `dockerfile.json` are source/data files, not Dockerfiles. */
 const NOT_DOCKERFILE_EXT_RE = /\.(?:[cm]?[jt]sx?|json|py|md|txt|ya?ml|toml|lock)$/i;
 const COMPOSE_RE = /^(?:docker-)?compose(?:\.[\w-]+)*\.ya?ml$/i;
-const FIREBASE_RULES_RE = /^(?:firestore|storage)(?:[.-][\w-]+)*\.rules$/i;
+const FIREBASE_RULES_RE = /^(?:firestore|storage)(?:[.-]\w+)*\.rules$/i;
 const WORKFLOW_RE = /(?:^|\/)\.github\/workflows\/[^/]+\.ya?ml$/;
 const ACTION_RE = /^action\.ya?ml$/;
 const SHELL_RE = /\.(?:sh|bash|zsh)$/;

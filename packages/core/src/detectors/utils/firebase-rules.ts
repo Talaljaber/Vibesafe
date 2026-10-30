@@ -30,6 +30,8 @@ export interface RtdbRule {
 }
 
 const MAX_RULES_CHARS = 500_000;
+const MAX_RTDB_DEPTH = 64;
+const MAX_RTDB_RULES = 5000;
 
 /** Shared scanner: blanks comments (and string contents when `blankStrings`), keeping length and newlines. */
 function blank(text: string, blankStrings: boolean): string {
@@ -105,6 +107,13 @@ function matchBrace(masked: string, open: number, limit: number): number {
   return -1;
 }
 
+/** indexOf that never looks past `from + span` (keeps repeated searches linear). */
+function indexWithin(text: string, ch: string, from: number, span: number): number {
+  const end = Math.min(text.length, from + span);
+  for (let i = from; i < end; i++) if (text[i] === ch) return i;
+  return -1;
+}
+
 const FUNCTION_RE = /\bfunction\s+([A-Za-z_]\w*)\s*\(([^)]{0,200})\)\s*\{/g;
 const RETURN_BODY_RE = /^\s*return\s+([^;]{1,2000});\s*$/;
 
@@ -157,7 +166,7 @@ function lineOf(starts: number[], offset: number): number {
 const METHODS = new Set(["read", "get", "list", "write", "create", "update", "delete"]);
 const MATCH_RE = /match\s+/y;
 const ALLOW_RE = /allow\s+/y;
-const FUNCTION_KW_RE = /function\s+/y;
+const FUNCTION_HEAD_RE = /function\s+[A-Za-z_]\w*\s*\([^)]{0,200}\)\s*\{/y;
 const IDENT_BEFORE_RE = /[\w.$]/;
 
 interface Frame {
@@ -200,10 +209,11 @@ export function parseRulesFile(text: string): AllowStatement[] {
         continue;
       }
       if (c === "f") {
-        FUNCTION_KW_RE.lastIndex = i;
-        if (FUNCTION_KW_RE.test(masked)) {
-          const open = masked.indexOf("{", i);
-          const close = open === -1 ? -1 : matchBrace(masked, open, 4000);
+        FUNCTION_HEAD_RE.lastIndex = i;
+        const fm = FUNCTION_HEAD_RE.exec(masked);
+        if (fm) {
+          const open = i + fm[0].length - 1;
+          const close = matchBrace(masked, open, 4000);
           if (close !== -1) {
             i = close + 1;
             continue;
@@ -228,8 +238,8 @@ export function parseRulesFile(text: string): AllowStatement[] {
             }
             if (ch === "{") {
               // Path wildcard `{name}` / `{name=**}`: skip to its closing brace.
-              const close = masked.indexOf("}", j);
-              if (close === -1 || close >= limit) break;
+              const close = indexWithin(masked, "}", j, limit - j);
+              if (close === -1) break;
               j = close + 1;
               continue;
             }
@@ -301,8 +311,8 @@ function parseAllow(
   start: number,
   end: number,
 ): { methods: string[]; condition: string | undefined } | null {
-  const colon = masked.indexOf(":", start);
-  const hasCond = colon !== -1 && colon < end;
+  const colon = indexWithin(masked, ":", start, end - start);
+  const hasCond = colon !== -1;
   const methodText = masked.slice(start, hasCond ? colon : end);
   const methods = methodText
     .split(",")
@@ -597,14 +607,16 @@ export function parseDatabaseRules(text: string): RtdbRule[] {
     if (text.length === 0 || text.length > MAX_RULES_CHARS) return [];
     const tokens = tokenize(stripRulesComments(text));
     const frames: (string | null)[] = [];
+    const named: string[] = [];
     let i = 0;
     while (i < tokens.length) {
       const tok = tokens[i] as Token;
       if (tok.t === "punct" && tok.v === "{") {
+        if (frames.length >= MAX_RTDB_DEPTH) break;
         frames.push(null);
         i++;
       } else if (tok.t === "punct" && tok.v === "}") {
-        frames.pop();
+        if (frames.pop() != null) named.pop();
         i++;
       } else if (tok.t === "str" && tokens[i + 1]?.t === "punct" && tokens[i + 1]?.v === ":") {
         const key = tok.v;
@@ -612,7 +624,9 @@ export function parseDatabaseRules(text: string): RtdbRule[] {
         i += 2;
         if (!value) break;
         if (value.t === "punct" && value.v === "{") {
+          if (frames.length >= MAX_RTDB_DEPTH) break;
           frames.push(key);
+          named.push(key);
           i++;
         } else if (value.t === "punct" && value.v === "[") {
           let depth = 0;
@@ -630,12 +644,12 @@ export function parseDatabaseRules(text: string): RtdbRule[] {
           }
         } else {
           if (key === ".read" || key === ".write") {
-            const keys = frames.filter((f): f is string => f !== null);
-            if (keys[0] === "rules") {
+            if (named[0] === "rules") {
+              if (out.length >= MAX_RTDB_RULES) break;
               if (value.t === "str") {
-                out.push({ path: keys.slice(1), key, value: value.v, line: tok.line });
+                out.push({ path: named.slice(1), key, value: value.v, line: tok.line });
               } else if (value.t === "lit" && (value.v === "true" || value.v === "false")) {
-                out.push({ path: keys.slice(1), key, value: value.v === "true", line: tok.line });
+                out.push({ path: named.slice(1), key, value: value.v === "true", line: tok.line });
               }
             }
           }

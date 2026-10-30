@@ -369,3 +369,67 @@ describe("FirebaseRulesDetector: silent idioms", () => {
     ).toEqual([]);
   });
 });
+
+describe("FirebaseRulesDetector: review round 1 hardening", () => {
+  const OPEN =
+    "service cloud.firestore {\n match /databases/{d}/documents {\n match /{document=**} {\n allow read, write: if true;\n }\n }\n}\n";
+
+  it("scans rules named by a firebase.json that starts with a BOM", async () => {
+    const out = await run(
+      {
+        "firebase.json": '\uFEFF{"firestore":{"rules":"config/db.rules"}}',
+        "config/db.rules": OPEN,
+      },
+      {},
+      ["firebase.json", "config/db.rules"],
+    );
+    expect(out.length).toBeGreaterThan(0);
+  });
+
+  it("does not leak a secret into the problem text of a minified RTDB file", async () => {
+    const secret = "sk_live_" + "a1B2c3D4e5F6g7H8i9J0k1L2";
+    let body = "";
+    for (let i = 0; i < 300; i++) body += `"c${i}":{".read":true,".write":true},`;
+    const min = `{"x":"${secret}","rules":{${body}"z":{}}}`;
+    const t0 = Date.now();
+    const out = await run({ "database.rules.json": min });
+    expect(Date.now() - t0).toBeLessThan(3000);
+    expect(out.length).toBeGreaterThan(0);
+    for (const f of out) {
+      expect(f.plainEnglishProblem).not.toContain(secret);
+      expect(f.evidence ?? "").not.toContain(secret);
+      expect(f.plainEnglishProblem.length).toBeLessThan(2000);
+    }
+  });
+
+  it("survives a deep and wide RTDB file quickly", async () => {
+    let s = '{"rules":';
+    for (let i = 0; i < 4000; i++) s += '{"$a":';
+    s += '{".read":true}';
+    s += "}".repeat(4000) + "}";
+    let wide = '{"rules":{';
+    for (let i = 0; i < 8000; i++) wide += `"k${i}":{".read":true},`;
+    wide += '"z":{}}}';
+    const t0 = Date.now();
+    await run({ "a.rules.json": s, "b.rules.json": wide });
+    expect(Date.now() - t0).toBeLessThan(5000);
+  });
+
+  it("stays fast on repeated unterminated match/function keywords", async () => {
+    const text = "service cloud.firestore {\n" + "match /{\nfunction f\n".repeat(20000);
+    const t0 = Date.now();
+    await run({ "firestore.rules": text + "allow read: if true;" });
+    expect(Date.now() - t0).toBeLessThan(3000);
+  });
+
+  it("words the any-signed-in problem without doubled phrases", async () => {
+    const out = await run({
+      "firestore.rules":
+        "service cloud.firestore {\n match /databases/{d}/documents {\n match /orders/{id} {\n allow read: if request.auth != null;\n }\n }\n}\n",
+    });
+    const p = out[0]?.plainEnglishProblem ?? "";
+    expect(p).not.toMatch(/records in records|every record in the/);
+    expect(p).not.toContain("read or change");
+    expect(p).toContain("the records in `orders`");
+  });
+});

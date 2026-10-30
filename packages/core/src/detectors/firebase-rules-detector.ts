@@ -8,6 +8,7 @@ import type {
 } from "@talaljaber/vibesafe-shared";
 import { classifyPath, isTestOrFixturePath } from "./utils/file-kind.js";
 import { makeFinding } from "./utils/finding.js";
+import { sanitizeEvidence } from "./utils/sanitize-evidence.js";
 import { capFindingsPerRule } from "./utils/infra-common.js";
 import {
   classifyCondition,
@@ -24,6 +25,7 @@ import {
 } from "./utils/firebase-rules.js";
 
 const MAX_FILE_CHARS = 500_000;
+const MAX_BUILT_PER_FILE = 200;
 const LEARN_MORE = "https://firebase.google.com/docs/rules/insecure-rules";
 
 type Product = "firestore" | "storage" | "rtdb";
@@ -148,12 +150,12 @@ function scopeText(scope: Scope, product: Product): string {
     if (product === "storage") return "every file in your bucket";
     return "every document in your database";
   }
-  return `records in \`${scope.name}\``;
+  return `the records in \`${scope.name}\``;
 }
 
 interface RuleText {
   title: string;
-  problem: (evidence: string, scope: string, expiry: string | undefined) => string;
+  problem: (evidence: string, scope: string, expiry: string | undefined, column: Column) => string;
   why: string;
   fix: string[];
   prompt: string;
@@ -194,8 +196,8 @@ const TEXTS: Record<RuleKind, RuleText & { ruleId: string }> = {
   "any-signed-in": {
     ruleId: "authorization/firebase-rules-any-signed-in",
     title: "Firebase rules let any signed-in user access every record",
-    problem: (e, s) =>
-      `\`request.auth != null\` only checks that the caller has an account (\`${e}\`). Anyone can create one (or use anonymous sign-in), then read or change every record in ${s}.`,
+    problem: (e, s, _x, column) =>
+      `This rule (\`${e}\`) only checks that the caller is signed in. Anyone can create an account (or use anonymous sign-in), then ${column === "read" ? "read" : "change"} ${s}.`,
     why: "Sign-up is open to the internet, so 'any signed-in user' is effectively everyone: one throwaway account can read or overwrite every other user's data.",
     fix: [
       "Scope access to the owner: compare `request.auth.uid` with the document id or an owner field such as `resource.data.ownerId`, and use custom claims for admins.",
@@ -243,6 +245,8 @@ export class FirebaseRulesDetector implements Detector {
   category = "authorization" as const;
   description =
     "Detects Firestore, Storage and Realtime Database rules that let anyone, or any signed-in user, read or write data, and test-mode rules left open.";
+
+  private readonly lineCache = new WeakMap<string[], Map<number, string>>();
 
   constructor(private readonly now: () => number = Date.now) {}
 
@@ -296,7 +300,7 @@ export class FirebaseRulesDetector implements Detector {
       try {
         const text = await context.readFile(f);
         if (text.length > MAX_FILE_CHARS || !text.includes("rules")) continue;
-        const json: unknown = JSON.parse(text);
+        const json: unknown = JSON.parse(text.replace(/^\uFEFF/, ""));
         if (typeof json !== "object" || json === null) continue;
         const dir = posix.dirname(norm);
         for (const section of ["firestore", "storage", "database"] as const) {
@@ -327,6 +331,7 @@ export class FirebaseRulesDetector implements Detector {
     const findings: Finding[] = [];
     const now = this.now();
     for (const st of statements) {
+      if (findings.length >= MAX_BUILT_PER_FILE) break;
       const cls = classifyCondition(st.condition, fns, now);
       if (cls.cls === "scoped" || cls.cls === "deny") continue;
       const scope = scopeOfSegments(st.segments);
@@ -365,6 +370,7 @@ export class FirebaseRulesDetector implements Detector {
     const findings: Finding[] = [];
     const now = this.now();
     for (const rule of rules) {
+      if (findings.length >= MAX_BUILT_PER_FILE) break;
       const cls = classifyRtdbValue(rule.value, now);
       if (cls.cls === "scoped" || cls.cls === "deny") continue;
       const scope = scopeOfRtdbPath(rule.path);
@@ -388,6 +394,19 @@ export class FirebaseRulesDetector implements Detector {
     return findings;
   }
 
+  /** Sanitized (secrets redacted, truncated) text of a line, computed once per line. */
+  private cleanLine(lines: string[], line: number): string {
+    const cached = this.lineCache.get(lines);
+    const cache = cached ?? new Map<number, string>();
+    if (!cached) this.lineCache.set(lines, cache);
+    let v = cache.get(line);
+    if (v === undefined) {
+      v = sanitizeEvidence(lines[line - 1] ?? "");
+      cache.set(line, v);
+    }
+    return v;
+  }
+
   private build(
     file: string,
     outcome: Outcome,
@@ -400,7 +419,7 @@ export class FirebaseRulesDetector implements Detector {
     discriminator: string,
   ): Finding {
     const t = TEXTS[outcome.kind];
-    const evidence = (lines[line - 1] ?? "").trim();
+    const evidence = this.cleanLine(lines, line);
     const sev = severityFor(outcome);
     return makeFinding({
       category: "authorization",
@@ -413,7 +432,12 @@ export class FirebaseRulesDetector implements Detector {
       endLine: endLine > line ? endLine : undefined,
       evidence,
       discriminator: `${line}:${discriminator}`,
-      plainEnglishProblem: t.problem(evidence, scopeText(scope, product), isoDate(cls.expiresAt)),
+      plainEnglishProblem: t.problem(
+        evidence,
+        scopeText(scope, product),
+        isoDate(cls.expiresAt),
+        outcome.column,
+      ),
       whyItMatters: t.why,
       fixSteps: t.fix,
       aiFixPrompt: t.prompt,
