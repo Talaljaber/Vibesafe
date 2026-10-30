@@ -279,11 +279,15 @@ function evaluateIdor(
 
   const useId = shapeOf(r2, targetId)?.id === targetId;
   const n = (r: ProbeResponse): string => normalizeBody(r.body);
+  // Without ids, the anonymous body must equal the owner's AND the owners' records must differ:
+  // one body served to everyone proves nothing, so it falls through to R3 (and ends INCONCLUSIVE).
   const anonOk =
     is2xx(r0) &&
     !controls.matches(r0.fingerprint) &&
     similar(r0, r2, targetId, useId) &&
-    (hasId(r0, targetId, useId) && hasId(r2, targetId, useId) ? true : n(r0) === n(r2));
+    (hasId(r0, targetId, useId) && hasId(r2, targetId, useId)
+      ? true
+      : n(r0) === n(r2) && n(r1) !== n(r2));
   if (anonOk) {
     return result(
       "CONFIRMED",
