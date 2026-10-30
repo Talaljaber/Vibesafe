@@ -1,0 +1,57 @@
+{
+  "name": "@talaljaber/vibesafe-attack",
+  "version": "0.5.0",
+  "description": "Attack Mode for VibeSafe: confirm static findings with safe, loopback-only live probes",
+  "license": "MIT",
+  "author": "Talal Jaber",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Talaljaber/Vibesafe.git",
+    "directory": "packages/attack"
+  },
+  "homepage": "https://github.com/Talaljaber/Vibesafe#readme",
+  "bugs": {
+    "url": "https://github.com/Talaljaber/Vibesafe/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/.tsbuildinfo",
+    "!dist/**/*.tsbuildinfo",
+    "!dist/**/*.map",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rimraf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@talaljaber/vibesafe-core": "workspace:*",
+    "@talaljaber/vibesafe-shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "rimraf": "^6.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  }
+}
