@@ -127,6 +127,41 @@ describe("injection/shell-sql-interpolation", () => {
     expect(f.map((x) => x.file).sort()).toEqual(["db/a.sh", "db/b.sh", "db/c.sh", "db/d.sh"]);
   });
 
+  it("does not read the database argument as SQL after a no-argument flag", async () => {
+    const f = await run({
+      "a.sh": sh('DB="${1:?usage}"; sqlite3 -table "$DB" "SELECT id, email FROM users LIMIT 20"'),
+      "b.sh": sh('sqlite3 -line "$1" "SELECT count(*) FROM users"'),
+      "c.sh": sh('sqlite3 -quote "$1" "SELECT 1"'),
+      "d.sh": sh('sqlite3 -safe "$1" ".tables"'),
+      "e.sh": sh(
+        'DB_URL="${1:?usage}"; psql -e "$DB_URL" -v ON_ERROR_STOP=1 -f migrations/001.sql',
+      ),
+      "f.sh": sh('psql -X -e "$1" < migrations/001.sql'),
+    });
+    expect(rule(f, "shell-sql-interpolation")).toEqual([]);
+  });
+
+  it("keeps mysql -e, cqlsh -e and psql -tAc as positives", async () => {
+    const f = rule(
+      await run({
+        "a.sh": sh('mysql -u app -Bse "DELETE FROM t WHERE id = $1"'),
+        "b.sh": sh('cqlsh -e "DELETE FROM t WHERE id = $1"'),
+        "c.sh": sh('psql -tAc "DELETE FROM t WHERE id = $1"'),
+      }),
+      "shell-sql-interpolation",
+    );
+    expect(f.map((x) => x.file).sort()).toEqual(["a.sh", "b.sh", "c.sh"]);
+  });
+
+  it("lowers confidence when the whole SQL text is one positional expansion", async () => {
+    const f = rule(
+      await run({ "a.sh": sh('psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "$1"') }),
+      "shell-sql-interpolation",
+    );
+    expect(f).toHaveLength(1);
+    expect(f[0]?.confidence).toBe("medium");
+  });
+
   it("stays silent for a client name that is only quoted text", async () => {
     const f = await run({
       "q.sh": sh('msg="run psql -c SELECT $1 now"', 'echo "$(date) psql -c SELECT $1"'),

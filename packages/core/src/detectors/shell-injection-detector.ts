@@ -18,7 +18,16 @@ const EVAL_REMOTE_RES: readonly RegExp[] = [
 ];
 
 const SQL_CLIENT_RE = /(?:^|[\s;&|(`])(?:psql|mysql|sqlite3|clickhouse-client|cqlsh)(?=\s|$)/g;
-const SQL_FLAG_RE = /\s(?:-[A-Za-z]*[ce]|--command|--execute)(?:=|\s*)(["'])/;
+// Which flag carries the SQL text depends on the client; flags such as `psql -e` or
+// `sqlite3 -table` take no argument, so a generic "ends in c or e" match misreads the DB URL.
+const SQL_FLAG_BY_CLIENT: Record<string, RegExp | null> = {
+  psql: /\s(?:-[A-Za-z]*c|--command)(?:=|\s*)(["'])/,
+  mysql: /\s(?:-[A-Za-z]*e|--execute)(?:=|\s*)(["'])/,
+  cqlsh: /\s(?:-[A-Za-z]*e|--execute)(?:=|\s*)(["'])/,
+  "clickhouse-client": /\s(?:-q|--query)(?:=|\s*)(["'])/,
+  sqlite3: null,
+};
+const SINGLE_POSITIONAL_RE = /^\s*\$(?:[1-9@*]|\{[1-9@*]\})\s*$/;
 const HEREDOC_RE = /(?<!<)<<(-?)[ \t]*([A-Za-z_][A-Za-z0-9_]*)(?=\s|$|[|;&)])/;
 const EXPANSION_RE =
   /(?<!\\)\$(?:\{([A-Za-z_][A-Za-z0-9_]*|[0-9@*])[^}]*\}|([A-Za-z_][A-Za-z0-9_]*|[0-9@*]))/g;
@@ -307,7 +316,9 @@ export class ShellInjectionDetector implements Detector {
       let sqlFrom = -1;
       let sqlTo = -1;
       let endLine = last;
-      const flag = SQL_FLAG_RE.exec(cmdText);
+      const clientName = client[0].replace(/^[^a-z]+/, "");
+      const flagRe = SQL_FLAG_BY_CLIENT[clientName] ?? null;
+      const flag = flagRe ? flagRe.exec(cmdText) : null;
       if (flag) {
         if (flag[1] === '"') {
           sqlFrom = from + flag.index + flag[0].length;
@@ -354,7 +365,7 @@ export class ShellInjectionDetector implements Detector {
             ruleId: "injection/shell-sql-interpolation",
             title: "SQL built from script arguments by shell expansion",
             severity: "high",
-            confidence: "high",
+            confidence: SINGLE_POSITIONAL_RE.test(sql) ? "medium" : "high",
             file,
             line: hit + 1,
             endLine: endLine + 1,
