@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
 import type { Finding } from "@talaljaber/vibesafe-shared";
 import { normalizeBody } from "../controls.js";
+import { stableAttackId } from "../ids.js";
 import { preflightGet } from "../plan/preflight.js";
 import { enclosingHandler } from "../target/enclosing-handler.js";
 import { concretePath, dynamicSegmentsOf } from "../target/route-map.js";
@@ -31,22 +31,6 @@ const LOGIN_RE = /log-?in|sign-?in|signin|\/auth\b/i;
 const SAFE_KEY_RE = /^[\w.-]{1,64}$/;
 
 const norm = (p: string): string => p.replace(/\\/g, "/");
-
-/** Same scheme as the shared attack id (spec 9); kept private until the ids module lands. */
-function attackIdOf(method: string, pattern: string): string {
-  let dyn = 0;
-  let rest = 0;
-  const normalized = pattern
-    .split("/")
-    .map((s) => {
-      if (/^\[\[?\.\.\.[^\]]+\]\]?$/.test(s)) return `*${++rest}`;
-      if (/^\[[^\]]+\]$/.test(s)) return `:${++dyn}`;
-      return s;
-    })
-    .join("/");
-  const input = `idor|${method.toUpperCase()}|${normalized}`;
-  return `ATK-${createHash("sha256").update(input).digest("hex").slice(0, 12)}`;
-}
 
 function refOf(f: Finding): StaticRef {
   return {
@@ -83,7 +67,7 @@ function planOne(f: Finding, ctx: PlanContext): ProbeGroup {
   const title = `One signed-in user can read another user's ${record}.`;
   if (!route) {
     return skipGroup(
-      { attackId: attackIdOf("GET", file), checkId: "idor", title, staticRef },
+      { attackId: stableAttackId("idor", "GET", file), checkId: "idor", title, staticRef },
       REASON_ROUTE,
     );
   }
@@ -91,7 +75,7 @@ function planOne(f: Finding, ctx: PlanContext): ProbeGroup {
   const handler = f.line === undefined ? undefined : enclosingHandler(content, f.line);
   const method = handler?.method ?? "GET";
   const base = {
-    attackId: attackIdOf(method, route.pattern),
+    attackId: stableAttackId("idor", method, route.pattern),
     checkId: "idor" as const,
     title,
     route: route.pattern,
