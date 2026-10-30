@@ -58,7 +58,11 @@ export function renderAgentReport(run: AttackRun): string {
     out.push("## Retest results");
     for (const d of run.diff) {
       const owner =
-        d.ownerOk === true ? " (owner access OK)" : d.ownerOk === false ? " (owner access lost)" : "";
+        d.ownerOk === true
+          ? " (owner access OK)"
+          : d.ownerOk === false
+            ? " (owner access lost)"
+            : "";
       const was = d.was ? ` (was ${d.was})` : "";
       out.push(`- ${safeId(d.attackId)}: ${d.state}${was}, now ${d.now}${owner}`);
     }

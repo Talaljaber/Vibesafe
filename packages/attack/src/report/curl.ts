@@ -1,4 +1,4 @@
-/** Builds copy-paste curl lines that use environment placeholders, never credential values. */
+﻿/** Builds copy-paste curl lines that use environment placeholders, never credential values. */
 
 export interface CurlOptions {
   /** Base URL of the target as stored in the run (the run's targetUrl). */
@@ -27,7 +27,7 @@ export function placeholderName(session: string, headerName: string = "Cookie"):
 /** Percent-encodes everything that could break out of a quoted shell argument. */
 function safePath(path: string): string {
   const p = path.startsWith("/") ? path : `/${path}`;
-  return p.replace(/[^A-Za-z0-9\-._~/%?=&:@,;+]/g, (c) => {
+  return p.replace(/[^A-Za-z0-9\-._~/%?=&:@,+]/g, (c) => {
     const code = c.codePointAt(0) ?? 0;
     return code < 128 ? `%${code.toString(16).toUpperCase().padStart(2, "0")}` : "_";
   });

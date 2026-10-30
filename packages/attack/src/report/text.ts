@@ -4,11 +4,11 @@ import type { AttackResult, AttackRun, Ledger, RetestDiff } from "../types.js";
 export function oneLine(value: string, max = 200): string {
   const cleaned = value
     // eslint-disable-next-line no-control-regex
-    .replace(/[\u0000-\u001f\u007f-\u009f  ‪-‮⁦-⁩]/g, " ")
+    .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g, " ")
     .replace(/`/g, "'")
     .replace(/\s+/g, " ")
     .trim();
-  return cleaned.length > max ? `${cleaned.slice(0, max - 1)}…` : cleaned;
+  return cleaned.length > max ? `${cleaned.slice(0, max - 1)}\u2026` : cleaned;
 }
 
 /** Key names are emitted only when they look like plain identifiers; anything else is "<key>". */
