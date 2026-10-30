@@ -43,6 +43,11 @@ export interface SinkPattern {
    * (otherwise only an attacker-chosen program is reported).
    */
   argvStyle?: boolean | undefined;
+  /**
+   * Bare calls to a project function (imported from a relative, `@/`, `~/` or `#` module,
+   * or declared in the same file); never a library alias or member call.
+   */
+  projectOnly?: boolean | undefined;
 }
 
 /**
@@ -104,6 +109,15 @@ export const SINK_PATTERNS: readonly SinkPattern[] = [
     args: [0],
     requiresSqlText: true,
     callOnly: true,
+  },
+  {
+    id: "sql-project-wrapper",
+    kind: "sql",
+    callee: /^(?:query|execute|sql|rawQuery|runQuery|dbQuery|q|[A-Za-z_$][\w$]*Query)$/,
+    args: [0],
+    requiresSqlText: true,
+    callOnly: true,
+    projectOnly: true,
   },
   // ---- PostgREST (Supabase) filter strings ----
   {
@@ -248,6 +262,9 @@ export const SINK_NEEDLES: Readonly<Record<SinkKind, readonly string[]>> = {
     ".all(",
     ".get(",
     ".prepare(",
+    "Query",
+    "sql(",
+    "q(",
   ],
   postgrest: [".or(", ".and("],
   command: ["child_process", "shelljs", "execa"],
