@@ -72,10 +72,14 @@ export function isSessionCookieName(name: string): boolean {
   return tokens.some((t) => SESSION_TOKENS.has(t)) && !hasDeny(tokens);
 }
 
+/** Only the start of a value is analysed (bounds nested-call cost). */
+const VALUE_SCAN_MAX = 400;
+
 /** Session/auth cookie by the value expression, only for known token-minting calls (name-independent). Reading a property of a session object is never enough. `jwtLibImported`: the file imports/requires `jsonwebtoken` or `jose` (enables a bare `sign(` call). */
 export function isSessionCookieValue(valueText: string, jwtLibImported: boolean): boolean {
-  if (VALUE_CALL_RE.test(valueText)) return true;
-  return jwtLibImported && VALUE_SIGN_RE.test(valueText);
+  const v = valueText.slice(0, VALUE_SCAN_MAX);
+  if (VALUE_CALL_RE.test(v)) return true;
+  return jwtLibImported && VALUE_SIGN_RE.test(v);
 }
 /** A plain literal value (string without `${`, number, boolean) is never a credential. */
 const PLAIN_LITERAL_RE =
@@ -91,7 +95,9 @@ export function isRefreshCookie(name: string, valueText: string | undefined): bo
   const nt = cookieNameTokens(name);
   if (nt.includes("refresh") || nt.includes("refreshtoken")) return true;
   if (valueText === undefined) return false;
-  const vt = (valueText.match(/[A-Za-z_$][\w$]*/g) ?? []).flatMap((id) => cookieNameTokens(id));
+  const vt = (valueText.slice(0, VALUE_SCAN_MAX).match(/[A-Za-z_$][\w$]*/g) ?? []).flatMap((id) =>
+    cookieNameTokens(id),
+  );
   if (!vt.includes("refresh") && !vt.includes("refreshtoken")) return false;
   return !vt.some((t) => ["access", "accesstoken", "session", "sid", "sessionid"].includes(t));
 }
@@ -196,23 +202,62 @@ function objectEntries(src: JsSource, open: number): Entry[] | undefined {
   return out;
 }
 
-const declCache = new WeakMap<JsSource, Map<string, number[]>>();
+interface FileIndex {
+  obj: Map<string, number[]>;
+  str: Map<string, number[]>;
+  mutated: Map<string, Set<string>>;
+  assigned: Set<string>;
+}
+const indexCache = new WeakMap<JsSource, FileIndex>();
+const DECL_RE = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*/g;
+const OBJ_TAIL_RE = /(?::[^=;{]{0,200})?=\s*\{/y;
+const STR_TAIL_RE = /(?::[^=;{]{0,80})?=\s*["']/y;
+const MUTATION_RE =
+  /(?<![\w$.])([A-Za-z_$][\w$]*)\s*(?:\.\s*(httpOnly|secure|sameSite)\b|\[\s*["'](httpOnly|secure|sameSite)["']\s*\])\s*=(?![=>])/g;
+const ASSIGN_RE = /(?<![\w$.])Object\s*\.\s*assign\s*\(\s*([A-Za-z_$][\w$]*)\s*,/g;
 
-/** All declaration offsets (cached per source) matching `re`, as the offset of the char before the match end. */
-function declOffsets(src: JsSource, kind: string, name: string, tail: string): number[] {
-  let byKey = declCache.get(src);
-  if (byKey === undefined) {
-    byKey = new Map();
-    declCache.set(src, byKey);
-  }
-  const key = `${kind}:${name}`;
-  const hit = byKey.get(key);
+function push(m: Map<string, number[]>, k: string, v: number): void {
+  const a = m.get(k);
+  if (a === undefined) m.set(k, [v]);
+  else a.push(v);
+}
+
+/** One linear pass per file: declarations (object / string), flag mutations and Object.assign targets. */
+function fileIndex(src: JsSource): FileIndex {
+  const hit = indexCache.get(src);
   if (hit !== undefined) return hit;
-  const re = new RegExp(String.raw`\b(?:const|let|var)\s+${escapeRe(name)}\s*${tail}`, "g");
-  const out: number[] = [];
-  for (const m of src.code.matchAll(re)) out.push(m.index + m[0].length - 1);
-  byKey.set(key, out);
-  return out;
+  const idx: FileIndex = {
+    obj: new Map(),
+    str: new Map(),
+    mutated: new Map(),
+    assigned: new Set(),
+  };
+  for (const m of src.code.matchAll(DECL_RE)) {
+    const at = m.index + m[0].length;
+    for (const [tail, into] of [
+      [OBJ_TAIL_RE, idx.obj],
+      [STR_TAIL_RE, idx.str],
+    ] as const) {
+      tail.lastIndex = at;
+      const t = tail.exec(src.code);
+      if (t !== null) push(into, m[1]!, at + t[0].length - 1);
+    }
+  }
+  if (src.code.includes("assign")) {
+    for (const m of src.text.matchAll(ASSIGN_RE)) {
+      if (isCodeAt(src, m.index ?? 0)) idx.assigned.add(m[1]!);
+    }
+  }
+  for (const m of src.text.matchAll(MUTATION_RE)) {
+    if (!isCodeAt(src, m.index ?? 0)) continue;
+    const k = m[2] ?? m[3]!;
+    const id = m[1]!;
+    const set = idx.mutated.get(id);
+    if (set === undefined) idx.mutated.set(id, new Set([k]));
+    else set.add(k);
+  }
+  indexCache.set(src, idx);
+  return idx;
 }
 
 /** The declaration nearest before `at`, else the first one after it (module-level consts declared later). */
@@ -225,17 +270,17 @@ function nearestDecl(offsets: readonly number[], at: number): number | undefined
   return before ?? offsets[0];
 }
 
-/** `{` of the same-file `const|let|var NAME = {` declaration in scope at `at`, or undefined. */
 const objDeclMemo = new WeakMap<JsSource, Map<string, number | undefined>>();
 const spreadBudget = new WeakMap<JsSource, number>();
 const MAX_SPREADS_PER_FILE = 50;
 
+/** `{` of the same-file `const|let|var NAME = {` declaration in scope at `at`, or undefined. */
 function findObjectDecl(src: JsSource, name: string, at: number): number | undefined {
   let memo = objDeclMemo.get(src);
   if (memo === undefined) objDeclMemo.set(src, (memo = new Map()));
   const key = `${name}@${at}`;
   if (memo.has(key)) return memo.get(key);
-  const r = nearestDecl(declOffsets(src, "obj", name, String.raw`(?::[^=;{]{0,200})?=\s*\{`), at);
+  const r = nearestDecl(fileIndex(src).obj.get(name) ?? [], at);
   memo.set(key, r);
   return r;
 }
@@ -250,10 +295,7 @@ function takeSpread(src: JsSource): boolean {
 
 /** Text of a same-file `const NAME = "literal"` declaration. */
 function findStringDecl(src: JsSource, name: string, at: number): string | undefined {
-  const open = nearestDecl(
-    declOffsets(src, "str", name, String.raw`(?::[^=;{]{0,80})?=\s*["']`),
-    at,
-  );
+  const open = nearestDecl(fileIndex(src).str.get(name) ?? [], at);
   if (open === undefined) return undefined;
   const end = stringEnd(src, open);
   return end < 0 ? undefined : src.text.slice(open + 1, end - 1);
@@ -398,21 +440,14 @@ export function flagsOfArgument(src: JsSource, start: number, end: number): Cook
 
 /** `ID.secure = ...`, `ID["secure"] = ...` or `Object.assign(ID, ...)` after the declaration make those flags "dynamic". */
 function applyMutations(src: JsSource, id: string, flags: CookieFlags): CookieFlags {
-  if (!src.code.includes(id)) return flags;
+  const idx = fileIndex(src);
   const out = { ...flags };
-  const e = escapeRe(id);
-  if (new RegExp(String.raw`(?<![\w$.])Object\s*\.\s*assign\s*\(\s*${e}\s*,`).test(src.code)) {
+  if (idx.assigned.has(id)) {
     if (out.httpOnly === "missing") out.httpOnly = "dynamic";
     if (out.secure === "missing") out.secure = "dynamic";
     if (out.sameSite === "missing") out.sameSite = "dynamic";
   }
-  const re = new RegExp(
-    String.raw`(?<![\w$.])${e}\s*(?:\.\s*(httpOnly|secure|sameSite)|\[\s*["'](httpOnly|secure|sameSite)["']\s*\])\s*=(?![=>])`,
-    "g",
-  );
-  for (const m of src.text.matchAll(re)) {
-    if (!isCodeAt(src, m.index ?? 0)) continue;
-    const k = m[1] ?? m[2];
+  for (const k of idx.mutated.get(id) ?? []) {
     if (k === "httpOnly") out.httpOnly = "dynamic";
     else if (k === "secure") out.secure = "dynamic";
     else if (k === "sameSite") out.sameSite = "dynamic";
@@ -574,6 +609,7 @@ function entryOf(src: JsSource, open: number, key: string): Entry | undefined {
 export function findCookieSites(src: JsSource): CookieSite[] {
   const { text, code } = src;
   if (!text.includes("ookie") && !text.includes("express-session")) return [];
+  spreadBudget.set(src, 0);
   const sites: CookieSite[] = [];
   const seen = new Set<number>();
   const jwt = importsJwtLib(src);
@@ -643,10 +679,10 @@ export function findCookieSites(src: JsSource): CookieSite[] {
     eachMatch(re, (_m, open) => callSite("next-headers", true, open));
   const bound = new Set<string>();
   eachMatch(COOKIES_BINDING_RE, (m) => void bound.add(m[1]!));
-  for (const id of bound) {
-    eachMatch(new RegExp(String.raw`(?<![\w$.])${escapeRe(id)}\s*\.\s*set\s*\(`, "g"), (_m, open) =>
-      callSite("next-headers", true, open),
-    );
+  if (bound.size > 0) {
+    eachMatch(/(?<![\w$.])([A-Za-z_$][\w$]*)\s*\.\s*set\s*\(/g, (m, open) => {
+      if (bound.has(m[1]!)) callSite("next-headers", true, open);
+    });
   }
 
   // NextResponse.cookies
@@ -723,28 +759,29 @@ export function findCookieSites(src: JsSource): CookieSite[] {
     });
   };
   const configCalls = (mod: string, kind: "express-session" | "cookie-session"): void => {
-    for (const name of boundNames(src, mod)) {
-      eachMatch(new RegExp(String.raw`(?<![\w$.])${escapeRe(name)}\s*\(`, "g"), (_m, open) => {
-        const close = src.matchOf(open);
-        if (close < 0) return;
-        const a0 = splitArgs(src, open, close)[0];
-        if (a0 === undefined) return;
-        const obj = objectOpenOf(src, a0);
-        let flags: CookieFlags;
-        if (obj === undefined) flags = { ...DYNAMIC_FLAGS };
-        else if (kind === "cookie-session") flags = readCookieFlags(src, obj);
-        else {
-          const entries = objectEntries(src, obj) ?? [];
-          const cookie = entries.find((e) => e.key === "cookie");
-          if (cookie?.value !== undefined)
-            flags = flagsOfArgument(src, cookie.value.start, cookie.value.end);
-          else if (entries.some((e) => e.spread !== undefined || e.computed))
-            flags = { ...DYNAMIC_FLAGS };
-          else flags = { ...MISSING_FLAGS };
-        }
-        configSite(kind, open, close, flags);
-      });
-    }
+    const names = new Set(boundNames(src, mod));
+    if (names.size === 0) return;
+    eachMatch(/(?<![\w$.])([A-Za-z_$][\w$]*)\s*\(/g, (m, open) => {
+      if (!names.has(m[1]!)) return;
+      const close = src.matchOf(open);
+      if (close < 0) return;
+      const a0 = splitArgs(src, open, close)[0];
+      if (a0 === undefined) return;
+      const obj = objectOpenOf(src, a0);
+      let flags: CookieFlags;
+      if (obj === undefined) flags = { ...DYNAMIC_FLAGS };
+      else if (kind === "cookie-session") flags = readCookieFlags(src, obj);
+      else {
+        const entries = objectEntries(src, obj) ?? [];
+        const cookie = entries.find((e) => e.key === "cookie");
+        if (cookie?.value !== undefined)
+          flags = flagsOfArgument(src, cookie.value.start, cookie.value.end);
+        else if (entries.some((e) => e.spread !== undefined || e.computed))
+          flags = { ...DYNAMIC_FLAGS };
+        else flags = { ...MISSING_FLAGS };
+      }
+      configSite(kind, open, close, flags);
+    });
   };
   configCalls("express-session", "express-session");
   configCalls("cookie-session", "cookie-session");
