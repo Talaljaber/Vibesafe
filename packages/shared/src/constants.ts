@@ -92,6 +92,7 @@ const ACTION_RE = /^action\.ya?ml$/;
 const SHELL_RE = /\.(?:sh|bash|zsh)$/;
 const TERRAFORM_RE = /\.tf$/i;
 const TFVARS_RE = /\.tfvars$/i;
+const SUPABASE_CONFIG_RE = /(?:^|\/)supabase\/config\.toml$/;
 const K8S_YAML_RE = /\.ya?ml$/i;
 const KUSTOMIZATION_RE = /^kustomization\.ya?ml$/i;
 /** Directory names that hold Kubernetes manifests (matched case-insensitively). */
@@ -132,6 +133,7 @@ export type InfraFileKind =
   | "shell"
   | "terraform"
   | "tfvars"
+  | "supabase-config"
   | "k8s-manifest"
   | EnvFileKind
   | "next-config-mts";
@@ -163,6 +165,7 @@ export function classifyInfraFile(relativePath: string): InfraFileKind | null {
   if (base === "next.config.mts") return "next-config-mts";
   if (TERRAFORM_RE.test(base)) return "terraform";
   if (TFVARS_RE.test(base)) return "tfvars";
+  if (SUPABASE_CONFIG_RE.test(p)) return "supabase-config"; // supabase/config.toml only, not other .toml
   if (!(LOCKFILE_NAMES as readonly string[]).includes(base) && isK8sManifestPath(p, base)) {
     return "k8s-manifest";
   }
