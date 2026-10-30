@@ -11,6 +11,8 @@ import { enclosingFunction, expressionEnd } from "./utils/js-functions.js";
 import {
   SinkAnalyzer,
   capPerRule,
+  isQueueHit,
+  queueSourcesOf,
   findSinkCalls,
   loadSinkFile,
   callKey,
@@ -71,7 +73,7 @@ export class SqlInjectionDetector implements Detector {
       if (f === undefined) continue;
       const calls = findSinkCalls(f.src, patterns, f.aliases);
       if (calls.length === 0) continue;
-      const sql = new SinkAnalyzer(f, "sql");
+      const sql = new SinkAnalyzer(f, "sql", { extraSources: queueSourcesOf(f) });
       const postgrest = new SinkAnalyzer(f, "postgrest");
       const out: Finding[] = [];
       for (const call of calls) {
@@ -165,14 +167,15 @@ export class SqlInjectionDetector implements Detector {
     const t = an.argTaint(arg, call.start);
     if (t === undefined) return undefined;
     const anchor = sinkAnchor(f.src, call, t.hit.offset);
+    const queue = isQueueHit(t);
     const severity = capSeverityForTrust(
-      t.confidence === "high" && t.hit.trust === "remote" ? "critical" : "high",
+      t.confidence === "high" && t.hit.trust === "remote" && !queue ? "critical" : "high",
       t.hit.trust,
     );
     return makeFinding({
       category: "injection",
       ruleId: "injection/sql-built-from-input",
-      title: "SQL Query Built From Request Data",
+      title: queue ? "SQL Query Built From Queue Job Data" : "SQL Query Built From Request Data",
       severity,
       confidence: t.confidence,
       file: f.file,

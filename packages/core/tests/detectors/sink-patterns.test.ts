@@ -139,3 +139,71 @@ describe("taintPosition", () => {
     expect(taintPosition("https://api.example.com/", "url-origin")).toBe("url-path");
   });
 });
+
+describe("findSinkCalls: TypeScript type arguments", () => {
+  const ts = (text: string, file = "lib/a.ts") => createJsSource(text, { jsx: false, file });
+  const sqlCallees = (text: string, file?: string) => {
+    const s = ts(text, file);
+    return findSinkCalls(s, sinkPatternsOf("sql"), resolveCallAliases(s)).map((c) => c.callee);
+  };
+
+  it("skips a balanced type-argument list for every sink kind in TS files", () => {
+    const s = ts(
+      `prisma.$queryRawUnsafe<Row[]>(q);
+db.query<{ id: string; tags: Array<string> }>("select * from t where a = " + x);
+fetch<Res>(url);
+child_process.exec<void>(cmd);`,
+    );
+    const all = findSinkCalls(s, sinkPatternsOf("sql", "ssrf", "command"), resolveCallAliases(s));
+    expect(all.map((c) => c.callee)).toEqual([
+      "prisma.$queryRawUnsafe",
+      "db.query",
+      "fetch",
+      "child_process.exec",
+    ]);
+    expect(all[0]!.args).toHaveLength(1);
+  });
+
+  it("keeps relational expressions as non-calls", () => {
+    expect(sqlCallees("const r = a < b > (c);", "x.js")).toEqual([]);
+    expect(sqlCallees("if (x < y && z > (w)) { db.exec(1); }")).toEqual(["db.exec"]);
+    expect(sqlCallees("for (let i = 0; i < n; i++) { f(i > (j)); }")).toEqual([]);
+  });
+
+  it("does not skip type arguments in plain JS files", () => {
+    expect(sqlCallees("db.query<Row>(q);", "lib/a.js")).toEqual([]);
+  });
+});
+
+describe("findSinkCalls: project query wrappers", () => {
+  const ts = (text: string) => createJsSource(text, { jsx: false, file: "lib/a.ts" });
+  const wrapped = (text: string) => {
+    const s = ts(text);
+    return findSinkCalls(s, sinkPatternsOf("sql"), resolveCallAliases(s)).filter(
+      (c) => c.pattern.id === "sql-project-wrapper",
+    );
+  };
+
+  it("matches bare calls to functions imported from project modules", () => {
+    expect(wrapped(`import { query } from "../lib/db";\nquery(sqlText);`)).toHaveLength(1);
+    expect(wrapped(`import { dbQuery as q } from "@/db";\nq(sqlText);`)).toHaveLength(1);
+    expect(wrapped(`import query from "~/db";\nquery(sqlText);`)).toHaveLength(1);
+    expect(wrapped(`const { runQuery } = require("#db");\nrunQuery(sqlText);`)).toHaveLength(1);
+    expect(wrapped(`import { getUserQuery } from "./q";\ngetUserQuery(sqlText);`)).toHaveLength(1);
+  });
+
+  it("matches a wrapper declared in the same file", () => {
+    expect(wrapped(`async function query(t: string) { return 1; }\nquery(sqlText);`)).toHaveLength(
+      1,
+    );
+    expect(wrapped(`const execute = async (t: string) => 1;\nexecute(sqlText);`)).toHaveLength(1);
+  });
+
+  it("ignores library imports, unknown names and member calls", () => {
+    expect(wrapped(`import { query } from "graphql";\nquery(sqlText);`)).toHaveLength(0);
+    expect(wrapped(`import { query } from "@tanstack/react-query";\nquery(x);`)).toHaveLength(0);
+    expect(wrapped(`import { fetchAll } from "../lib/db";\nfetchAll(sqlText);`)).toHaveLength(0);
+    expect(wrapped(`import { query } from "../lib/db";\ndb.query(sqlText);`)).toHaveLength(0);
+    expect(wrapped(`query(sqlText);`)).toHaveLength(0);
+  });
+});
