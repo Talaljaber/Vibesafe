@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core now exports the Next.js route helpers (nextRoutePath, findHandlerLine, isPublicRoutePath, isApiRoute, isRiskyRoutePattern) for Attack Mode.
 - Attack Mode: validating loaders for `.vibesafe/sessions.json` and `.vibesafe/attack.json` (loopback-only target, schemaVersion check, exit-2 errors).
 - Scaffold the `@talaljaber/vibesafe-attack` package (types, API stubs, network chokepoint lint rule and test) for Attack Mode.
+- Add the Attack Mode self-contained HTML report with the precision ledger and retest before/after view.
+- Add the Attack Mode agent markdown report (shapes only), terminal summary and placeholder curl lines to `@talaljaber/vibesafe-attack`.
 - Add stable attack ids, atomic .vibesafe/ persistence with baseline protection and archiving, and the seven-state retest diff to the attack package.
 - Attack Mode route map, enclosing-handler resolution and GET side-effect pre-flight.
 - Add the Attack Mode host gate, safe GET-only HTTP client and rate limiter, and harden the network chokepoint (eval, inspector and online-scan checks).
