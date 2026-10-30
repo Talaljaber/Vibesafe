@@ -5,7 +5,7 @@ import { HANDLER_METHODS } from "./enclosing-handler.js";
 
 const APP_ROUTE_FILE_RE = /(?:^|\/)app\/(?:.*\/)?route\.(?:ts|js|mjs)$/;
 
-const norm = (p: string): string => p.replace(/\/g, "/");
+const norm = (p: string): string => p.replace(/\\/g, "/");
 
 /** `[id]` and `[...slug]` segments of a route pattern, as written. */
 export function dynamicSegmentsOf(pattern: string): string[] {
