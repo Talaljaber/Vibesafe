@@ -189,3 +189,21 @@ describe("admin dashboard review round 1", () => {
     expect(f[0]).toMatchObject({ confidence: "medium" });
   });
 });
+
+describe("auth/unprotected-queue-dashboard review round 2", () => {
+  it.each(["requireRole('admin')", "ensureAdmin", "checkJwt"])(
+    "is silent when %s guards the mount",
+    async (mw) => {
+      const f = await run({
+        "src/index.ts": [
+          "import express from 'express';",
+          "import { ExpressAdapter } from '@bull-board/express';",
+          "const app = express();",
+          "const serverAdapter = new ExpressAdapter();",
+          `app.use('/admin/queues', ${mw}, serverAdapter.getRouter());`,
+        ].join("\n"),
+      });
+      expect(f).toHaveLength(0);
+    },
+  );
+});

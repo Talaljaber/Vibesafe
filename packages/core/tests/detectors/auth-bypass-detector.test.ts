@@ -1,4 +1,4 @@
-﻿import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vitest";
 import os from "node:os";
 import path from "node:path";
 import { promises as fs } from "node:fs";
@@ -27,16 +27,16 @@ const ENV = "auth/auth-disabled-outside-production";
 const OPEN = "auth/secret-check-fails-open";
 
 describe("auth/jwt-decode-without-verify", () => {
-  it("flags a share token decoded from the query string and compared to the record", async () => {
+  it("flags an invite token decoded from the query string and compared to the record", async () => {
     const files = {
-      "app/api/docs/[id]/route.ts": [
+      "app/api/orders/[id]/route.ts": [
         'import jwt from "jsonwebtoken";',
         "export async function GET(req: Request) {",
-        "  const doc = await db.doc.find();",
-        '  const share = new URL(req.url).searchParams.get("share");',
-        "  if (share) {",
-        "    const claims = jwt.decode(share) as { docId?: string } | null;",
-        "    if (!claims || claims.docId !== doc.id) throw new Error('bad');",
+        "  const order = await db.order.find();",
+        '  const invite = new URL(req.url).searchParams.get("invite");',
+        "  if (invite) {",
+        "    const claims = jwt.decode(invite) as { orderId?: string } | null;",
+        "    if (!claims || claims.orderId !== order.id) throw new Error('bad');",
         "    return Response.redirect(url);",
         "  }",
         "}",
@@ -540,5 +540,77 @@ describe("auth-bypass review round 1", () => {
     const t = Date.now();
     await run(files);
     expect(Date.now() - t).toBeLessThan(2000);
+  });
+});
+
+describe("auth-bypass review round 2", () => {
+  it("env rule ignores next(err) in an error handler", async () => {
+    const f = await run({
+      "src/middleware/auth.ts": [
+        "export function authErrorHandler(err: any, req: any, res: any, next: any) {",
+        "  if (process.env.NODE_ENV !== 'production') {",
+        "    return next(err);",
+        "  }",
+        "  return res.status(401).json({ error: 'unauthorized' });",
+        "}",
+      ].join("\n"),
+    });
+    expect(rule(f, ENV)).toHaveLength(0);
+  });
+
+  it("env rule ignores a geo-block middleware with no credential", async () => {
+    const f = await run({
+      "middleware.ts": [
+        "import { NextResponse } from 'next/server';",
+        "export function middleware(request: any) {",
+        "  if (process.env.NODE_ENV === 'development') return NextResponse.next();",
+        "  if (blocked.includes(request.geo?.country)) return new NextResponse('blocked', { status: 403 });",
+        "  return NextResponse.next();",
+        "}",
+      ].join("\n"),
+    });
+    expect(rule(f, ENV)).toHaveLength(0);
+  });
+
+  it("fails-open is silent when a module-level guard throws first", async () => {
+    const f = await run({
+      "app/api/c/route.ts": [
+        "const CRON_SECRET = process.env.CRON_SECRET;",
+        "if (!CRON_SECRET) throw new Error('CRON_SECRET missing');",
+        "export async function GET(request: Request) {",
+        "  if (CRON_SECRET && request.headers.get('authorization') !== `Bearer ${CRON_SECRET}`) {",
+        "    return new Response('no', { status: 401 });",
+        "  }",
+        "  return Response.json({});",
+        "}",
+      ].join("\n"),
+    });
+    expect(rule(f, OPEN)).toHaveLength(0);
+  });
+
+  it("jwt rule treats validate/check token helpers as verification", async () => {
+    const f = await run({
+      "server/v.ts": [
+        'import jwt from "jsonwebtoken";',
+        "export function h(req: any) {",
+        "  const raw = req.headers.authorization;",
+        "  const ok = validateSessionToken(raw);",
+        "  const claims = jwt.decode(raw) as any;",
+        "  if (!ok || claims.role !== 'admin') throw new Error('no');",
+        "}",
+      ].join("\n"),
+    });
+    expect(rule(f, JWT)).toHaveLength(0);
+  });
+
+  it("alias scan stays fast with many module-level decode sites", async () => {
+    const decls = Array.from({ length: 9000 }, (_, i) => `const a${i} = x${i};`).join("\n");
+    const sites = Array.from(
+      { length: 200 },
+      (_, i) => `const c${i} = jwt.decode(req.body.t${i});`,
+    ).join("\n");
+    const t = Date.now();
+    await run({ "server/m.ts": `import jwt from "jsonwebtoken";\n${sites}\n${decls}\n` });
+    expect(Date.now() - t).toBeLessThan(4000);
   });
 });

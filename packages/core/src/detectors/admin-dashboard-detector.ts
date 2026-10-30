@@ -15,7 +15,7 @@ const MAX_PER_FILE = 25;
 const PREFILTER_RE = /bull-board|bull-arena|agendash|bullboard/i;
 const EXPRESS_RE = /from\s*['"]express['"]|require\s*\(\s*['"]express['"]\s*\)/;
 const AUTH_LIKE_RE =
-  /auth|authenticate|requireUser|requireAdmin|ensureLoggedIn|isAdmin|basicAuth|passport\s*\.\s*authenticate|protect|guard|session/i;
+  /auth|authenticate|requireUser|requireAdmin|ensureLoggedIn|isAdmin|basicAuth|passport\s*\.\s*authenticate|protect|guard|session|role|admin|login|jwt|permission|\bacl\b|restrict|authori[sz]e/i;
 const NONPROD_RE =
   /(?:NODE_ENV|nodeEnv|APP_ENV|ENVIRONMENT)\s*(?:!==|!=)\s*['"`]production['"`]|(?:NODE_ENV|nodeEnv|APP_ENV|ENVIRONMENT)\s*(?:===|==)\s*['"`](?:development|dev|local)['"`]|!\s*(?:isProd|isProduction)\b|(?<!!\s*(?:[\w$]+\s*\.\s*)*)(?<![\w$])isDev(?:elopment)?\b/;
 /** An inline middleware function that answers 401/403 is an auth check. */

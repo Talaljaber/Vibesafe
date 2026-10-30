@@ -1,4 +1,4 @@
-﻿// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // Auth Bypass Detector
 //
 // Three ways server code skips the check it appears to perform:
@@ -8,7 +8,7 @@
 //    environment is not production (or a SKIP_AUTH-style flag is set).
 //  - `auth/secret-check-fails-open`: `if (SECRET && header !== SECRET) return 401` skips the
 //    whole check when the secret env var is unset.
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 
 import type { Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared";
 import { makeFinding } from "./utils/finding.js";
@@ -103,7 +103,7 @@ function andOperands(code: string, text: string): string[] | undefined {
   return parts.map((p) => p.trim()).filter((p) => p.length > 0);
 }
 
-// â”€â”€â”€ jwt-decode-without-verify â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── jwt-decode-without-verify ───────────────────────────────────────────────
 
 const DECODE_CALL_RE =
   /(?:\b(?:jwt|jsonwebtoken|jose)\s*\.\s*decode|\bdecodeJwt|\bjwtDecode|\bjwt_decode|\bdecode_jwt)\s*(?:<[^>()]*>)?\s*\(/g;
@@ -114,7 +114,7 @@ const REQUEST_SOURCE_RE =
 const TOKENISH_RE = /token|jwt|bearer|session|credential|auth/i;
 const TIME_CLAIMS = new Set(["exp", "iat", "nbf"]);
 const VERIFY_CALL_RE =
-  /(?:\bjwt\s*\.\s*verify|\bjwtVerify|\bverifyToken|\bverifyJwt|\bverifyJWT|\bverify[A-Za-z]*Token|\.\s*verify)\s*(?:<[^>()]*>)?\s*\(/g;
+  /(?:\bjwt\s*\.\s*verify|\bjwtVerify|\bverifyToken|\bverifyJwt|\bverifyJWT|\bverify[A-Za-z]*Token|\bvalidate[A-Za-z]*|\bauthenticate[A-Za-z]*|\bcheck[A-Za-z]*Token|\.\s*verify)\s*(?:<[^>()]*>)?\s*\(/g;
 
 /** Names (and the whole-binding name) a statement before `callStart` binds the call result to. */
 function resultBinding(src: JsSource, callStart: number): { names: string[]; whole: boolean } {
@@ -155,6 +155,7 @@ const MAX_DECLS = 1500;
 const MAX_RHS = 400;
 const MAX_TAINTED = 800;
 const MAX_SITES = 200;
+const MAX_ALIAS_SCAN = 20000;
 
 /** Code text of `[from,to)` with comments blanked but string-literal contents kept. */
 function codeAndStrings(src: JsSource, from: number, to: number): string {
@@ -382,13 +383,14 @@ function jwtFindings(
       const aliases = new Set<string>();
       const aliasRe = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=;]*)?=\s*([^;\n]+)/g;
       const afterCall = open >= 0 ? open : site.start;
-      const bodyText = src.text.slice(afterCall, to);
+      const bodyText = src.text.slice(afterCall, Math.min(to, afterCall + MAX_ALIAS_SCAN));
+      const nameRes = names.map((n) => new RegExp(`\\b${escapeRe(n)}\\b`));
       for (let m = aliasRe.exec(bodyText); m; m = aliasRe.exec(bodyText)) {
         if (!src.code.slice(afterCall + m.index, afterCall + m.index + 3).match(/con|let|var/)) {
           continue;
         }
         const rhs = m[2]!;
-        if (names.some((n) => new RegExp(`\\b${escapeRe(n)}\\b`).test(rhs))) aliases.add(m[1]!);
+        if (nameRes.some((re) => re.test(rhs))) aliases.add(m[1]!);
       }
       const whole = wholeBinding ? names : [];
       const bare = wholeBinding ? [...aliases] : [...names, ...aliases];
@@ -439,7 +441,7 @@ function jwtFindings(
   return out;
 }
 
-// â”€â”€â”€ auth-disabled-outside-production â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── auth-disabled-outside-production ────────────────────────────────────────
 
 const AUTH_FN_RE =
   /auth|authenticate|requireUser|requireAdmin|protect|guard|verify(?:Token|Session|Request)/i;
@@ -454,9 +456,10 @@ const NONPROD_RES: readonly RegExp[] = [
 const FLAG_RE =
   /(?<!!\s*)\b(?:process\s*\.\s*env\s*\.\s*)?(?:SKIP_AUTH|DISABLE_AUTH|AUTH_DISABLED|BYPASS_AUTH|skipAuth|disableAuth|authDisabled|bypassAuth)\b/;
 const ALLOW_RE =
-  /\breturn\s+(?:await\s+)?(?:next\s*\(|NextResponse\s*\.\s*next\s*\(|true\b)|\bnext\s*\(\s*\)\s*;?\s*return\b/;
+  /\breturn\s+(?:await\s+)?(?:next\s*\(\s*\)|NextResponse\s*\.\s*next\s*\(|true\b)|\bnext\s*\(\s*\)\s*;?\s*return\b/;
 const BODY_DENY_RE =
   /\b40[13]\b|[Uu]nauthori[sz]ed|[Ff]orbidden|UNAUTHORIZED|FORBIDDEN|\bredirect\s*\([^)]{0,200}?(?:log-?in|sign-?in|sign-?on|\/auth\b)/;
+const CREDENTIAL_RE = /session|token|cookie|authorization|\buser\b|bearer|jwt|credential|\bauth\b/i;
 const NON_AUTH_NAME_RE = /csrf|xsrf|cors|helmet|rate-?limit/i;
 
 function isAuthMiddleware(span: FunctionSpan, file: string, kind: string): boolean {
@@ -483,7 +486,12 @@ function envFindings(
   for (const span of spans) {
     if (span.kind === "module" || span.expressionBody) continue;
     if (!isAuthMiddleware(span, file, kind)) continue;
-    if (!BODY_DENY_RE.test(codeAndStrings(src, span.bodyStart, span.bodyEnd))) continue;
+    const bodyCode = codeAndStrings(src, span.bodyStart, span.bodyEnd);
+    if (!BODY_DENY_RE.test(bodyCode)) continue;
+    // a middleware that never touches a credential (geo-block, host redirect) is not auth
+    if (!(span.name !== undefined && AUTH_FN_RE.test(span.name)) && !CREDENTIAL_RE.test(bodyCode)) {
+      continue;
+    }
     const subject =
       span.name !== undefined && NON_AUTH_NAME_RE.test(span.name)
         ? "CSRF protection"
@@ -541,7 +549,7 @@ function envFindings(
   return out;
 }
 
-// â”€â”€â”€ secret-check-fails-open â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── secret-check-fails-open ─────────────────────────────────────────────────
 
 const SECRET_NAME_RE = /SECRET|TOKEN|KEY|PASSWORD|AUTH/;
 const NOT_SECRET_RE = /URL|URI|HOST|ORIGIN|^NEXT_PUBLIC_|PUBLIC|ENABLED|DISABLED|ISSUER/;
@@ -612,15 +620,16 @@ function failOpenFindings(
   const guardedEarlier = (term: string, at: number): boolean => {
     const span = enclosingFunction(spans, at);
     const lo = span ? span.bodyStart : 0;
-    return ifs.some(
-      (g) =>
-        g.at >= lo &&
-        g.at < at &&
-        new RegExp(`^\\s*!\\s*(?:\\(\\s*)?${escapeRe(term)}\\s*\\)?\\s*(?:\\|\\||$)`).test(
-          g.cond,
-        ) &&
-        DENY_RE.test(src.code.slice(g.branch.start, g.branch.end)),
-    );
+    const guardRe = new RegExp(`^\\s*!\\s*(?:\\(\\s*)?${escapeRe(term)}\\s*\\)?\\s*(?:\\|\\||$)`);
+    return ifs.some((g) => {
+      if (g.at >= at) return false;
+      if (g.at < lo) {
+        // a module-scope guard placed before the handler also fails closed
+        const owner = enclosingFunction(spans, g.at);
+        if (owner !== undefined && owner.kind !== "module") return false;
+      }
+      return guardRe.test(g.cond) && DENY_RE.test(src.code.slice(g.branch.start, g.branch.end));
+    });
   };
   const nestedDenyIf = (s: IfStmt, term: string): IfStmt | undefined => {
     if (!s.branch.block) return undefined;
