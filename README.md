@@ -369,6 +369,7 @@ This project is structured as a `pnpm` monorepo:
 - `packages/shared`: Shared types, constants and finding id helpers (`@talaljaber/vibesafe-shared`).
 - `packages/cli`: The command-line interface (`@talaljaber/vibesafe-cli`).
 - `packages/mcp`: The stdio MCP server (`@talaljaber/vibesafe-mcp`).
+- `packages/attack`: Attack Mode, safe live probes that confirm static findings (`@talaljaber/vibesafe-attack`).
 - `packages/vscode`: The Visual Studio Code extension (published as `talaljaber.vibeguard-scanner`).
 
 Package versions are kept aligned with `node scripts/sync-versions.mjs` (see [CONTRIBUTING](CONTRIBUTING.md#6-versioning)).

@@ -33,11 +33,36 @@ importers:
         specifier: ^5.5.0
         version: 5.9.3
 
+  packages/attack:
+    dependencies:
+      '@talaljaber/vibesafe-core':
+        specifier: workspace:*
+        version: link:../core
+      '@talaljaber/vibesafe-shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.43
+      rimraf:
+        specifier: ^6.0.0
+        version: 6.1.3
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.43)
+
   packages/cli:
     dependencies:
       '@inquirer/prompts':
         specifier: ^8.5.2
         version: 8.5.2(@types/node@20.19.43)
+      '@talaljaber/vibesafe-attack':
+        specifier: workspace:*
+        version: link:../attack
       '@talaljaber/vibesafe-core':
         specifier: workspace:*
         version: link:../core
