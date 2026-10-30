@@ -635,3 +635,96 @@ describe("FileUploadDetector: scope and robustness", () => {
     expect(Array.isArray(fs)).toBe(true);
   });
 });
+
+describe("FileUploadDetector: review round 1", () => {
+  const diskWith = (expr: string): string =>
+    lines(
+      'const multer = require("multer");',
+      "const storage = multer.diskStorage({",
+      '  destination: "uploads/",',
+      `  filename: (req, file, cb) => cb(null, ${expr}),`,
+      "});",
+      'const upload = multer({ storage, limits: { fileSize: 1000 }, fileFilter: (r, f, cb) => cb(null, f.mimetype === "image/png") });',
+    );
+
+  it("is silent for multer disk names with a random prefix, still flags Date.now()", async () => {
+    for (const expr of [
+      "`${uuidv4()}-${file.originalname}`",
+      "randomUUID() + file.originalname",
+      "nanoid() + '-' + file.originalname",
+    ]) {
+      expect(byRule(await scan({ "s.js": diskWith(expr) }), NAME)).toEqual([]);
+    }
+    expect(
+      byRule(await scan({ "s.js": diskWith("Date.now() + file.originalname") }), NAME),
+    ).toHaveLength(1);
+  });
+
+  it("is silent for busboy and formidable names with a random component", async () => {
+    const bb = lines(
+      'const busboy = require("busboy");',
+      "function h(req) {",
+      "  const bb = busboy({ headers: req.headers, limits: { fileSize: 1 } });",
+      '  bb.on("file", (name, file, info) => {',
+      "    file.pipe(fs.createWriteStream(path.join(UPLOAD_DIR, randomUUID() + info.filename)));",
+      "  });",
+      "}",
+    );
+    expect(byRule(await scan({ "b.js": bb }), NAME)).toEqual([]);
+    const fm = lines(
+      'const formidable = require("formidable");',
+      "const form = formidable({ maxFileSize: 1000, filename: (n, e, part) => `${nanoid()}-${part.originalFilename}` });",
+    );
+    expect(byRule(await scan({ "f.js": fm }), NAME)).toEqual([]);
+  });
+
+  it("is silent for owner-scoped storage keys", async () => {
+    const a = lines(
+      "export async function POST(req: Request) {",
+      "  const user = await getUser();",
+      "  const uid = user!.id;",
+      "  const formData = await req.formData();",
+      '  const file = formData.get("f") as File;',
+      '  await supabase.storage.from("docs").upload(`${uid}/${file.name}`, file, { upsert: true });',
+      "}",
+    );
+    expect(byRule(await scan({ "app/api/up/route.ts": a }), NAME)).toEqual([]);
+    const b = lines(
+      'import multer from "multer";',
+      "const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 1 }, fileFilter });",
+      'app.post("/up", upload.single("f"), async (req, res) => {',
+      "  await s3.send(new PutObjectCommand({ Bucket: B, Key: `avatars/${currentUser.id}/${req.file.originalname}`, Body: req.file.buffer }));",
+      "});",
+    );
+    expect(byRule(await scan({ "s.js": b }), NAME)).toEqual([]);
+  });
+
+  it("is silent for multer().none() and a none-only binding, flags mixed use", async () => {
+    const a = lines('import multer from "multer";', 'app.post("/t", multer().none(), h);');
+    expect(await scan({ "a.js": a })).toEqual([]);
+    const b = lines(
+      'import multer from "multer";',
+      "const textOnly = multer();",
+      'app.post("/t", textOnly.none(), h);',
+    );
+    expect(await scan({ "b.js": b })).toEqual([]);
+    const c = lines(
+      'import multer from "multer";',
+      "const up = multer();",
+      'app.post("/t", up.none(), h);',
+      'app.post("/u", up.single("f"), h);',
+    );
+    expect(byRule(await scan({ "c.js": c }), SIZE)).toHaveLength(1);
+  });
+
+  it("does not treat a text formData field passed to save() as a file", async () => {
+    const a = lines(
+      '"use server";',
+      "export async function setTheme(formData: FormData) {",
+      '  const theme = formData.get("theme");',
+      "  await db.settings.save(theme);",
+      "}",
+    );
+    expect(byRule(await scan({ "app/actions.ts": a }), TYPE)).toEqual([]);
+  });
+});

@@ -223,7 +223,11 @@ export function fileBindings(src: JsSource, span: FunctionSpan): Set<string> {
       "g",
     );
     for (const m of code.matchAll(bindRe)) {
-      if (m[1] !== undefined && isFileExpr(m[2] ?? "")) out.add(m[1]);
+      if (m[1] === undefined) continue;
+      const expr = m[2] ?? "";
+      if (reqFileRe.test(expr) || (getRe.test(expr) && fileEvidence(code, m[1], expr))) {
+        out.add(m[1]);
+      }
     }
     for (const m of code.matchAll(
       /\b(?:const|let|var)\s*\{([^}]{0,200})\}\s*=\s*req\s*\.\s*files\b/g,
@@ -258,6 +262,14 @@ export function fileBindings(src: JsSource, span: FunctionSpan): Set<string> {
     // never throws
   }
   return out;
+}
+
+/** A `.get(` binding counts as a file only with evidence: `as File`, getAll, or file-only member use. */
+function fileEvidence(code: string, name: string, expr: string): boolean {
+  if (/\bas\s+(?:File|Blob)\b|\.\s*getAll\s*\(/.test(expr)) return true;
+  return new RegExp(
+    `(?<![\\w$.])${escapeRe(name)}\\s*\\.\\s*(?:arrayBuffer|stream|size|name|slice)\\b`,
+  ).test(code);
 }
 
 /** True when exprText reads the client name: UPLOAD_NAME_MEMBER_RE, `req.file(s)…​.name`, or `X.name` for X in fileVars. */
@@ -307,7 +319,7 @@ export function isSanitizedFilename(exprText: string, clientToken: RegExp): bool
 }
 
 const UNIQUE_RE =
-  /\b(?:randomUUID|uuid\w*|v4|nanoid|cuid2?|createId|ulid|randomBytes|crypto\s*\.\s*random\w*|Date\s*\.\s*now|Math\s*\.\s*random|hash\w*|userId|user\s*\.\s*id|session\s*\.\s*user|auth\s*\.\s*uid|req\s*\.\s*user|orgId|org\s*\.\s*id|tenantId|ownerId|accountId)\b/;
+  /\b(?:randomUUID|uuid\w*|v4|nanoid|cuid2?|createId|ulid|randomBytes|crypto\s*\.\s*random\w*|Date\s*\.\s*now|Math\s*\.\s*random|hash\w*|uid|session\s*\.\s*user|auth\s*\.\s*uid|req\s*\.\s*user|orgId|org\s*\.\s*id|tenantId|ownerId|accountId)\b|[A-Za-z_$]*[Uu]ser\s*[!?]?\s*\.\s*(?:id|uid|sub)\b|\w*(?:User|Org|Owner|Tenant|Account|Team|Workspace)Id\b|\buserId\b/;
 
 /** Expression text makes the key unique or owner-scoped. */
 export function hasUniqueOrOwnerPart(exprText: string): boolean {

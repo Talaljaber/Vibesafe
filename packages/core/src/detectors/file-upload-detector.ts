@@ -65,6 +65,9 @@ const FS_WRITE_RE =
 const FS_MOVE_RE =
   /(?<![\w$.])(?:(?:fs|fsp|fse|fsPromises)\s*\.\s*(?:promises\s*\.\s*)?)?(?:rename|renameSync|copyFile|copyFileSync)\s*\(/g;
 const IDENT_ONLY_RE = /^[A-Za-z_$][\w$]*$/;
+/** A random or unique component that makes an overwrite impossible (Date.now() alone does not). */
+const RANDOM_NAME_RE =
+  /\b(?:randomUUID|uuid\w*|v4|nanoid|cuid2?|createId|ulid|randomBytes|crypto\s*\.\s*random\w*|Math\s*\.\s*random)\b/;
 
 interface Call {
   start: number;
@@ -138,6 +141,7 @@ export class FileUploadDetector implements Detector {
     const multerCalls = bind.multer.flatMap((n) => callsOf(src, n));
     let firstNoFilter: Call | undefined;
     for (const call of multerCalls) {
+      if (isNoneOnly(src, call)) continue;
       const cfg = cfgOf(src, call);
       if (cfg.kind !== "unknown") {
         const dest = cfg.kind === "obj" ? cfg.obj.props.get("dest") : undefined;
@@ -401,6 +405,7 @@ export class FileUploadDetector implements Detector {
         if (src.code.slice(a0.start, a0.end).trim() !== "null") continue;
         const expr = resolveHop(src, span, src.code.slice(a1.start, a1.end).trim());
         if (!token.test(expr) || isSanitizedFilename(expr, token)) continue;
+        if (RANDOM_NAME_RE.test(expr)) continue;
         out.push({
           lib: "multer",
           offset: span.bodyStart + m.index,
@@ -428,6 +433,7 @@ export class FileUploadDetector implements Detector {
       const expr = resolveHop(src, span, src.code.slice(arg.start, arg.end).trim());
       const token = /\.\s*name\b/;
       if (!readsClientFileName(expr, vars) || isSanitizedFilename(expr, token)) continue;
+      if (RANDOM_NAME_RE.test(expr)) continue;
       out.push({
         lib: "express-fileupload",
         offset: mv.start,
@@ -476,6 +482,7 @@ export class FileUploadDetector implements Detector {
         if (arg === undefined) continue;
         const expr = resolveHop(src, span, src.code.slice(arg.start, arg.end).trim());
         if (!token.test(expr) || isSanitizedFilename(expr, token)) continue;
+        if (RANDOM_NAME_RE.test(expr)) continue;
         out.push({
           lib: "busboy",
           offset: call.start,
@@ -506,7 +513,7 @@ export class FileUploadDetector implements Detector {
         const own = new RegExp(`(?<![\\w$.])${escapeRe(pName)}\\s*\\.\\s*originalFilename\\b`);
         const body = src.code.slice(span.bodyStart, span.bodyEnd);
         const m = own.exec(body);
-        if (m === null || isSanitizedFilename(body, own)) continue;
+        if (m === null || isSanitizedFilename(body, own) || RANDOM_NAME_RE.test(body)) continue;
         out.push({
           lib: "formidable",
           offset: span.bodyStart + m.index,
@@ -522,6 +529,7 @@ export class FileUploadDetector implements Detector {
       const span = enclosingFunction(f.spans, call.start) ?? moduleSpan(src);
       const expr = resolveHop(src, span, src.code.slice(arg.start, arg.end).trim());
       if (!token.test(expr) || isSanitizedFilename(expr, token)) continue;
+      if (RANDOM_NAME_RE.test(expr)) continue;
       out.push({
         lib: "formidable",
         offset: call.start,
@@ -547,14 +555,16 @@ export class FileUploadDetector implements Detector {
         const raw = src.code.slice(keyRange.start, keyRange.end).trim();
         const resolved = resolveHop(src, span, raw);
         if (hasUniqueOrOwnerPart(resolved) || hasUniqueOrOwnerPart(raw)) return;
+        if (hasUniqueOrOwnerPart(expandTemplate(src, span, resolved))) return;
         let client = readsClientFileName(resolved, fileBindings(src, span));
+        const named = client;
         if (!client) {
           const hit = analyzeTaint(src, span).exprTaint(keyRange.start, keyRange.end);
           client = hit !== undefined && hit.trust === "remote" && hit.source.id !== "parameter";
         }
         if (!client) return;
         seen.add(callStart);
-        out.push(this.keyFinding(f, callStart, keyRange.start, lib, publicAcl));
+        out.push(this.keyFinding(f, callStart, keyRange.start, lib, publicAcl, named));
       } catch {
         // skip this call
       }
@@ -741,6 +751,7 @@ export class FileUploadDetector implements Detector {
     anchor: number,
     lib: string,
     publicAcl: boolean,
+    named: boolean,
   ): Finding {
     const line = f.src.lineAt(anchor);
     return makeFinding({
@@ -753,7 +764,7 @@ export class FileUploadDetector implements Detector {
       line,
       evidence: f.src.lineText(line).trim(),
       discriminator: callKey(f.src, callStart, lib),
-      plainEnglishProblem: `The storage key is the uploader's file name, so a second upload with the same name replaces the first, including other users' files${publicAcl ? " and, with a public ACL, files everyone downloads" : ""}.`,
+      plainEnglishProblem: `The storage key is built from ${named ? "the uploader's file name" : "request data"}, so a second upload with the same name replaces the first, including other users' files${publicAcl ? " and, with a public ACL, files everyone downloads" : ""}.`,
       whyItMatters:
         "Overwriting lets one user replace another user's file; an uploader-chosen extension turns a stored file into a page or script when the bucket is served.",
       fixSteps: [
@@ -787,6 +798,7 @@ function callsOf(src: SinkFile["src"], name: string): Call[] {
 function allMatches(code: string, re: RegExp, src: SinkFile["src"], base = 0): Call[] {
   const out: Call[] = [];
   for (const m of code.matchAll(re)) {
+    if (out.length >= 500) break;
     const start = base + m.index;
     const open = start + m[0].length - 1;
     const close = src.matchOf(open);
@@ -843,6 +855,32 @@ function filterState(cfg: Cfg): "ok" | "missing" | "unknown" {
   if (cfg.kind === "unknown") return "unknown";
   if (cfg.obj.props.has("fileFilter")) return "ok";
   return cfg.obj.spreads.length > 0 ? "unknown" : "missing";
+}
+
+/**
+ * A multer config used only as a text-only parser: `multer(...).none(` or `const X = multer(...)`
+ * where every `X.<member>` use in the file is `X.none(`.
+ */
+function isNoneOnly(src: SinkFile["src"], call: Call): boolean {
+  if (/^\s*\.\s*none\s*\(/.test(src.code.slice(call.close + 1, call.close + 20))) return true;
+  const before = src.code.slice(Math.max(0, call.start - 80), call.start);
+  const m = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=\n]{1,40})?=\s*(?:await\s+)?$/.exec(
+    before,
+  );
+  if (m?.[1] === undefined) return false;
+  const uses = [
+    ...src.code.matchAll(new RegExp(`(?<![\\w$.])${escapeRe(m[1])}\\s*\\.\\s*(\\w+)`, "g")),
+  ];
+  return uses.length > 0 && uses.every((u) => u[1] === "none");
+}
+
+/** Replaces each bare `${ident}` in a template key with its one-hop initializer. */
+function expandTemplate(src: SinkFile["src"], span: FunctionSpan, text: string): string {
+  if (!text.includes("${")) return text;
+  return text.replace(/\$\{\s*([A-Za-z_$][\w$]*)\s*\}/g, (all, id: string) => {
+    const r = resolveHop(src, span, id);
+    return r === id ? all : `${"$"}{${r}}`;
+  });
 }
 
 /** One-hop resolution of a bare identifier to its `const/let/var` initializer inside `span`. */

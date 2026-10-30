@@ -84,6 +84,7 @@ describe("fileBindings", () => {
         "  const form = await req.formData();",
         '  const a = form.get("a") as File;',
         '  const b = formData.get("b");',
+        "  await b.arrayBuffer();",
         "  const c = req.file;",
         "  const d = req.files.doc;",
         "  const { e } = req.files;",
@@ -98,10 +99,27 @@ describe("fileBindings", () => {
 
   it("uses the first parameter of a server action as the form", () => {
     const set = bind(
-      lines("async function up(payload) {", '  const f = payload.get("file");', "}"),
+      lines(
+        "async function up(payload) {",
+        '  const f = payload.get("file");',
+        "  await f.arrayBuffer();",
+        "}",
+      ),
       "server-action",
     );
     expect(set.has("f")).toBe(true);
+  });
+
+  it("does not treat a plain text field read with get() as a file", () => {
+    const set = bind(
+      lines(
+        "async function up(formData) {",
+        '  const theme = formData.get("theme");',
+        "  await db.save(theme);",
+        "}",
+      ),
+    );
+    expect(set.has("theme")).toBe(false);
   });
 
   it("does not include org, user or plain parameters", () => {
