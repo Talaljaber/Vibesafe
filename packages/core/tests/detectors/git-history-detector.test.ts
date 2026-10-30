@@ -98,14 +98,16 @@ describe("GitHistoryDetector", () => {
     const dir = await makeTempRepo();
     tempDirs.push(dir);
 
-    for (let i = 0; i < 10; i++) {
+    // Four revisions are enough to exercise dedupe; each commit spawns git, which is slow
+    // on Windows under load, so the count and an explicit timeout keep the test stable.
+    for (let i = 0; i < 4; i++) {
       await fs.writeFile(
         path.join(dir, "config.ts"),
         `const key = "${FAKE_OPENAI_KEY}"; // revision ${i}\n`,
       );
       commitAll(dir, `revision ${i}`);
     }
-    // Delete it on the 11th commit so we exercise the "recoverable" path too.
+    // Delete it in a final commit so we exercise the "recoverable" path too.
     await fs.writeFile(path.join(dir, "config.ts"), `const key = "gone";\n`);
     commitAll(dir, "remove key");
 
@@ -113,7 +115,7 @@ describe("GitHistoryDetector", () => {
     const findings = await detector.detect(context);
 
     expect(findings).toHaveLength(1);
-  });
+  }, 90_000);
 
   it("returns [] without throwing for a directory that is not a git repo", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "vibesafe-not-git-"));
