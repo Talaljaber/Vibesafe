@@ -292,3 +292,10 @@ describe("cookie flags review round 2", () => {
     expect(f.some((x) => x.ruleId === NO_HTTPONLY)).toBe(true);
   });
 });
+
+describe("cookie-flags round 3", () => {
+  it("a session_timeout metadata cookie is silent", async () => {
+    const f = await one("server.js", `res.cookie("session_timeout", String(config.timeout));`);
+    expect(f).toEqual([]);
+  });
+});

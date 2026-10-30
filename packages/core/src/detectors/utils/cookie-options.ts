@@ -36,7 +36,7 @@ export const DENY_TOKENS: ReadonlySet<string> = new Set(
 const METADATA_TOKENS: ReadonlySet<string> = new Set(
   (
     "at expires expiry expiresat exp time timestamp last provider method type status hint " +
-    "expiration created updated"
+    "expiration created updated timeout ttl maxage duration"
   ).split(" "),
 );
 

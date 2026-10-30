@@ -271,3 +271,22 @@ describe("CsrfDetector review round 2", () => {
     expect(f.length).toBeGreaterThan(0);
   });
 });
+
+describe("CsrfDetector review round 3", () => {
+  it("split MERN layout: refresh cookie set in a non-express controller is silent", async () => {
+    const f = await go({
+      "server.js": `const express = require("express");\nconst verifyJWT = require("./mw/verifyJWT");\nconst app = express();\napp.use(express.json());\napp.use("/refresh", require("./routes/refresh"));\napp.use(verifyJWT);\napp.use("/employees", require("./routes/employees"));\n`,
+      "controllers/authController.js": `const handleLogin = async (req, res) => {\n  res.cookie("jwt", refreshToken, { httpOnly: true, secure: true });\n  res.json({ accessToken });\n};\nmodule.exports = { handleLogin };\n`,
+      "routes/refresh.js": `const router = require("express").Router();\nrouter.get("/", (req, res) => {\n  const t = req.cookies.jwt;\n  res.json({ accessToken });\n});\nmodule.exports = router;\n`,
+      "routes/employees.js": `const router = require("express").Router();\nrouter.put("/:id", (req, res) => res.json({}));\nrouter.delete("/:id", (req, res) => res.json({}));\nmodule.exports = router;\n`,
+    });
+    expect(f).toEqual([]);
+  });
+  it("a refresh-only read before a real session read does not hide the session read", async () => {
+    const f = await go({
+      "controllers/authController.js": `exports.login = (req, res) => { res.cookie("jwt", refreshToken, { httpOnly: true }); res.json({}); };\n`,
+      "server.js": `const express = require("express");\nconst app = express();\napp.get("/r", (req, res) => { const t = req.cookies.jwt; res.json({}); });\napp.use((req, res, next) => { const s = req.cookies.token; next(); });\napp.delete("/items/:id", (req, res) => res.json({}));\n`,
+    });
+    expect(f.length).toBeGreaterThan(0);
+  });
+});

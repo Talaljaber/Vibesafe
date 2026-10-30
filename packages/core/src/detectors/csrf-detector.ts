@@ -215,7 +215,7 @@ export class CsrfDetector implements Detector {
 
         const sites = findCookieSites(src);
         for (const s of sites) {
-          if (isExpressFile && s.kind === "express" && !s.deletes) {
+          if (s.kind === "express" && !s.deletes) {
             if (s.refresh) refreshNames.add(s.name);
             else if (s.session) sessionNames.add(s.name);
           }
@@ -247,6 +247,7 @@ export class CsrfDetector implements Detector {
           middleware.push({ file, src, offset: m.index ?? 0, kind: "passport-session" });
         }
         if (isExpressFile && code.includes("cookies")) {
+          let reads = 0;
           COOKIE_READ_RE.lastIndex = 0;
           for (const m of src.text.matchAll(COOKIE_READ_RE)) {
             const i = m.index ?? 0;
@@ -254,7 +255,7 @@ export class CsrfDetector implements Detector {
             const name = m[1] ?? m[2] ?? "";
             if (isSessionCookieName(name) && !isRefreshCookie(name, undefined)) {
               cookieReads.push({ name, site: { file, src, offset: i, kind: "cookie-token" } });
-              break;
+              if (++reads >= 8) break;
             }
           }
         }
