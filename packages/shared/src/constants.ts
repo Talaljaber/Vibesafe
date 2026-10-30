@@ -87,6 +87,7 @@ const DOCKERFILE_RE =
 /** `Dockerfile.ts` or `dockerfile.json` are source/data files, not Dockerfiles. */
 const NOT_DOCKERFILE_EXT_RE = /\.(?:[cm]?[jt]sx?|json|py|md|txt|ya?ml|toml|lock)$/i;
 const COMPOSE_RE = /^(?:docker-)?compose(?:\.[\w-]+)*\.ya?ml$/i;
+const FIREBASE_RULES_RE = /^(?:firestore|storage)(?:[.-]\w+)*\.rules$/i;
 const WORKFLOW_RE = /(?:^|\/)\.github\/workflows\/[^/]+\.ya?ml$/;
 const ACTION_RE = /^action\.ya?ml$/;
 const SHELL_RE = /\.(?:sh|bash|zsh)$/;
@@ -128,6 +129,7 @@ export type InfraFileKind =
   | "dockerfile"
   | "dockerignore"
   | "compose"
+  | "firebase-rules"
   | "workflow"
   | "gh-action"
   | "shell"
@@ -160,6 +162,7 @@ export function classifyInfraFile(relativePath: string): InfraFileKind | null {
   if (WORKFLOW_RE.test(p)) return "workflow";
   if (ACTION_RE.test(base)) return "gh-action";
   if (COMPOSE_RE.test(base)) return "compose";
+  if (FIREBASE_RULES_RE.test(base)) return "firebase-rules"; // firestore.rules, storage.rules, firestore.dev.rules
   if (DOCKERFILE_RE.test(base) && !NOT_DOCKERFILE_EXT_RE.test(base)) return "dockerfile";
   if (SHELL_RE.test(base)) return "shell";
   if (base === "next.config.mts") return "next-config-mts";
