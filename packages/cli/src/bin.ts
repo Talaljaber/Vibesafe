@@ -59,7 +59,7 @@ program
   )
   .option(
     "--online",
-    "Also look up dependency versions in the OSV advisory database (sends package names and versions to api.osv.dev; off by default)",
+    "Also check dependencies online: OSV advisories for installed versions, and that each direct dependency exists on npm/PyPI (sends package names and versions to api.osv.dev, registry.npmjs.org, api.npmjs.org and pypi.org; off by default)",
   )
   .action(async (dir, options) => {
     await runScan(dir, options);
