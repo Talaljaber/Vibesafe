@@ -245,7 +245,8 @@ describe("parseDatabaseRules / classifyRtdbValue", () => {
 describe("parseRulesFile resource limits", () => {
   const head = "rules_version = '2';\nservice cloud.firestore {\n";
   it("handles deep match nesting with many allows quickly", () => {
-    const text = head + "match /a{\n".repeat(5000) + "allow read;\n".repeat(20000) + "}".repeat(5000);
+    const text =
+      head + "match /a{\n".repeat(5000) + "allow read;\n".repeat(20000) + "}".repeat(5000);
     const t0 = Date.now();
     const out = parseRulesFile(text.slice(0, 490_000));
     expect(Date.now() - t0).toBeLessThan(500);
