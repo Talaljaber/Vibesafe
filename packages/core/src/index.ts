@@ -132,3 +132,10 @@ export type {
 export * from "./fixers/index.js";
 
 export { sanitizeEvidence, MAX_EVIDENCE_LENGTH } from "./detectors/utils/sanitize-evidence.js";
+export {
+  nextRoutePath,
+  findHandlerLine,
+  isPublicRoutePath,
+  isApiRoute,
+  isRiskyRoutePattern,
+} from "./detectors/utils/route-analyzer.js";
