@@ -16,6 +16,9 @@ import { supabaseNonJsExempt } from "../../src/detectors/groups/supabase.js";
 import { depsNonJsExempt } from "../../src/detectors/groups/deps.js";
 import { toolingNonJsExempt } from "../../src/detectors/groups/tooling.js";
 
+// Built from parts so the source never holds a complete token-shaped literal.
+const AWS_KEY = ["AKIA", "QX4MZ2PLR9WD3K7A"].join("");
+
 const PROJECT: ProjectContext = {
   framework: "unknown",
   language: "mixed",
@@ -150,6 +153,64 @@ const ENV = [
   ...JS_BAIT.map((l) => `# ${l}`),
 ].join("\n");
 
+/** Insecure Terraform: every IaC rule would fire, and JS bait sits in comments and strings. */
+const TERRAFORM = [
+  'resource "aws_s3_bucket_acl" "docs" {',
+  '  acl = "public-read"',
+  "}",
+  'resource "aws_db_instance" "main" {',
+  "  publicly_accessible = true",
+  "  storage_encrypted = false",
+  '  password = "Zq8mT4vLw2Rb7YnC5"',
+  "}",
+  'resource "aws_security_group" "db" {',
+  "  ingress {",
+  "    from_port = 22",
+  "    to_port = 22",
+  '    protocol = "tcp"',
+  '    cidr_blocks = ["0.0.0.0/0"]',
+  "  }",
+  "}",
+  'resource "aws_iam_role_policy" "p" {',
+  '  policy = jsonencode({ Statement = [{ Effect = "Allow", Action = "*", Resource = "*" }] })',
+  "}",
+  ...JS_BAIT.map((l) => `# ${l}`),
+].join("\n");
+
+const TFVARS = [
+  'db_password = "Zq8mT4vLw2Rb7YnC5"',
+  `aws_access_key = "${AWS_KEY}"`,
+  'api_url = "http://localhost:3000"',
+  ...JS_BAIT.map((l) => `# ${l}`),
+].join("\n");
+
+const K8S = [
+  "apiVersion: apps/v1",
+  "kind: Deployment",
+  "metadata:",
+  "  name: app",
+  "spec:",
+  "  template:",
+  "    spec:",
+  "      hostNetwork: true",
+  "      containers:",
+  "        - name: app",
+  "          image: acme/app:latest",
+  "          securityContext:",
+  "            privileged: true",
+  "          env:",
+  "            - name: DEBUG",
+  '              value: "True"',
+  "            - name: API_URL",
+  "              value: http://localhost:3000",
+  ...JS_BAIT.map((l) => `# ${l}`),
+  "---",
+  "apiVersion: v1",
+  "kind: Secret",
+  "stringData:",
+  "  ADMIN_PASSWORD: Tr0ub4dor-and-more",
+].join("\n");
+
 const SAMPLES: { kind: FileKind; files: Record<string, string> }[] = [
   {
     kind: "python",
@@ -165,6 +226,9 @@ const SAMPLES: { kind: FileKind; files: Record<string, string> }[] = [
   { kind: "workflow", files: { ".github/workflows/ci.yml": WORKFLOW } },
   { kind: "shell", files: { "scripts/deploy.sh": SHELL, "app/api/run.sh": SHELL } },
   { kind: "env", files: { ".env.staging2": ENV } },
+  { kind: "terraform", files: { "infra/main.tf": TERRAFORM, "app/api/db.tf": TERRAFORM } },
+  { kind: "tfvars", files: { "infra/prod.tfvars": TFVARS, "env.auto.tfvars": TFVARS } },
+  { kind: "k8s-manifest", files: { "infra/k8s/app.yaml": K8S, "deploy/app.yml": K8S } },
 ];
 
 describe("non-JS files", () => {

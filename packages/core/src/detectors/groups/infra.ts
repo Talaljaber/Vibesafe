@@ -14,6 +14,9 @@ import { GhaScriptInjectionDetector } from "../gha-script-injection-detector.js"
 import { ShellScriptDetector } from "../shell-script-detector.js";
 import { NextjsConfigDetector } from "../nextjs-config-detector.js";
 import { GitignoreEnvDetector } from "../gitignore-env-detector.js";
+import { TerraformDetector } from "../terraform-detector.js";
+import { K8sManifestDetector } from "../k8s-manifest-detector.js";
+import { IacSecretDetector } from "../iac-secret-detector.js";
 
 export {
   DockerfileDetector,
@@ -23,6 +26,9 @@ export {
   ShellScriptDetector,
   NextjsConfigDetector,
   GitignoreEnvDetector,
+  TerraformDetector,
+  K8sManifestDetector,
+  IacSecretDetector,
 };
 
 /** Fresh instances of this group's detectors, registered after the built-in ones. */
@@ -34,14 +40,36 @@ export const infraDetectors = (): Detector[] => [
   new ShellScriptDetector(),
   new NextjsConfigDetector(),
   new GitignoreEnvDetector(),
+  new TerraformDetector(),
+  new K8sManifestDetector(),
+  new IacSecretDetector(),
 ];
 
 /**
  * Cross-owner precedence rules declared by this group (see scanner/precedence.ts).
- * None: overlaps with the secret detector are avoided inside the detectors (lines a
- * known secret pattern matches are skipped).
+ * The IaC secret rules are specific, so they hide the low-confidence generic
+ * password/secret assignment findings reported on the same line.
  */
-export const infraPrecedence: readonly PrecedenceRule[] = [];
+export const infraPrecedence: readonly PrecedenceRule[] = [
+  {
+    winner: "secret/terraform-literal-credential",
+    losers: ["secret/sec-generic-password", "secret/sec-generic-secret"],
+    scope: "line",
+    reason: "The Terraform credential rule already reports the literal on this line.",
+  },
+  {
+    winner: "secret/k8s-secret-manifest",
+    losers: ["secret/sec-generic-password", "secret/sec-generic-secret"],
+    scope: "line",
+    reason: "The Kubernetes Secret rule already reports this value.",
+  },
+  {
+    winner: "secret/k8s-configmap-credential",
+    losers: ["secret/sec-generic-password", "secret/sec-generic-secret"],
+    scope: "line",
+    reason: "The ConfigMap credential rule already reports this value.",
+  },
+];
 
 /** Detector id -> non-JS file kinds it legitimately reports on (used by non-js-files.test.ts). */
 export const infraNonJsExempt: Readonly<Record<string, readonly FileKind[]>> = {
@@ -51,4 +79,7 @@ export const infraNonJsExempt: Readonly<Record<string, readonly FileKind[]>> = {
   "gha-script-injection-detector": ["workflow", "gh-action"],
   "shell-script-detector": ["shell"],
   "gitignore-env-detector": ["gitignore"],
+  "terraform-detector": ["terraform"],
+  "k8s-manifest-detector": ["k8s-manifest"],
+  "iac-secret-detector": ["k8s-manifest", "terraform", "tfvars"],
 };
