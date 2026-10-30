@@ -982,3 +982,62 @@ describe("depsPrecedence for existence findings", () => {
     },
   );
 });
+
+describe("PackageExistenceDetector review extra round 1", () => {
+  const pypi =
+    (_r: Record<string, Route>) =>
+    (url: string): Route | undefined =>
+      url.startsWith("https://pypi.org/pypi/") ? { status: 404 } : undefined;
+
+  it("never reports a Node built-in name held by npm as a takedown", async () => {
+    const files = { "package.json": pkg({ fs: "^0.0.1-security", http: "^0.0.1-security" }) };
+    const { findings, calls } = await detect(
+      files,
+      npmRoutes({
+        downloads: { fs: 1_850_000, http: 20000 },
+        latest: { fs: { status: 200, body: { version: "0.0.1-security" } } },
+      }),
+    );
+    expect(findings).toEqual([]);
+    expect(calls.some((u) => u.includes("/fs") || u.includes("/http"))).toBe(false);
+  });
+
+  it("handles very large runs of blank lines in manifests without hanging", async () => {
+    const blanks = "\n".repeat(200_000);
+    const started = Date.now();
+    await detect(
+      {
+        "package.json": pkg({ "leftpadx-ai-helper": "^1.0.0" }),
+        ".npmrc": blanks,
+        "requirements.txt": blanks + "fastapi-auth-magic==0.1.0\n",
+        "pyproject.toml": blanks + '[project]\ndependencies = ["fastapi-auth-magic>=0.1"]\n',
+      },
+      npmRoutes({}),
+    );
+    expect(Date.now() - started).toBeLessThan(5000);
+  });
+
+  it("honours a poetry source header with a trailing comment", async () => {
+    const { calls } = await detect(
+      {
+        "pyproject.toml":
+          '[tool.poetry.dependencies]\nacme-internal-lib = "^1.0"\n\n[[tool.poetry.source]]  # private mirror\nname = "acme"\nurl = "https://pypi.acme.dev/simple"\n',
+      },
+      pypi({}),
+    );
+    expect(calls).toEqual([]);
+  });
+
+  it("recognises yarn berry npmScopes nested with 4-space indentation", async () => {
+    const { findings, calls } = await detect(
+      {
+        "package.json": pkg({ "@acmeprobe/ui-kit": "^1.0.0" }),
+        ".yarnrc.yml":
+          "npmScopes:\n    acmeprobe:\n        npmRegistryServer: https://npm.acme.dev/\n",
+      },
+      npmRoutes({}),
+    );
+    expect(findings).toEqual([]);
+    expect(calls).toEqual([]);
+  });
+});

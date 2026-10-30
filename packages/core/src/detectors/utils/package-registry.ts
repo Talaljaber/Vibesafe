@@ -76,12 +76,14 @@ export function parseYarnrc(text: string): RegistryConfig {
   if (typeof text !== "string") return config;
   let inScopes = false;
   let scope: string | undefined;
+  let scopeIndent: number | undefined;
   for (const raw of text.split(/\r?\n/)) {
     if (raw.trim() === "" || raw.trim().startsWith("#")) continue;
     const indent = raw.length - raw.trimStart().length;
     const line = raw.trim();
     if (indent === 0) {
       inScopes = /^npmScopes\s*:/.test(line);
+      scopeIndent = undefined;
       scope = undefined;
       const top = /^npmRegistryServer\s*:\s*(.+)$/.exec(line);
       if (top && isPrivateRegistryUrl(unquote(top[1]!))) config.defaultIsPrivate = true;
@@ -89,7 +91,8 @@ export function parseYarnrc(text: string): RegistryConfig {
     }
     if (!inScopes) continue;
     const key = /^["']?([A-Za-z0-9._~-]+)["']?\s*:\s*$/.exec(line);
-    if (key && indent <= 2) {
+    if (scopeIndent === undefined && key) scopeIndent = indent;
+    if (key && indent === scopeIndent) {
       scope = `@${key[1]!.toLowerCase()}`;
       continue;
     }

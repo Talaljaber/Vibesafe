@@ -12,6 +12,7 @@
 // Any failure degrades to a scan warning; the offline results stand on their own.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { builtinModules } from "node:module";
 import type { Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared";
 import { isPythonRequirementsFile } from "@talaljaber/vibesafe-shared";
 import { makeFinding } from "./utils/finding.js";
@@ -285,6 +286,8 @@ export class PackageExistenceDetector implements Detector {
         }
         if (!isValidPackageName(name)) continue;
         if (workspaceNames.has(name)) continue;
+        // Node core modules (fs, http) are empty name reservations on npm, not takedowns.
+        if (BUILTIN_NAMES.has(name.replace(/^node:/, ""))) continue;
         if (name.startsWith("@") && config.privateScopes.has(name.split("/")[0]!.toLowerCase())) {
           continue;
         }
@@ -386,7 +389,14 @@ export class PackageExistenceDetector implements Detector {
         }),
         aborted,
       ]);
-      if (!res.ok) return { kind: "status", status: res.status };
+      if (!res.ok) {
+        try {
+          await (res as { body?: { cancel?: () => Promise<void> } }).body?.cancel?.();
+        } catch {
+          /* ignore */
+        }
+        return { kind: "status", status: res.status };
+      }
       const json = await Promise.race([res.json(), aborted]);
       return { kind: "ok", status: res.status, json };
     } catch (error) {
@@ -642,7 +652,7 @@ async function localPythonNames(context: ScanContext): Promise<Set<string>> {
     if (typeof content !== "string") continue;
     let section = "";
     for (const line of content.split(/\r?\n/)) {
-      const header = /^\s*\[\[?\s*([A-Za-z0-9_.\-]+)\s*\]\]?\s*(?:#.*)?$/.exec(line);
+      const header = /^\s*\[\[?\s*([A-Za-z0-9_.\-"']+)\s*\]\]?\s*(?:#.*)?$/.exec(line);
       if (header) {
         section = header[1]!.replace(/["']/g, "");
         const sub = /^tool\.uv\.sources\.(.+)$/.exec(section);
@@ -678,7 +688,10 @@ function isIncludeGroupRef(evidence: string, name: string): boolean {
   return false;
 }
 
-const NPMRC_AUTH_RE = /^\s*\/\/registry\.npmjs\.org\/:(?:_auth(?:Token)?|_password|username)\s*=/im;
+const BUILTIN_NAMES: ReadonlySet<string> = new Set(builtinModules);
+
+const NPMRC_AUTH_RE =
+  /^[ 	]*\/\/registry\.npmjs\.org\/:(?:_auth(?:Token)?|_password|username)\s*=/im;
 
 /** A requirements / pyproject / Pipfile that installs from somewhere other than public PyPI. */
 function hasCustomPythonIndex(
@@ -686,12 +699,12 @@ function hasCustomPythonIndex(
   kind: "requirements" | "pyproject" | "pipfile",
 ): boolean {
   if (kind === "requirements") {
-    return /^\s*(?:-i|-f|--index-url|--extra-index-url|--find-links|--no-index)(?:\s|=|$)/m.test(
+    return /^[ 	]*(?:-i|-f|--index-url|--extra-index-url|--find-links|--no-index)(?:\s|=|$)/m.test(
       content,
     );
   }
   if (
-    /^\s*\[\[?\s*(?:tool\.poetry\.source|tool\.uv\.index|tool\.pdm\.source)\s*\]\]?\s*$/m.test(
+    /^[ 	]*\[\[?[ 	]*(?:tool\.poetry\.source|tool\.uv\.index|tool\.pdm\.source)[ 	]*\]\]?[ 	]*(?:#.*)?$/m.test(
       content,
     )
   ) {
@@ -700,7 +713,7 @@ function hasCustomPythonIndex(
   if (kind === "pyproject") {
     let inUv = false;
     for (const line of content.split(/\r?\n/)) {
-      const header = /^\s*\[\[?\s*([A-Za-z0-9_.\-]+)\s*\]\]?\s*(?:#.*)?$/.exec(line);
+      const header = /^\s*\[\[?\s*([A-Za-z0-9_.\-"']+)\s*\]\]?\s*(?:#.*)?$/.exec(line);
       if (header) {
         inUv = /^tool\.uv(?:\.pip)?$/.test(header[1]!);
         continue;
@@ -712,7 +725,7 @@ function hasCustomPythonIndex(
   if (kind !== "pipfile") return false;
   let inSource = false;
   for (const line of content.split(/\r?\n/)) {
-    const header = /^\s*\[\[?\s*([A-Za-z0-9_.\-]+)\s*\]\]?\s*(?:#.*)?$/.exec(line);
+    const header = /^\s*\[\[?\s*([A-Za-z0-9_.\-"']+)\s*\]\]?\s*(?:#.*)?$/.exec(line);
     if (header) {
       inSource = /^\[\[\s*source\s*\]\]/.test(line.trim());
       continue;
