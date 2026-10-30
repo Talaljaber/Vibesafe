@@ -185,6 +185,9 @@ export class CsrfDetector implements Detector {
     let acceptsForms = false;
     const middleware: Site[] = [];
     let firstCookieToken: Site | undefined;
+    const refreshNames = new Set<string>();
+    const sessionNames = new Set<string>();
+    const cookieReads: Array<{ name: string; site: Site }> = [];
 
     for (const { file, src } of files) {
       try {
@@ -212,6 +215,10 @@ export class CsrfDetector implements Detector {
 
         const sites = findCookieSites(src);
         for (const s of sites) {
+          if (isExpressFile && s.kind === "express" && !s.deletes) {
+            if (s.refresh) refreshNames.add(s.name);
+            else if (s.session) sessionNames.add(s.name);
+          }
           if (s.kind === "express-session" || s.kind === "cookie-session") {
             middleware.push({ file, src, offset: s.start, kind: "session-middleware" });
           } else if (
@@ -239,14 +246,14 @@ export class CsrfDetector implements Detector {
         for (const m of code.matchAll(PASSPORT_SESSION_RE)) {
           middleware.push({ file, src, offset: m.index ?? 0, kind: "passport-session" });
         }
-        if (isExpressFile && firstCookieToken === undefined && code.includes("cookies")) {
+        if (isExpressFile && code.includes("cookies")) {
           COOKIE_READ_RE.lastIndex = 0;
           for (const m of src.text.matchAll(COOKIE_READ_RE)) {
             const i = m.index ?? 0;
             if (code[i] !== text[i]) continue;
             const name = m[1] ?? m[2] ?? "";
             if (isSessionCookieName(name) && !isRefreshCookie(name, undefined)) {
-              firstCookieToken = { file, src, offset: i, kind: "cookie-token" };
+              cookieReads.push({ name, site: { file, src, offset: i, kind: "cookie-token" } });
               break;
             }
           }
@@ -254,6 +261,12 @@ export class CsrfDetector implements Detector {
       } catch {
         // skip the file
       }
+    }
+
+    if (firstCookieToken === undefined) {
+      // A read of a cookie that the project only ever sets as a refresh token is not a session.
+      const read = cookieReads.find((r) => !refreshNames.has(r.name) || sessionNames.has(r.name));
+      if (read !== undefined) firstCookieToken = read.site;
     }
 
     const evidence =

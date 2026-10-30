@@ -32,6 +32,14 @@ export const DENY_TOKENS: ReadonlySet<string> = new Set(
   ).split(" "),
 );
 
+/** Name tokens marking a metadata cookie about the session (timestamps, provider, status), not the credential. */
+const METADATA_TOKENS: ReadonlySet<string> = new Set(
+  (
+    "at expires expiry expiresat exp time timestamp last provider method type status hint " +
+    "expiration created updated"
+  ).split(" "),
+);
+
 const VALUE_TOKENS: ReadonlySet<string> = new Set([
   "token",
   "jwt",
@@ -92,13 +100,14 @@ export function isPlainLiteralValue(valueText: string): boolean {
   return PLAIN_LITERAL_RE.test(valueText.trim());
 }
 
-/** Refresh-token cookie: the name carries a refresh token, or (name not session-like) the value does. */
+/** Refresh-token cookie: the name carries a refresh token, or the value does (identifier tokens with refresh and none of access/session/sid), whatever the name. */
 export function isRefreshCookie(name: string, valueText: string | undefined): boolean {
   const nt = cookieNameTokens(name);
   if (nt.includes("refresh") || nt.includes("refreshtoken")) return true;
-  if (valueText === undefined || isSessionCookieName(name)) return false;
+  if (valueText === undefined) return false;
   const vt = (valueText.match(/[A-Za-z_$][\w$]*/g) ?? []).flatMap((id) => cookieNameTokens(id));
-  return vt.includes("refresh") || vt.includes("refreshtoken");
+  if (!vt.includes("refresh") && !vt.includes("refreshtoken")) return false;
+  return !vt.some((t) => ["access", "accesstoken", "session", "sid", "sessionid"].includes(t));
 }
 
 const JWT_IMPORT_RE = /(?:from\s*|require\s*\(\s*)["'](?:jsonwebtoken|jose)["']/g;
@@ -323,7 +332,35 @@ export function readCookieFlags(src: JsSource, open: number): CookieFlags {
 /** Flags of an options argument: object literal, same-file const identifier, or anything else (all "dynamic"). */
 export function flagsOfArgument(src: JsSource, start: number, end: number): CookieFlags {
   const open = objectOpenOf(src, { start, end });
-  return open === undefined ? { ...DYNAMIC_FLAGS } : readCookieFlags(src, open);
+  if (open === undefined) return { ...DYNAMIC_FLAGS };
+  const flags = readCookieFlags(src, open);
+  const t = trimRange(src, { start, end });
+  const id = src.code.slice(t.start, t.end);
+  return IDENT_RE.test(id) ? applyMutations(src, id, flags) : flags;
+}
+
+/** `ID.secure = ...`, `ID["secure"] = ...` or `Object.assign(ID, ...)` after the declaration make those flags "dynamic". */
+function applyMutations(src: JsSource, id: string, flags: CookieFlags): CookieFlags {
+  if (!src.code.includes(id)) return flags;
+  const out = { ...flags };
+  const e = escapeRe(id);
+  if (new RegExp(String.raw`(?<![\w$.])Object\s*\.\s*assign\s*\(\s*${e}\s*,`).test(src.code)) {
+    if (out.httpOnly === "missing") out.httpOnly = "dynamic";
+    if (out.secure === "missing") out.secure = "dynamic";
+    if (out.sameSite === "missing") out.sameSite = "dynamic";
+  }
+  const re = new RegExp(
+    String.raw`(?<![\w$.])${e}\s*(?:\.\s*(httpOnly|secure|sameSite)|\[\s*["'](httpOnly|secure|sameSite)["']\s*\])\s*=(?![=>])`,
+    "g",
+  );
+  for (const m of src.text.matchAll(re)) {
+    if (!isCodeAt(src, m.index ?? 0)) continue;
+    const k = m[1] ?? m[2];
+    if (k === "httpOnly") out.httpOnly = "dynamic";
+    else if (k === "secure") out.secure = "dynamic";
+    else if (k === "sameSite") out.sameSite = "dynamic";
+  }
+  return out;
 }
 
 /** Flags parsed from a literal Set-Cookie header string ("a=b; Path=/; HttpOnly"). */
@@ -484,7 +521,10 @@ export function findCookieSites(src: JsSource): CookieSite[] {
   const jwt = importsJwtLib(src);
 
   const classify = (name: string, valueCode: string | undefined): boolean => {
-    if (isSessionCookieName(name)) return true;
+    if (isSessionCookieName(name)) {
+      if (!cookieNameTokens(name).some((t) => METADATA_TOKENS.has(t))) return true;
+      return valueCode !== undefined && isSessionCookieValue(valueCode, jwt);
+    }
     if (valueCode === undefined || isDeniedCookieName(name)) return false;
     return isSessionCookieValue(valueCode, jwt);
   };

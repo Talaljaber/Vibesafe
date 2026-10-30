@@ -254,3 +254,20 @@ describe("CsrfDetector review round 1", () => {
     expect(f).toEqual([]);
   });
 });
+
+describe("CsrfDetector review round 2", () => {
+  it("MERN refresh token in a jwt-named cookie plus Authorization header auth is silent", async () => {
+    const f = await go({
+      "server.js": `const express = require("express");\nconst verifyJWT = require("./mw/verifyJWT");\nconst app = express();\napp.use(express.json());\napp.use("/auth", require("./routes/auth"));\napp.use(verifyJWT);\napp.use("/employees", require("./routes/employees"));\n`,
+      "routes/auth.js": `const router = require("express").Router();\nrouter.post("/", (req, res) => {\n  res.cookie("jwt", refreshToken, { httpOnly: true, secure: true });\n  res.json({ accessToken });\n});\nrouter.get("/refresh", (req, res) => {\n  const t = req.cookies.jwt;\n  res.json({ accessToken });\n});\nmodule.exports = router;\n`,
+      "routes/employees.js": `const router = require("express").Router();\nrouter.put("/:id", (req, res) => res.json({}));\nrouter.delete("/:id", (req, res) => res.json({}));\nmodule.exports = router;\n`,
+    });
+    expect(f).toEqual([]);
+  });
+  it("a session cookie read stays evidence when a non-refresh res.cookie sets the same name", async () => {
+    const f = await go({
+      "server.js": `const express = require("express");\nconst app = express();\napp.post("/a", (req, res) => { res.cookie("jwt", refreshToken, { httpOnly: true }); res.json({}); });\napp.post("/b", (req, res) => { res.cookie("jwt", accessToken, { httpOnly: true }); res.json({}); });\napp.use((req, res, next) => { const t = req.cookies.jwt; next(); });\napp.delete("/items/:id", (req, res) => res.json({}));\n`,
+    });
+    expect(f.length).toBeGreaterThan(0);
+  });
+});

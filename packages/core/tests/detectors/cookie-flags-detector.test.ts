@@ -257,3 +257,38 @@ describe("CookieFlagsDetector review round 1", () => {
     expect(f.length).toBeGreaterThan(0);
   });
 });
+
+describe("cookie flags review round 2", () => {
+  it("options mutated after declaration (Natours idiom) are not read as missing", async () => {
+    const f = await one(
+      "auth.js",
+      `const createSendToken = (user, res) => {\n  const token = signToken(user._id);\n  const cookieOptions = { expires: new Date(Date.now() + 1000), httpOnly: true };\n  if (process.env.NODE_ENV === 'production') cookieOptions.secure = true;\n  res.cookie('jwt', token, cookieOptions);\n};`,
+    );
+    expect(f.filter((x) => x.ruleId === NOT_SECURE)).toEqual([]);
+  });
+  it("bracket assignment and Object.assign also count as dynamic", async () => {
+    const f = await one(
+      "auth.js",
+      `const o = { httpOnly: true };\no["secure"] = isProd;\nres.cookie("session", token, o);\nconst p = { };\nObject.assign(p, base);\nres.cookie("sid", token, p);`,
+    );
+    expect(f).toEqual([]);
+  });
+  it("a comparison is not a mutation (still reports missing secure)", async () => {
+    const f = await one(
+      "auth.js",
+      `const o = { httpOnly: true };\nif (o.secure == null) {}\nres.cookie("session", token, o);`,
+    );
+    expect(f.some((x) => x.ruleId === NOT_SECURE)).toBe(true);
+  });
+  it("metadata cookies with a session word in the name are silent", async () => {
+    const f = await one(
+      "server.js",
+      `res.cookie("sessionExpiresAt", String(expiresAt));\nres.cookie("last_login_at", new Date().toISOString());\nres.cookie("auth_provider", provider);\nres.cookie("login_method", method);`,
+    );
+    expect(f).toEqual([]);
+  });
+  it("positive control: a metadata-named cookie holding a token still reports", async () => {
+    const f = await one("server.js", `res.cookie("session_type", sessionToken);`);
+    expect(f.some((x) => x.ruleId === NO_HTTPONLY)).toBe(true);
+  });
+});
