@@ -206,3 +206,158 @@ export async function GET(req: NextRequest) {
     expect(findings).toHaveLength(0);
   });
 });
+
+describe("SqlInjectionDetector: generic type arguments", () => {
+  it("flags $queryRawUnsafe and .query with TS type arguments", async () => {
+    const findings = await run(detector, {
+      "app/api/items/route.ts": `import { NextRequest } from "next/server";
+export async function GET(req: NextRequest) {
+  const sort = req.nextUrl.searchParams.get("sort");
+  const rows = await prisma.$queryRawUnsafe<Row[]>(\`SELECT * FROM items ORDER BY \${sort}\`);
+  const more = await pool.query<{ id: string; tags: Array<string> }>(
+    \`SELECT id FROM items WHERE name = '\${sort}'\`,
+  );
+  return Response.json({ rows, more });
+}`,
+    });
+    const hits = byRule(findings, "injection/sql-built-from-input");
+    expect(hits.map((f) => f.line)).toEqual([4, 6]);
+    expectRubric(findings);
+  });
+
+  it("stays silent for typed calls with bind parameters and tagged templates", async () => {
+    const findings = await run(detector, {
+      "app/api/items/route.ts": `import { NextRequest } from "next/server";
+export async function GET(req: NextRequest) {
+  const q = req.nextUrl.searchParams.get("q");
+  const a = await pool.query<Row>("SELECT * FROM items WHERE name = $1", [q]);
+  const b = await prisma.$queryRaw<Row[]>\`SELECT * FROM items WHERE name = \${q}\`;
+  const ok = 1 < 2 && 3 > (q ? 1 : 0);
+  return Response.json({ a, b, ok });
+}`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+});
+
+describe("SqlInjectionDetector: project query wrappers", () => {
+  it("flags a bare query() wrapper imported from a project module", async () => {
+    const findings = await run(
+      detector,
+      {
+        "app/api/search/route.ts": `import { NextRequest } from "next/server";
+import { query } from "../../../lib/db";
+export async function GET(req: NextRequest) {
+  const search = req.nextUrl.searchParams.get("q");
+  const rows = await query<Row>(\`SELECT * FROM products WHERE name ILIKE '%\${search}%'\`);
+  return Response.json(rows);
+}`,
+      },
+      { targetFiles: ["app/api/search/route.ts"] },
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.ruleId).toBe("injection/sql-built-from-input");
+    expect(findings[0]!.severity).toBe("critical");
+    expect(findings[0]!.line).toBe(5);
+    expectRubric(findings);
+  });
+
+  it("flags a same-file wrapper and an aliased import, with stable ids", async () => {
+    const files = {
+      "server/a.ts": `import express from "express";
+const app = express();
+async function runQuery(text: string, params: unknown[] = []) { return pool.query(text, params); }
+app.get("/a", async (req, res) => {
+  res.json(await runQuery("SELECT * FROM users WHERE id = " + req.query.id));
+});`,
+      "server/b.ts": `import express from "express";
+import { execute as q } from "@/lib/db";
+const app = express();
+app.get("/b", async (req, res) => {
+  res.json(await q(\`DELETE FROM carts WHERE owner = '\${req.params.owner}'\`));
+});`,
+    };
+    const findings = await run(detector, files);
+    expect(findings.map((f) => f.file).sort()).toEqual(["server/a.ts", "server/b.ts"]);
+    expectRubric(findings);
+    const again = await run(detector, files);
+    expect(again.map((f) => f.id).sort()).toEqual(findings.map((f) => f.id).sort());
+  });
+
+  it("stays silent for parameterized wrapper calls, static text and other packages", async () => {
+    const findings = await run(detector, {
+      "server/a.ts": `import express from "express";
+import { query } from "../lib/db";
+const app = express();
+app.get("/a", async (req, res) => {
+  const p = await query("SELECT * FROM users WHERE id = $1", [req.query.id]);
+  const s = await query(\`SELECT * FROM users ORDER BY created_at\`);
+  res.json({ p, s });
+});`,
+      "server/b.ts": `import express from "express";
+import { query } from "graphql";
+import { useQuery } from "@tanstack/react-query";
+const app = express();
+app.get("/b", async (req, res) => {
+  res.json(query(\`select name from users where id = \${req.query.id}\`));
+  useQuery(\`select name from users where id = \${req.query.id}\`);
+});`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("ignores a wrapper call whose text is not SQL", async () => {
+    const findings = await run(detector, {
+      "server/a.ts": `import express from "express";
+import { query } from "../lib/search";
+const app = express();
+app.get("/a", async (req, res) => {
+  res.json(await query(\`hello \${req.query.q}\`));
+});`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+});
+
+describe("SqlInjectionDetector: queue job payloads", () => {
+  const worker = (imp: string, body: string) => `${imp}
+export const worker = new Worker("reports", async (job) => {
+${body}
+});`;
+
+  it("flags job.data in a SQL string, capped at high, with the queue title", async () => {
+    const findings = await run(
+      detector,
+      {
+        "workers/report.ts": worker(
+          `import { Worker } from "bullmq";\nimport { prisma } from "../lib/prisma";`,
+          "  const { column } = job.data;\n  return prisma.$queryRawUnsafe(`SELECT ${column} FROM reports`);",
+        ),
+      },
+      { targetFiles: ["workers/report.ts"] },
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.ruleId).toBe("injection/sql-built-from-input");
+    expect(findings[0]!.severity).toBe("high");
+    expect(findings[0]!.title).toMatch(/Queue Job Data$/);
+    expectRubric(findings);
+  });
+
+  it("is silent without a queue import and for numeric coercion", async () => {
+    const findings = await run(detector, {
+      "workers/a.ts": worker(
+        `import { Worker } from "./my-own-queue";\nimport { prisma } from "../lib/prisma";`,
+        "  return prisma.$queryRawUnsafe(`SELECT * FROM reports WHERE id = ${job.data.id}`);",
+      ),
+      "workers/b.ts": worker(
+        `import { Worker } from "bullmq";\nimport { prisma } from "../lib/prisma";`,
+        "  const id = Number(job.data.id);\n  return prisma.$queryRawUnsafe(`SELECT * FROM reports WHERE id = ${id}`);",
+      ),
+      "workers/c.ts": worker(
+        `import { Worker } from "bullmq";\nimport { prisma } from "../lib/prisma";`,
+        '  return prisma.$queryRawUnsafe("SELECT * FROM reports WHERE id = $1", job.data.id);',
+      ),
+    });
+    expect(findings).toHaveLength(0);
+  });
+});

@@ -110,3 +110,72 @@ export async function POST(req: Request) {
     expect(a.map((f) => f.id)).toEqual(b.map((f) => f.id));
   });
 });
+
+describe("CommandInjectionDetector: generics and queue job payloads", () => {
+  it("flags execSync with a TS type argument", async () => {
+    const findings = await run(detector, {
+      "server.ts": `import express from "express";
+import { execSync } from "child_process";
+const app = express();
+app.get("/p", (req, res) => {
+  const out = execSync<string>(\`ping \${req.query.host}\`);
+  res.send(out);
+});`,
+    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.line).toBe(5);
+    expectRubric(findings);
+  });
+
+  it("flags exec built from job.data in a queue worker, capped at high", async () => {
+    const findings = await run(
+      detector,
+      {
+        "workers/thumb.ts": `import { Worker } from "bullmq";
+import { exec } from "node:child_process";
+new Worker("thumbs", async (job) => {
+  exec(\`convert \${job.data.path} out.png\`);
+});`,
+      },
+      { targetFiles: ["workers/thumb.ts"] },
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.severity).toBe("high");
+    expect(findings[0]!.title).toBe("Shell Command Built From Queue Job Data");
+    expectRubric(findings);
+  });
+
+  it("flags Agenda and pg-boss payloads", async () => {
+    const findings = await run(detector, {
+      "jobs/a.ts": `import Agenda from "agenda";
+import { exec } from "child_process";
+const agenda = new Agenda();
+agenda.define("run", async (job) => {
+  exec("sh " + job.attrs.data.script);
+});`,
+      "jobs/b.ts": `import PgBoss from "pg-boss";
+import { exec } from "child_process";
+export async function start(boss: PgBoss) {
+  await boss.work("run", async (job) => { exec(\`echo \${job.data.msg}\`); });
+}`,
+    });
+    expect(findings.map((f) => f.file).sort()).toEqual(["jobs/a.ts", "jobs/b.ts"]);
+  });
+
+  it("is silent for execFile array args, numeric coercion and files without a queue import", async () => {
+    const findings = await run(detector, {
+      "workers/a.ts": `import { Worker } from "bullmq";
+import { execFile, exec } from "node:child_process";
+new Worker("thumbs", async (job) => {
+  execFile("convert", [job.data.path, "out.png"]);
+  exec(\`sleep \${Number(job.data.id)}\`);
+});`,
+      "workers/b.ts": `import { exec } from "node:child_process";
+import { Worker } from "./own";
+new Worker("thumbs", async (job) => {
+  exec(\`convert \${job.data.path} out.png\`);
+});`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+});
