@@ -31,6 +31,8 @@ beforeAll(async () => {
     } else if (url.startsWith("/hop/")) {
       const n = Number(url.slice(5));
       res.writeHead(302, { location: `/hop/${n + 1}` }).end();
+    } else if (url === "/to-absolute-fragment") {
+      res.writeHead(302, { location: `http://127.0.0.1:${port}/login#next` }).end();
     } else if (url === "/to-login") {
       res.writeHead(302, { location: "/login#next" }).end();
     } else if (url === "/login") {
@@ -179,6 +181,16 @@ describe("SafeHttpClient", () => {
     expect(r.status).toBe(200);
     expect(r.body).toBe("login");
     expect(seen.map((s) => s.url)).toEqual(["/to-login", "/login"]);
+  });
+
+  it("follows an absolute same-origin redirect with a fragment, sending no fragment", async () => {
+    const client = new SafeHttpClient({ ...fast });
+    const r = await client.request({ url: `${base()}/to-absolute-fragment` });
+    expect(r.redirectBlocked).toBeUndefined();
+    expect(r.status).toBe(200);
+    expect(r.body).toBe("login");
+    expect(seen.map((s) => s.url)).toEqual(["/to-absolute-fragment", "/login"]);
+    expect(client.log.every((e) => !e.url.includes("#"))).toBe(true);
   });
 
   it("keeps the 3xx when the ceiling stops a redirect hop", async () => {

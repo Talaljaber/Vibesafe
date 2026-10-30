@@ -318,7 +318,12 @@ export class SafeHttpClient {
       };
       const loc = hop.location;
       const absolute = /^[A-Za-z][A-Za-z0-9+.-]*:/.test(loc) || loc.startsWith("//");
-      const rawTarget = loc.startsWith("//") ? `${decision.url.protocol}${loc}` : loc;
+      // A fragment is never sent, so drop it before gating, as the relative path does below.
+      const hashAt = loc.indexOf("#");
+      const locNoHash = hashAt >= 0 ? loc.slice(0, hashAt) : loc;
+      const rawTarget = locNoHash.startsWith("//")
+        ? `${decision.url.protocol}${locNoHash}`
+        : locNoHash;
       let next: URL;
       try {
         next = new URL(loc, decision.url);
