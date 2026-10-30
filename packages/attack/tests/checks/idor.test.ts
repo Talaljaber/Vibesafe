@@ -34,7 +34,7 @@ function finding(line: number, verb: "reads" | "changes", file = FILE): Finding 
     severity: "high",
     file,
     line,
-    plainEnglishProblem: `This handler ${verb} a row of notes by an id taken from the URL.`,
+    plainEnglishProblem: `This handler ${verb} a row of "notes" by an id taken from the URL, with no ownership check.`,
   } as unknown as Finding;
 }
 
@@ -186,6 +186,7 @@ describe("idor.evaluate scenarios", () => {
       control,
     );
     expect(r.outcome).toBe("NOT_REPRODUCED");
+    expect(r.reasoning).toMatch(/refused|control/);
   });
 
   it("soft 404 (200 with an error body) is NOT_REPRODUCED", () => {
@@ -294,5 +295,98 @@ describe("idor.evaluate scenarios", () => {
     expect(r2.keys).toContain("<key>");
     expect(r.shapes.find((s) => s.label === "R3")?.rowCount).toBe(2);
     expect(r.excerpts).toBeUndefined();
+  });
+});
+
+describe("idor.evaluate review fixes", () => {
+  const nestedFile = "app/api/projects/[id]/settings/route.js";
+  const nestedSrc =
+    "export async function GET(request, { params }) {\n  const r = await db.from('projects').select('*').eq('id', id).single();\n}\n";
+  const nres = (p: string) => ({ ...alice, resources: { [p]: "p1" } });
+  const nctx = (): PlanContext => ({
+    findings: [{ ...finding(2, "reads", nestedFile) } as Finding],
+    routes: [
+      {
+        pattern: "/api/projects/[id]/settings",
+        sourceFile: nestedFile,
+        methods: ["GET"],
+        dynamicSegments: ["[id]"],
+        findingRefs: [],
+      },
+    ],
+    sessions: [
+      nres("/api/projects/[id]/settings"),
+      { ...bob, resources: { "/api/projects/[id]/settings": "p2" } },
+    ],
+    env: {},
+    readSource: (f) => (f === nestedFile ? nestedSrc : undefined),
+  });
+
+  it("nested route: id taken from the dynamic segment, real IDOR CONFIRMED", () => {
+    const g = idor.plan(nctx())[0]!;
+    expect(g.skip).toBeUndefined();
+    const bobs = { id: "p2", name: "x", owner: "bob" };
+    const r = idor.evaluate(
+      g,
+      [
+        denied("R0"),
+        res("R1", 200, { id: "p1", name: "y", owner: "a" }),
+        res("R2", 200, bobs),
+        res("R3", 200, bobs),
+      ],
+      buildControlSet([]),
+    );
+    expect(r.outcome).toBe("CONFIRMED");
+  });
+
+  it("unresolved handler gets a distinct reason", () => {
+    const f = { ...finding(2, "reads"), line: undefined } as unknown as Finding;
+    expect(idor.plan(ctx({ findings: [f] }))[0]?.skip?.reason).toBe("handler not resolved");
+  });
+
+  it("a read finding wins over a skipped one for the same attack id", () => {
+    const g = idor.plan(ctx({ findings: [finding(5, "changes"), finding(2, "reads")] }));
+    expect(g.filter((x) => x.method === "GET" && !x.skip)).toHaveLength(1);
+  });
+
+  const alicesNote = note("n_alice_1", "u_alice");
+  const bobsNote = note("n_bob_1", "u_bob");
+  const base = () => [denied("R0"), res("R1", 200, alicesNote), res("R2", 200, bobsNote)];
+
+  it("R3 429 / 204 / 400 are INCONCLUSIVE, not refuted", () => {
+    for (const s of [429, 204, 400]) {
+      expect(run([...base(), res("R3", s, "x", "text/plain")]).outcome).toBe("INCONCLUSIVE");
+    }
+  });
+
+  it("no id key and a body differing from both is INCONCLUSIVE", () => {
+    const r = run([
+      denied("R0"),
+      res("R1", 200, { title: "a", body: "x" }),
+      res("R2", 200, { title: "b", body: "y" }),
+      res("R3", 200, { title: "c", body: "z" }),
+    ]);
+    expect(r.outcome).toBe("INCONCLUSIVE");
+  });
+
+  it("anonymous 200 with no id and a different body is not CONFIRMED critical", () => {
+    const r = run([
+      res("R0", 200, { title: "fallback", body: "q" }),
+      res("R1", 200, { title: "a", body: "x" }),
+      res("R2", 200, { title: "b", body: "y" }),
+      denied("R3"),
+    ]);
+    expect(r.severity).not.toBe("critical");
+    expect(r.outcome).toBe("NOT_REPRODUCED");
+  });
+
+  it("curl lines are escaped placeholders", () => {
+    const evil = { ...bob, resources: { "/api/notes/[id]": "n1" } };
+    const g = idor.plan(ctx({ sessions: [alice, evil] }))[0]!;
+    g.requests[0]!.path = "/api/$(id)`x`/n1";
+    const r = idor.evaluate(g, base().concat(denied("R3")), buildControlSet([]));
+    const joined = r.curl.join("\n");
+    expect(joined).not.toMatch(/\$\(|`/);
+    expect(joined).toMatch(/ALICE_COOKIE/);
   });
 });

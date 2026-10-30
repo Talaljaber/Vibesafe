@@ -3,6 +3,7 @@ import { normalizeBody } from "../controls.js";
 import { stableAttackId } from "../ids.js";
 import { preflightGet } from "../plan/preflight.js";
 import { enclosingHandler } from "../target/enclosing-handler.js";
+import { formatCurl } from "../report/curl.js";
 import { concretePath, dynamicSegmentsOf } from "../target/route-map.js";
 import type {
   AttackCheck,
@@ -20,6 +21,7 @@ import type {
 
 const RULE_ID = "authorization/idor-unscoped-lookup";
 const READ_PREFIX = "This handler reads";
+const REASON_UNRESOLVED = "handler not resolved";
 const REASON_WRITE = "write path, not tested (attack mode only sends reads)";
 const REASON_ROUTE = "route not resolved (Next.js app router only)";
 const REASON_SESSIONS = "needs two test sessions with an id each; see .vibesafe/sessions.json";
@@ -45,7 +47,7 @@ function refOf(f: Finding): StaticRef {
 
 /** The table name from the detector's problem text ("a row of notes by an id"). */
 function recordOf(problem: string | undefined): string {
-  const m = /\brow of ([\w.-]{1,64}) by\b/.exec(problem ?? "");
+  const m = /\brow of "?([\w.-]{1,64})"? by\b/.exec(problem ?? "");
   return m?.[1] ?? "record";
 }
 
@@ -83,7 +85,8 @@ function planOne(f: Finding, ctx: PlanContext): ProbeGroup {
     staticRef,
     ownerLabels: ["R1", "R2"],
   };
-  if (handler?.method !== "GET" || !f.plainEnglishProblem.startsWith(READ_PREFIX)) {
+  if (handler === undefined) return skipGroup(base, REASON_UNRESOLVED);
+  if (handler.method !== "GET" || !f.plainEnglishProblem.startsWith(READ_PREFIX)) {
     return skipGroup(base, REASON_WRITE);
   }
   if (preflightGet(route.pattern, content).skip) return skipGroup(base, MAY_WRITE);
@@ -147,13 +150,22 @@ function shapeOf(r: ProbeResponse): Shape | undefined {
 const is2xx = (r: ProbeResponse): boolean => r.status >= 200 && r.status < 300;
 const isBad = (r: ProbeResponse): boolean => r.status === 0 || r.status >= 500;
 
-function decodedLastSegment(path: string): string {
-  const seg = path.split("?")[0]!.split("/").pop() ?? "";
+function decode(seg: string): string {
   try {
     return decodeURIComponent(seg);
   } catch {
     return seg;
   }
+}
+
+/** The id filled into the route pattern's dynamic segment (catch-alls join the rest). */
+function targetIdOf(pattern: string | undefined, path: string): string {
+  const pat = (pattern ?? "").split("/");
+  const segs = path.split("?")[0]!.split("/");
+  const i = pat.findIndex((s) => /^\[.+\]$/.test(s));
+  if (i < 0) return decode(segs.pop() ?? "");
+  const catchAll = pat[i]!.startsWith("[...") || pat[i]!.startsWith("[[...");
+  return (catchAll ? segs.slice(i) : segs.slice(i, i + 1)).map(decode).join("/");
 }
 
 /** The "shape match" of spec 7: 200s, same key set (and row count), ids equal the target id. */
@@ -184,10 +196,7 @@ function toShape(r: ProbeResponse): ResponseShape {
 }
 
 function curlLines(group: ProbeGroup): string[] {
-  return group.requests.map((r) => {
-    const who = r.session ? ` -H "Cookie: <${r.session.toUpperCase()}_COOKIE>"` : "";
-    return `curl -s${who} "<TARGET>${r.path}"`;
-  });
+  return group.requests.map((r) => formatCurl({ targetUrl: "", path: r.path, session: r.session }));
 }
 
 function evaluateIdor(
@@ -240,9 +249,18 @@ function evaluateIdor(
     return result("INCONCLUSIVE", "owner request failed; can't judge", { ownerOk });
   }
   const noun = /user's (.+)\.$/.exec(group.title)?.[1] ?? "record";
-  const targetId = decodedLastSegment(group.requests.find((q) => q.label === "R2")?.path ?? "");
+  const targetId = targetIdOf(
+    group.route,
+    group.requests.find((q) => q.label === "R2")?.path ?? "",
+  );
 
-  if (is2xx(r0) && !controls.matches(r0.fingerprint) && similar(r0, r2, targetId)) {
+  const n = (r: ProbeResponse): string => normalizeBody(r.body);
+  const anonOk =
+    is2xx(r0) &&
+    !controls.matches(r0.fingerprint) &&
+    similar(r0, r2, targetId) &&
+    (hasId(r0) && hasId(r2) ? true : n(r0) === n(r2));
+  if (anonOk) {
     return result(
       "CONFIRMED",
       "A logged-out request received the same kind of record the owner receives.",
@@ -271,9 +289,17 @@ function evaluateIdor(
     // Without an id in the body, only an exact copy of the owner's response that differs
     // from the first user's own record shows that this is the other user's record.
     if (!hasId(r3) || !hasId(r2)) {
-      const n = (r: ProbeResponse): string => normalizeBody(r.body);
-      if (n(r3) !== n(r2) || n(r3) === n(r1)) {
+      if (n(r3) === n(r1)) {
         return result("NOT_REPRODUCED", "response is not Bob's record", { ownerOk });
+      }
+      if (n(r3) !== n(r2)) {
+        return result(
+          "INCONCLUSIVE",
+          "response differs from the owner's and has no id; can't judge",
+          {
+            ownerOk,
+          },
+        );
       }
     }
     return result(
@@ -282,6 +308,9 @@ function evaluateIdor(
       { severity: "high", title: `One signed-in user can read another user's ${noun}.`, ownerOk },
     );
   }
+  if (r3.status !== 200) {
+    return result("INCONCLUSIVE", `attack request got ${r3.status}; can't judge`, { ownerOk });
+  }
   return result("NOT_REPRODUCED", "response is not Bob's record", { ownerOk });
 }
 
@@ -289,13 +318,15 @@ export const idor: AttackCheck = {
   id: "idor",
   title: "Insecure direct object reference",
   plan(ctx) {
-    const seen = new Set<string>();
     const groups: ProbeGroup[] = [];
     for (const f of ctx.findings) {
       if (f.ruleId !== RULE_ID) continue;
       const g = planOne(f, ctx);
-      if (seen.has(g.attackId)) continue;
-      seen.add(g.attackId);
+      const at = groups.findIndex((x) => x.attackId === g.attackId);
+      if (at >= 0) {
+        if (groups[at]!.skip && !g.skip) groups[at] = g;
+        continue;
+      }
       groups.push(g);
     }
     return groups;

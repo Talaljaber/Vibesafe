@@ -115,7 +115,10 @@ describe("idor check against the demo app harness", () => {
     }
     const controls = buildControlSet(controlResponses.map((r) => r.fingerprint));
 
-    const outcomes: Record<string, { outcome: string; ownerOk?: boolean; reason: string }> = {};
+    const outcomes: Record<
+      string,
+      { outcome: string; ownerOk?: boolean; reason: string; title: string; severity: string }
+    > = {};
     for (const g of groups) {
       const responses: ProbeResponse[] = [];
       for (const r of g.requests) responses.push(await send(r));
@@ -124,9 +127,16 @@ describe("idor check against the demo app harness", () => {
         outcome: result.outcome,
         ...(result.ownerOk === undefined ? {} : { ownerOk: result.ownerOk }),
         reason: result.reasoning,
+        title: result.title,
+        severity: result.severity,
       };
     }
-    expect(outcomes["GET /api/notes/[id]"]).toMatchObject({ outcome: "CONFIRMED", ownerOk: true });
+    expect(outcomes["GET /api/notes/[id]"]).toMatchObject({
+      outcome: "CONFIRMED",
+      ownerOk: true,
+      severity: "high",
+      title: "One signed-in user can read another user's notes.",
+    });
     expect(outcomes["PATCH /api/notes/[id]"]?.outcome).toBe("INCONCLUSIVE");
     expect(outcomes["PATCH /api/notes/[id]"]?.reason).toMatch(/write path, not tested/);
     expect(outcomes["GET /api/invoices/[id]"]).toMatchObject({
