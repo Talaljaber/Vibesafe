@@ -1,4 +1,4 @@
-// Detector group "crypto": crypto detectors (insecure randomness, secret fallbacks, JWT misuse, plaintext credentials).
+// Detector group "crypto": crypto detectors (insecure randomness, secret fallbacks, JWT misuse, plaintext credentials) and session cookie / CSRF checks.
 //
 // Owned by one stream. Export ONLY: the group's *Detector classes (re-exported from
 // their detector files), cryptoDetectors, cryptoPrecedence and cryptoNonJsExempt. Never
@@ -11,12 +11,16 @@ import { InsecureRandomDetector } from "../insecure-random-detector.js";
 import { SecretFallbackDetector } from "../secret-fallback-detector.js";
 import { JwtMisuseDetector } from "../jwt-misuse-detector.js";
 import { PlaintextCredentialDetector } from "../plaintext-credential-detector.js";
+import { CookieFlagsDetector } from "../cookie-flags-detector.js";
+import { CsrfDetector } from "../csrf-detector.js";
 
 export {
   InsecureRandomDetector,
   SecretFallbackDetector,
   JwtMisuseDetector,
   PlaintextCredentialDetector,
+  CookieFlagsDetector,
+  CsrfDetector,
 };
 
 /** Fresh instances of this group's detectors, registered after the built-in ones. */
@@ -25,6 +29,8 @@ export const cryptoDetectors = (): Detector[] => [
   new SecretFallbackDetector(),
   new JwtMisuseDetector(),
   new PlaintextCredentialDetector(),
+  new CookieFlagsDetector(),
+  new CsrfDetector(),
 ];
 
 /**

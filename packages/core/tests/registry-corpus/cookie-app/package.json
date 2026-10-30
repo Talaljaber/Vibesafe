@@ -1,0 +1,9 @@
+﻿{
+  "name": "cookie-app",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "express": "^4.19.0",
+    "express-session": "^1.18.0"
+  }
+}
