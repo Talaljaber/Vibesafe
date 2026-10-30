@@ -1,4 +1,4 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to VibeSafe will be documented in this file.
 

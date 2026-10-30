@@ -1,10 +1,10 @@
-﻿import { normalizePattern } from "./ids.js";
+import { normalizePattern } from "./ids.js";
 import type { AttackResult, AttackRun, RetestDiff, RetestState } from "./types.js";
 
 /** A baseline group replayed against the live target, plus what the owner control returned. */
 export interface ReplayedResult {
   result: AttackResult;
-  /** Status of the replayed owner control request (R2), used to recognise GONE. */
+  /** Status of the first replayed owner control request (R2/U2), used to recognise GONE. */
   ownerStatus?: number | undefined;
 }
 
@@ -27,8 +27,15 @@ function stateFor(
   if (now === "ERROR") return "ERROR";
   if (was === "CONFIRMED") {
     if (now === "CONFIRMED") return "STILL_VULNERABLE";
-    if (!routePresent && replayed.ownerStatus === 404) return "GONE";
-    if (now === "NOT_REPRODUCED") return replayed.result.ownerOk === true ? "BLOCKED" : "BROKEN";
+    // A removed route is reported as GONE, never counted as a fix.
+    if (!routePresent && (replayed.ownerStatus === undefined || replayed.ownerStatus === 404)) {
+      return "GONE";
+    }
+    const ownerOk = replayed.result.ownerOk;
+    // Under 7.1 an owner control that is not 200 makes the verdict INCONCLUSIVE, so an
+    // over-broad fix (404 for everyone) arrives as INCONCLUSIVE with ownerOk false.
+    if (ownerOk === false && (now === "NOT_REPRODUCED" || now === "INCONCLUSIVE")) return "BROKEN";
+    if (now === "NOT_REPRODUCED") return "BLOCKED";
     return "UNCHANGED";
   }
   return now === "CONFIRMED" ? "NEW" : "UNCHANGED";
@@ -62,12 +69,19 @@ export function computeRetestDiff(input: DiffInput): RetestDiff[] {
 
   for (const result of input.fresh) {
     const was = wasById.get(result.attackId);
-    if (result.outcome !== "CONFIRMED" || was === "CONFIRMED") continue;
+    if (result.outcome !== "CONFIRMED") continue;
+    const at = diff.findIndex((d) => d.attackId === result.attackId);
+    if (was === "CONFIRMED") {
+      // Replay said fixed/broken/unchanged but a fresh group is still CONFIRMED: not fixed.
+      if (at >= 0 && diff[at]?.state !== "STILL_VULNERABLE" && diff[at]?.state !== "GONE") {
+        diff[at] = { attackId: result.attackId, was, now: "CONFIRMED", state: "STILL_VULNERABLE" };
+      }
+      continue;
+    }
     const entry: RetestDiff = { attackId: result.attackId, now: result.outcome, state: "NEW" };
     if (was !== undefined) entry.was = was;
     if (result.ownerOk !== undefined) entry.ownerOk = result.ownerOk;
     // A fresh CONFIRMED verdict wins over a replay that could not reproduce it.
-    const at = diff.findIndex((d) => d.attackId === result.attackId);
     if (at >= 0) diff[at] = entry;
     else diff.push(entry);
   }

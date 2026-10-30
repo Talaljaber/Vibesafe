@@ -1,4 +1,4 @@
-﻿import { createHash } from "node:crypto";
+import { createHash } from "node:crypto";
 import type { AttackCheckId } from "./types.js";
 
 const CATCH_ALL_RE = /^\[\[?\.\.\.[^\]]+\]\]?$/;

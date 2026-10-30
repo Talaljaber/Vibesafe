@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { computeRetestDiff, exitCodeForRun } from "../src/diff.js";
 import type { AttackOutcome, AttackResult, AttackRun, RetestState } from "../src/types.js";
 
@@ -57,7 +57,26 @@ describe("computeRetestDiff: the 7 states", () => {
   });
   it("BROKEN: attacker denied but owner not ok", () => {
     expect(stateOf("CONFIRMED", "NOT_REPRODUCED", { ownerOk: false })).toBe("BROKEN");
-    expect(stateOf("CONFIRMED", "NOT_REPRODUCED")).toBe("BROKEN");
+    expect(stateOf("CONFIRMED", "NOT_REPRODUCED")).toBe("BLOCKED");
+  });
+  it("BROKEN: fix returns 404 to everyone (INCONCLUSIVE, ownerOk false, route mapped)", () => {
+    expect(stateOf("CONFIRMED", "INCONCLUSIVE", { ownerOk: false })).toBe("BROKEN");
+    expect(stateOf("CONFIRMED", "INCONCLUSIVE", { ownerOk: true })).toBe("UNCHANGED");
+    expect(stateOf("CONFIRMED", "INCONCLUSIVE")).toBe("UNCHANGED");
+  });
+  it("GONE: realistic INCONCLUSIVE replay with owner 404 and no routes", () => {
+    expect(
+      stateOf("CONFIRMED", "INCONCLUSIVE", { ownerOk: false }, { ownerStatus: 404, routes: [] }),
+    ).toBe("GONE");
+  });
+  it("fresh CONFIRMED overrides a BLOCKED replay of a CONFIRMED baseline", () => {
+    const diff = computeRetestDiff({
+      baseline: baselineOf(res("a", "CONFIRMED")),
+      replayed: [{ result: res("a", "NOT_REPRODUCED", { ownerOk: true }) }],
+      fresh: [res("a", "CONFIRMED")],
+      freshRoutes: routes,
+    });
+    expect(diff.map((d) => d.state)).toEqual(["STILL_VULNERABLE"]);
   });
   it("STILL_VULNERABLE: still CONFIRMED", () => {
     expect(stateOf("CONFIRMED", "CONFIRMED")).toBe("STILL_VULNERABLE");
@@ -115,7 +134,6 @@ describe("computeRetestDiff: the 7 states", () => {
   it("UNCHANGED: everything else", () => {
     expect(stateOf("INCONCLUSIVE", "INCONCLUSIVE")).toBe("UNCHANGED");
     expect(stateOf("NOT_REPRODUCED", "NOT_REPRODUCED")).toBe("UNCHANGED");
-    expect(stateOf("CONFIRMED", "INCONCLUSIVE")).toBe("UNCHANGED");
   });
   it("records was, now and ownerOk", () => {
     const diff = computeRetestDiff({

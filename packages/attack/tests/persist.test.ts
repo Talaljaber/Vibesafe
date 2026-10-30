@@ -1,4 +1,4 @@
-﻿import fs from "node:fs";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -75,12 +75,9 @@ describe("persist", () => {
   it("refuses a plain baseline run when a baseline exists (exit code 2) and writes nothing", () => {
     saveRun(dir, makeRun("baseline", "1"));
     expect(() => saveRun(dir, makeRun("baseline", "2"))).toThrow(AttackPersistError);
-    try {
-      assertCanRun(dir, "baseline");
-    } catch (e) {
-      expect((e as AttackPersistError).exitCode).toBe(2);
-      expect((e as Error).message).toContain("--new-baseline");
-    }
+    expect(() => assertCanRun(dir, "baseline")).toThrow(
+      expect.objectContaining({ exitCode: 2, message: expect.stringContaining("--new-baseline") }),
+    );
     expect(loadSavedRun(dir, "baseline")?.startedAt).toBe("1");
     expect(loadSavedRun(dir, "last")?.startedAt).toBe("1");
   });
@@ -106,7 +103,7 @@ describe("persist", () => {
     expect(fs.existsSync(path.join(dir, ".vibesafe"))).toBe(false);
   });
 
-  it("atomic write leaves no temp file and keeps the old content when rename fails", () => {
+  it("atomic write leaves no temp file and cleans up when rename fails", () => {
     const file = path.join(dir, "f.json");
     atomicWrite(file, "one");
     atomicWrite(file, "two");
@@ -117,6 +114,52 @@ describe("persist", () => {
     fs.mkdirSync(target);
     expect(() => atomicWrite(target, "x")).toThrow();
     expect(fs.readdirSync(dir).sort()).toEqual(["f.json", "sub"]);
+  });
+
+  it("redacts sensitive request header values but keeps names", () => {
+    const run = makeRun("baseline");
+    run.groups = [
+      {
+        attackId: "a",
+        checkId: "idor",
+        title: "t",
+        requests: [
+          {
+            label: "R3",
+            method: "GET",
+            host: "target",
+            path: "/x",
+            headers: { Cookie: "sess=secret1", apikey: "k1", Accept: "json" },
+          },
+        ],
+      },
+    ];
+    saveRun(dir, run);
+    const text = fs.readFileSync(vs("attack-baseline.json"), "utf8");
+    expect(text).not.toContain("secret1");
+    expect(text).not.toContain("k1");
+    expect(text).toContain("Cookie");
+    expect(text).toContain("json");
+  });
+
+  it("rejects a saved baseline with an unsafe request", () => {
+    fs.mkdirSync(path.join(dir, ".vibesafe"));
+    const bad = makeRun("baseline");
+    bad.groups = [
+      {
+        attackId: "a",
+        checkId: "idor",
+        title: "t",
+        requests: [{ label: "R0", method: "GET", host: "target", path: "//evil.com" }],
+      },
+    ];
+    fs.writeFileSync(vs("attack-baseline.json"), JSON.stringify(bad));
+    expect(() => loadSavedRun(dir, "baseline")).toThrow(AttackPersistError);
+  });
+
+  it("wraps filesystem failures in AttackPersistError", () => {
+    fs.writeFileSync(path.join(dir, ".vibesafe"), "i am a file");
+    expect(() => saveRun(dir, makeRun("baseline"))).toThrow(AttackPersistError);
   });
 
   it("writes reports atomically into .vibesafe", () => {
