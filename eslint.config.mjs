@@ -48,7 +48,7 @@ export default [
     },
   },
   {
-    files: ["packages/attack/src/**/*.ts"],
+    files: ["packages/attack/src/**/*.{ts,tsx,mts,cts}"],
     ignores: ["packages/attack/src/http/**"],
     rules: {
       "no-restricted-globals": ["error", "fetch", "WebSocket", "XMLHttpRequest"],
@@ -77,8 +77,36 @@ export default [
             "got",
             "node-fetch",
             "ws",
+            "module",
+            "node:module",
+            "worker_threads",
+            "node:worker_threads",
+            "vm",
+            "node:vm",
+          ],
+          patterns: [
+            {
+              group: [
+                "http/*",
+                "https/*",
+                "http2/*",
+                "dns/*",
+                "node:http/*",
+                "node:https/*",
+                "node:http2/*",
+                "node:dns/*",
+              ],
+              message: "Network modules are only allowed in packages/attack/src/http.",
+            },
           ],
         },
+      ],
+      "no-restricted-properties": [
+        "error",
+        { object: "process", property: "getBuiltinModule" },
+        { object: "process", property: "binding" },
+        { object: "globalThis", property: "fetch" },
+        { object: "global", property: "fetch" },
       ],
       "no-restricted-syntax": [
         "error",

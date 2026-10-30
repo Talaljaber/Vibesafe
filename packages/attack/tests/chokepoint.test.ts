@@ -19,12 +19,14 @@ const FORBIDDEN_MODULES = [
   "got",
   "node-fetch",
   "ws",
+  "module",
+  "worker_threads",
+  "vm",
 ];
 const names = FORBIDDEN_MODULES.flatMap((m) => [m, `node:${m}`]).join("|");
-const moduleRe = new RegExp(
-  `(?:from\\s*|import\\s*\\(\\s*|require\\s*\\(\\s*|import\\s+)["'](?:${names})(?:/[^"']*)?["']`,
-);
-const fetchRe = /(?<![\w.$])fetch\s*\(|globalThis\s*\.\s*fetch|\b(?:WebSocket|XMLHttpRequest)\b/;
+const moduleRe = new RegExp(`["'\u0060](?:${names})(?:/[^"'\u0060]*)?["'\u0060]`);
+const fetchRe =
+  /(?<![\w$])fetch\s*\(|\bfetch\s*:|["'\u0060]fetch["'\u0060]|(?:globalThis|global|self|window)\s*\.\s*fetch|\b(?:WebSocket|XMLHttpRequest|createRequire|getBuiltinModule)\b|process\s*\.\s*binding/;
 
 function walk(dir: string, skipDir: string, out: string[] = []): string[] {
   if (!fs.existsSync(dir)) return out;
@@ -32,7 +34,7 @@ function walk(dir: string, skipDir: string, out: string[] = []): string[] {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       if (path.resolve(full) !== path.resolve(skipDir)) walk(full, skipDir, out);
-    } else if (/\.(ts|mts|cts|js|mjs|cjs)$/.test(entry.name)) {
+    } else if (/\.(ts|tsx|mts|cts|js|mjs|cjs)$/.test(entry.name)) {
       out.push(full);
     }
   }
@@ -56,9 +58,12 @@ describe("network chokepoint", () => {
     expect(findViolations(path.join(pkgRoot, "src"))).toEqual([]);
   });
 
-  it("dist has no network use outside dist/http (when built)", () => {
-    expect(findViolations(path.join(pkgRoot, "dist"))).toEqual([]);
-  });
+  it.skipIf(!fs.existsSync(path.join(pkgRoot, "dist")))(
+    "dist has no network use outside dist/http",
+    () => {
+      expect(findViolations(path.join(pkgRoot, "dist"))).toEqual([]);
+    },
+  );
 
   it("proves itself: a planted violation is detected, http/ is exempt", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vibesafe-chokepoint-"));
@@ -74,6 +79,12 @@ describe("network chokepoint", () => {
         "d.ts": "const r = await globalThis.fetch(u);\n",
         "e.js": 'const n = require("net");\n',
         "f.ts": 'const u = await import("undici");\n',
+        "g.ts": "const r = await global.fetch(u);\n",
+        "h.ts": "const { fetch: f } = globalThis;\n",
+        "i.ts": 'import { createRequire } from "node:module";\n',
+        "j.ts": 'const m = process.getBuiltinModule("node:tls");\n',
+        "k.ts": "const u = await import(`node:http`);\n",
+        "l.tsx": 'const r = await globalThis["fetch"](u);\n',
       };
       for (const [name, body] of Object.entries(planted)) {
         fs.writeFileSync(path.join(tmp, name), body);

@@ -7,7 +7,7 @@ export default defineConfig({
     // Live-probe tests start a local harness server; allow slow runners
     testTimeout: 60000,
     hookTimeout: 60000,
-    // Passes when no test files exist — tests are added in Phase 3+
+    // Package tests live in tests/ (chokepoint test guards the network gate)
     passWithNoTests: true,
     include: ["src/**/*.test.ts", "tests/**/*.test.ts"],
     coverage: {
