@@ -1,4 +1,4 @@
-import type { Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared";
+﻿import type { Detector, Finding, ScanContext } from "@talaljaber/vibesafe-shared";
 import { makeFinding } from "./utils/finding.js";
 import {
   classifyFile,
@@ -65,6 +65,24 @@ const COOKIE_READ_RE =
   /\breq\s*\.\s*(?:signedCookies|cookies)\s*(?:\.\s*([A-Za-z_$][\w$]*)|\[\s*["'`]([^"'`\n]{1,64})["'`]\s*\])/g;
 const PASSPORT_SESSION_RE = /\bpassport\s*\.\s*session\s*\(\s*\)/g;
 const BODY_READ_RE = /\b(?:req|request)\s*\.\s*body\b|\bbody\s*[,}]/;
+/** A file without any of these cannot be an Express file, a session site or a protection signal. */
+const RELEVANT_NEEDLES: readonly string[] = [
+  "express",
+  "ookie",
+  "csrf",
+  "Csrf",
+  "xsrf",
+  "csurf",
+  "lusca",
+  "rigin",
+  "eferer",
+  "eferr",
+  "x-requested",
+  "sec-fetch",
+  "passport",
+];
+/** Extra needles when the project depends on express: route files may not mention it. */
+const ROUTE_NEEDLES: readonly string[] = [".post", ".put", ".patch", ".delete", ".all"];
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE", "ALL"]);
 
 interface Site {
@@ -124,6 +142,11 @@ export class CsrfDetector implements Detector {
       if (isGenerated(file)) continue;
       try {
         const src = await getJsSource(context, file);
+        if (
+          !RELEVANT_NEEDLES.some((n) => src.text.includes(n)) &&
+          !(dependsOnExpress && ROUTE_NEEDLES.some((n) => src.text.includes(n)))
+        )
+          continue;
         if (isGenerated(file, src.text)) continue;
         if (!isServerScope(classifyFile(file, src.text, pc))) continue;
         files.push({ file, src });
