@@ -78,7 +78,7 @@ const LOCK_FILES = ["poetry.lock", "uv.lock", "pdm.lock", "Pipfile.lock"];
 
 type SpecStyle = "pep440" | "poetry" | "pipfile";
 
-interface Requirement {
+export interface Requirement {
   name: string;
   specs: string;
   style: SpecStyle;
@@ -209,7 +209,7 @@ function parsePep508(text: string): { name: string; specs: string } | null {
   return { name: normalizeName(m[1]), specs: (m[2] ?? "").trim() };
 }
 
-function parseRequirementsTxt(content: string): Requirement[] {
+export function parseRequirementsTxt(content: string): Requirement[] {
   const out: Requirement[] = [];
   const lines = content.split("\n").map((l) => l.replace(/\r$/, ""));
   for (let i = 0; i < lines.length; i++) {
@@ -261,7 +261,7 @@ function tableStyle(section: string, file: "pyproject" | "pipfile"): SpecStyle |
     : null;
 }
 
-function parseToml(content: string, file: "pyproject" | "pipfile"): Requirement[] {
+export function parseToml(content: string, file: "pyproject" | "pipfile"): Requirement[] {
   const out: Requirement[] = [];
   const lines = content.split("\n").map((l) => l.replace(/\r$/, ""));
   let section = "";

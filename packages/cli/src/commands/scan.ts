@@ -41,7 +41,7 @@ export interface ScanOptions {
   /** commander sets this to false for --no-config. */
   config?: boolean;
   trustConfig?: boolean;
-  /** --online: opt in to the OSV advisory lookup (sends package names and versions only). */
+  /** --online: opt in to the OSV advisory lookup and the npm/PyPI package existence check (package names and versions only). */
   online?: boolean;
 }
 
@@ -113,7 +113,7 @@ export async function runScan(targetDir: string, options: ScanOptions = {}) {
   if (!options.json && options.online === true) {
     console.log(
       chalk.yellow(
-        "Online advisory lookup enabled: package names and versions (nothing else) are sent to api.osv.dev.\n",
+        "Online checks enabled: package names and versions (nothing else) are sent to api.osv.dev, registry.npmjs.org, api.npmjs.org and pypi.org.\n",
       ),
     );
   }

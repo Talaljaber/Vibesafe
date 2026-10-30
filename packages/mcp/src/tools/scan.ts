@@ -54,7 +54,7 @@ export const scanInputShape = {
     .boolean()
     .optional()
     .describe(
-      "Also look up dependency versions in the public OSV advisory database. Sends package names and versions (nothing else) to api.osv.dev. Defaults to false; only set it when the user asked for an online check.",
+      "Also check dependencies online: OSV advisories for installed versions, and whether each direct dependency exists on npm/PyPI. Sends package names and versions (nothing else) to api.osv.dev, registry.npmjs.org, api.npmjs.org and pypi.org. Defaults to false; only set it when the user asked for an online check.",
     ),
 };
 

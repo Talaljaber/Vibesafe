@@ -13,8 +13,9 @@ export interface ScanFlagOptions {
   /** --trust-config: allow executing .ts/.js config files. */
   trustConfig?: boolean | undefined;
   /**
-   * --online (scan only): allow the OSV advisory lookup, which sends package names and
-   * versions to api.osv.dev. Never read from a config file.
+   * --online (scan only): allow the OSV advisory lookup (package names and versions to
+   * api.osv.dev) and the package existence check (package names to registry.npmjs.org,
+   * api.npmjs.org and pypi.org). Never read from a config file.
    */
   online?: boolean | undefined;
 }
