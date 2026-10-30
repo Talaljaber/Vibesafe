@@ -1,0 +1,11 @@
+{
+  "rules": {
+    ".read": "now < 4102444800000",
+    "profiles": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        ".write": "$uid === auth.uid"
+      }
+    }
+  }
+}

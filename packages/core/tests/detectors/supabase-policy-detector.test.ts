@@ -59,7 +59,10 @@ const rls = (...tables: string[]) =>
 describe("SupabasePolicyDetector", () => {
   describe("registration", () => {
     it("is registered in the supabase group with sql as its non-JS kind", () => {
-      expect(supabaseDetectors().map((d) => d.id)).toEqual(["supabase-policy-detector"]);
+      expect(supabaseDetectors().map((d) => d.id)).toEqual([
+        "supabase-policy-detector",
+        "firebase-rules-detector",
+      ]);
       expect(supabaseNonJsExempt["supabase-policy-detector"]).toEqual(["sql"]);
       expect(
         createDefaultRegistry()

@@ -36,6 +36,7 @@ export type FileKind =
   | "dockerfile"
   | "dockerignore"
   | "compose"
+  | "firebase-rules"
   | "workflow"
   | "gh-action"
   | "shell"
@@ -93,6 +94,7 @@ const RUNTIME: Record<FileKind, FileRuntime> = {
   dockerfile: "infra",
   dockerignore: "infra",
   compose: "infra",
+  "firebase-rules": "infra",
   workflow: "infra",
   "gh-action": "infra",
   shell: "infra",
