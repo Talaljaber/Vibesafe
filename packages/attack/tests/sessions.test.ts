@@ -132,6 +132,8 @@ describe("loadSessions", () => {
     [[session("a", { resources: { "api/x": "1" } })], 'must be a route pattern starting with "/"'],
     [[session("a", { resources: { "/api/x/[id]": "a/b" } })], "must be a string of 1-128"],
     [[session("a", { resources: { "/api/x/[id]": 5 } })], "must be a string of 1-128"],
+    [[session("a", { resources: { "/api/x/[id]": ".." } })], "must be a string of 1-128"],
+    [[session("a", { resources: { "/api/x/[id]": "." } })], "must be a string of 1-128"],
     [[session("a"), session("a")], 'duplicate session label "a"'],
   ])("rejects invalid sessions %#", (sessions, message) => {
     write("sessions.json", { schemaVersion: 1, sessions });

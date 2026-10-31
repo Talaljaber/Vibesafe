@@ -311,3 +311,53 @@ describe("runAttack on the demo harness", () => {
     expect(replay.outcome).toBe("INCONCLUSIVE");
   });
 });
+
+describe("retest ledger when static says fixed but the hole is open", () => {
+  it("counts the live-confirmed exploit, diffs STILL_VULNERABLE and exits 1", async () => {
+    await stopHarness();
+    const leak = path.join(tmp, "leak");
+    fs.cpSync(fixture, leak, { recursive: true });
+    const saved = root;
+    root = leak;
+    try {
+      const first = await startHarness();
+      const b = await runAttack({ projectPath: leak, target: first, mode: "baseline", rate: 50 });
+      expect(b.ledger.confirmed).toBe(2);
+      await stopHarness();
+
+      fs.cpSync(
+        path.join(fixedOverlay, "app", "api", "admin"),
+        path.join(leak, "app", "api", "admin"),
+        { recursive: true },
+      );
+      // An owner check with an admin bypass: the static scan accepts it, alice (admin) still
+      // reads bob's note.
+      const file = path.join(leak, "app", "api", "notes", "[id]", "route.js");
+      const src = fs.readFileSync(file, "utf8");
+      fs.writeFileSync(
+        file,
+        src.replace(
+          /(export async function GET[\s\S]*?\.single\(\);)/,
+          `$1\n  if (data && data.user_id !== session.userId && session.role !== "admin") {\n    return Response.json({ error: "forbidden" }, { status: 403 });\n  }`,
+        ),
+      );
+      const second = await startHarness();
+      const retest = await runAttack({
+        projectPath: leak,
+        target: second,
+        mode: "retest",
+        rate: 50,
+      });
+      const notesId = Object.values(byRoute(b)).find(
+        (r) => key(r) === "GET /api/notes/[id]",
+      )?.attackId;
+      expect(retest.diff?.find((d) => d.attackId === notesId)?.state).toBe("STILL_VULNERABLE");
+      expect(retest.ledger.confirmed).toBe(1);
+      expect(retest.ledger.confirmed).toBeLessThanOrEqual(retest.ledger.staticFlagged);
+      expect(ledgerLine(retest.ledger)).toContain("live confirmed 1");
+      expect(exitCodeForRun(retest)).toBe(1);
+    } finally {
+      root = saved;
+    }
+  });
+});

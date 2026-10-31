@@ -133,7 +133,7 @@ function parseSession(file: string, raw: unknown, i: number): SessionSpec {
         `${file}: ${at}.resources key "${pattern}" must be a route pattern starting with "/"`,
       );
     }
-    if (typeof id !== "string" || !RESOURCE_ID_RE.test(id)) {
+    if (typeof id !== "string" || !RESOURCE_ID_RE.test(id) || id === "." || id === "..") {
       throw new AttackConfigError(
         `${file}: ${at}.resources["${pattern}"] must be a string of 1-128 characters from [A-Za-z0-9_.~:-]`,
       );

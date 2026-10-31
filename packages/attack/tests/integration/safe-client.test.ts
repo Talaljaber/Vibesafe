@@ -35,9 +35,11 @@ beforeAll(async () => {
       res.writeHead(302, { location: `http://127.0.0.1:${port}/login#next` }).end();
     } else if (url === "/to-token-external") {
       res.writeHead(302, { location: "http://example.com/cb?token=SECRETTOKEN#frag" }).end();
+    } else if (url === "/to-query") {
+      res.writeHead(302, { location: "/login?token=SECRETQ" }).end();
     } else if (url === "/to-login") {
       res.writeHead(302, { location: "/login#next" }).end();
-    } else if (url === "/login") {
+    } else if (url.split("?")[0] === "/login") {
       res.end("login");
     } else if (url === "/slow") {
       // never answers
@@ -114,6 +116,15 @@ describe("SafeHttpClient", () => {
     const logged = JSON.stringify(client.log);
     expect(logged).not.toContain("SECRETTOKEN");
     expect(logged).toContain("http://example.com/cb");
+  });
+
+  it("never logs the query of a followed same-origin redirect hop", async () => {
+    const client = new SafeHttpClient({ ...fast });
+    const res = await client.request({ url: `${base()}/to-query` });
+    expect(res.status).toBe(200);
+    const logged = JSON.stringify(client.log);
+    expect(logged).not.toContain("SECRETQ");
+    expect(logged).toContain("/login");
   });
 
   it("follows a same-host redirect through the gate", async () => {

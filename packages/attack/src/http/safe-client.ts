@@ -297,7 +297,10 @@ export class SafeHttpClient {
       const started = Date.now();
       const hop = await sendOnce(decision.url, decision.kind, headers, timeoutMs, "127.0.0.1");
       const ms = Date.now() - started;
-      this.record(method, decision.url.href, hop.status, ms, req.session);
+      // Followed redirect hops are server-chosen: log origin and path only, never their query.
+      const shownUrl =
+        hops === 0 ? decision.url.href : `${decision.url.origin}${decision.url.pathname}`;
+      this.record(method, shownUrl, hop.status, ms, req.session);
 
       const response: SafeResponse = {
         status: hop.status,

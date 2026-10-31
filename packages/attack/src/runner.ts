@@ -122,28 +122,41 @@ function planGroups(ctx: PlanContext, log: RunOptions["log"]): ProbeGroup[] {
 
 // ---------------------------------------------------------------- ledger
 
-/** Spec 9: over findings whose ruleId a check in this run consumes. */
-export function computeLedger(
+/**
+ * The static claims this run can test, one per attack unit: the distinct attackIds of the groups
+ * each consumed finding plans into (findings a check merges into one group count once), plus a
+ * unit of its own for a consumed finding that produces no group. Each finding is planned alone so
+ * the count never depends on how a check merges them.
+ */
+export function staticUnits(
   findings: readonly Finding[],
+  ctx: PlanContext,
+  log?: RunOptions["log"],
+): Set<string> {
+  const units = new Set<string>();
+  for (const f of findings) {
+    const check = CHECK_RULES[f.ruleId];
+    const impl = check === undefined ? undefined : checkFor(check);
+    if (impl === undefined) continue;
+    let ids: string[] = [];
+    try {
+      ids = impl.plan({ ...ctx, findings: [f] }).map((g) => g.attackId);
+    } catch (err) {
+      log?.(`check ${impl.id} could not plan: ${(err as Error).message}`);
+    }
+    if (ids.length === 0) units.add(`finding:${f.id}`);
+    for (const id of ids) units.add(id);
+  }
+  return units;
+}
+
+/** Spec 9: staticFlagged is the number of static attack units; outcomes are counted per result. */
+export function computeLedger(
+  staticFlagged: number,
   results: readonly AttackResult[],
   scope?: (r: AttackResult) => boolean,
-  planned: readonly { attackId: string }[] = [],
 ) {
-  const consumed = new Set(ATTACK_CHECKS.map((c) => c.id));
-  // Findings that a check merged into one attack group (two unscoped lookups in one handler, a
-  // write-path skip next to the GET group) are one live attack: count the group once.
-  const merged = planned.length - new Set(planned.map((g) => g.attackId)).size;
-  const flagged = findings.filter((f) => {
-    const check = CHECK_RULES[f.ruleId];
-    return check !== undefined && consumed.has(check);
-  }).length;
-  const ledger: Ledger = {
-    staticFlagged: Math.max(0, flagged - merged),
-    confirmed: 0,
-    refuted: 0,
-    untested: 0,
-    errors: 0,
-  };
+  const ledger: Ledger = { staticFlagged, confirmed: 0, refuted: 0, untested: 0, errors: 0 };
   for (const r of scope ? results.filter(scope) : results) {
     if (r.outcome === "CONFIRMED") ledger.confirmed += 1;
     else if (r.outcome === "NOT_REPRODUCED") ledger.refuted += 1;
@@ -192,7 +205,14 @@ function failed(label: string, error: string): ProbeResponse {
   };
 }
 
-const validPath = (p: string): boolean => /^\/(?!\/)/.test(p);
+/** True for a segment the URL parser resolves ("..", "%2e%2e", "%2E.") and for any backslash. */
+export function hasDotSegment(requestPath: string): boolean {
+  const pathname = requestPath.split(/[?#]/)[0] ?? "";
+  if (pathname.includes("\\")) return true;
+  return pathname.split("/").some((seg) => /^(%2e|\.){1,2}$/i.test(seg) && seg.length > 0);
+}
+
+const validPath = (p: string): boolean => /^\/(?!\/)/.test(p) && !hasDotSegment(p);
 
 async function send(ctx: SendContext, r: ProbeRequest, prewarm = false): Promise<ProbeResponse> {
   // Floor: only the local target. A remote host needs S1 and is reported as a failed request.
@@ -267,6 +287,7 @@ function plainResult(
 
 /** True when a Next.js App Router pattern ("/api/[a]/[...rest]") can serve the concrete path. */
 export function routeServes(pattern: string, requestPath: string): boolean {
+  if (hasDotSegment(requestPath)) return false;
   const clean = (requestPath.split(/[?#]/)[0] ?? "").split("/").filter((x) => x !== "");
   const segs = pattern.split("/").filter((x) => x !== "");
   const walk = (i: number, j: number): boolean => {
@@ -314,6 +335,11 @@ function guardGroup(
   const mismatch = paths.find((p) => !routeServes(route, p));
   if (mismatch !== undefined) {
     return skipped("a saved request does not belong to the saved route; can't replay");
+  }
+  // The risky-segment rule applies to the saved route and paths themselves, so it also covers a
+  // handler no current route entry matches (moved to pages/api, served by middleware).
+  if (preflightGet(route, "").skip || paths.some((p) => preflightGet(p, "").skip)) {
+    return skipped(MAY_WRITE_REASON);
   }
   const wanted = normalizePattern(route);
   const candidates = pass.routes.filter(
@@ -461,16 +487,15 @@ function finishRun(
   options: RunOptions,
   s: Setup,
   run: Omit<AttackRun, "finishedAt" | "ledger" | "vibesafeVersion" | "schemaVersion">,
-  findings: readonly Finding[],
+  staticFlagged: number,
   scope?: (r: AttackResult) => boolean,
-  planned: readonly { attackId: string }[] = [],
 ): AttackRun {
   const full: AttackRun = {
     schemaVersion: 1,
     vibesafeVersion: VIBESAFE_VERSION,
     ...run,
     finishedAt: new Date().toISOString(),
-    ledger: computeLedger(findings, run.results, scope, planned),
+    ledger: computeLedger(staticFlagged, run.results, scope),
   };
   if (full.mode === "dry-run") return full;
   saveRun(s.root, full, { newBaseline: options.newBaseline });
@@ -500,19 +525,18 @@ export async function runAttack(options: RunOptions): Promise<AttackRun> {
   const pass = await staticPass(s.root);
   for (const w of pass.warnings) log?.(`Static scan: ${w}`);
   log?.(`Static scan: ${pass.findings.length} findings, ${pass.routes.length} routes`);
-  const planned = planGroups(
-    {
-      findings: pass.findings,
-      routes: pass.routes,
-      sessions: s.sessions,
-      env: {},
-      readSource: pass.readSource,
-    },
-    log,
-  );
+  const planCtx: PlanContext = {
+    findings: pass.findings,
+    routes: pass.routes,
+    sessions: s.sessions,
+    env: {},
+    readSource: pass.readSource,
+  };
+  const planned = planGroups(planCtx, log);
+  const units = staticUnits(pass.findings, planCtx, log);
 
   if (options.mode === "dry-run") {
-    return dryRun(options, s, planned, pass.findings, startedAt);
+    return dryRun(options, s, planned, units.size, startedAt);
   }
 
   // Groups to send: in a retest, every baseline group is replayed (spec 9); a baseline group with
@@ -568,23 +592,34 @@ export async function runAttack(options: RunOptions): Promise<AttackRun> {
       freshRoutes: pass.routes.map((r) => r.pattern),
     });
   }
-  // The retest ledger covers only results tied to a fresh finding (spec 9: the findings consumed).
-  const freshIds = new Set(planned.map((g) => g.attackId));
-  const findingIds = new Set(pass.findings.map((f) => f.id));
-  const scope =
-    baseline === undefined
-      ? undefined
-      : (r: AttackResult): boolean =>
-          freshIds.has(r.attackId) ||
-          (r.staticRef !== undefined && findingIds.has(r.staticRef.findingId));
-  return finishRun(options, s, run, pass.findings, scope, planned);
+  // The retest ledger covers results tied to a fresh finding (spec 9: the findings consumed).
+  // A replayed result that still shows a live problem (CONFIRMED, STILL_VULNERABLE, NEW, BROKEN)
+  // is always counted, even when the static finding is gone: static says fixed, live says no.
+  // Its baseline claim joins the static count, so confirmed never exceeds staticFlagged.
+  let scope: ((r: AttackResult) => boolean) | undefined;
+  if (baseline !== undefined) {
+    const freshIds = new Set(planned.map((g) => g.attackId));
+    const findingIds = new Set(pass.findings.map((f) => f.id));
+    const live = new Set(
+      (run.diff ?? [])
+        .filter((d) => ["STILL_VULNERABLE", "NEW", "BROKEN"].includes(d.state))
+        .map((d) => d.attackId),
+    );
+    const inScope = (r: AttackResult): boolean =>
+      freshIds.has(r.attackId) ||
+      (r.staticRef !== undefined && findingIds.has(r.staticRef.findingId));
+    const isLive = (r: AttackResult): boolean => r.outcome === "CONFIRMED" || live.has(r.attackId);
+    for (const r of results) if (!inScope(r) && isLive(r)) units.add(r.attackId);
+    scope = (r) => inScope(r) || isLive(r);
+  }
+  return finishRun(options, s, run, units.size, scope);
 }
 
 async function dryRun(
   options: RunOptions,
   s: Setup,
   groups: ProbeGroup[],
-  findings: readonly Finding[],
+  staticFlagged: number,
   startedAt: string,
 ): Promise<AttackRun> {
   const explicit = options.target ?? s.configuredTarget;
@@ -611,7 +646,7 @@ async function dryRun(
       results: [],
       requestLog: [...client.log],
     },
-    findings,
+    staticFlagged,
   );
 }
 
@@ -649,6 +684,17 @@ export async function replayAttack(options: RunOptions, attackId: string): Promi
     else if (fresh) savedGroup = fresh;
   }
   const group = guardGroup(savedGroup, pass, s.sessions, fresh);
+  if (options.mode === "dry-run") {
+    // A dry run sends nothing: gate and log the requests, never detect the target.
+    const explicit = options.target ?? s.configuredTarget ?? saved.targetUrl;
+    const dry: SendContext = {
+      client: newClient(s, options, true),
+      base: normalizeTarget(explicit, "target"),
+      sessions: s.sessions,
+    };
+    if (!group.skip) for (const r of group.requests) await send(dry, r);
+    return plainResult(group, "INCONCLUSIVE", group.skip?.reason ?? "dry run: nothing was sent");
+  }
   const client = newClient(s, options);
   if (group.skip || group.requests.length === 0) {
     // Nothing to send: no target detection, no controls.

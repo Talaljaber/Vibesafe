@@ -4,9 +4,9 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
-import { ScannerPipeline } from "@talaljaber/vibesafe-core";
+import { ScannerPipeline, createDefaultRegistry } from "@talaljaber/vibesafe-core";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { computeLedger, routeServes } from "../src/runner.js";
+import { computeLedger, hasDotSegment, routeServes } from "../src/runner.js";
 import { replayAttack, runAttack } from "../src/index.js";
 import { AttackPersistError, LAST_FILE, NO_BASELINE_MESSAGE } from "../src/persist.js";
 import type { AttackResult, AttackRun } from "../src/types.js";
@@ -92,30 +92,60 @@ describe("runner static pass", () => {
 });
 
 describe("computeLedger", () => {
-  it("counts findings merged into one attack group once", () => {
-    const f = (ruleId: string) => ({ ruleId }) as never;
-    const l = computeLedger(
-      [f("authorization/idor-unscoped-lookup"), f("authorization/idor-unscoped-lookup")],
-      [{ outcome: "CONFIRMED" } as AttackResult],
-      undefined,
-      [{ attackId: "ATK-a" }, { attackId: "ATK-a" }],
-    );
-    expect(l).toEqual({ staticFlagged: 1, confirmed: 1, refuted: 0, untested: 0, errors: 0 });
-  });
-
-  it("counts consumed findings and outcomes", () => {
-    const f = (ruleId: string) => ({ ruleId }) as never;
+  it("counts outcomes against the given static count", () => {
     const r = (outcome: AttackResult["outcome"]) => ({ outcome }) as AttackResult;
     expect(
-      computeLedger(
-        [
-          f("authorization/idor-unscoped-lookup"),
-          f("auth/missing-route-auth"),
-          f("secrets/hardcoded-api-key"),
-        ],
-        [r("CONFIRMED"), r("NOT_REPRODUCED"), r("INCONCLUSIVE"), r("ERROR"), r("CONFIRMED")],
-      ),
+      computeLedger(2, [
+        r("CONFIRMED"),
+        r("NOT_REPRODUCED"),
+        r("INCONCLUSIVE"),
+        r("ERROR"),
+        r("CONFIRMED"),
+      ]),
     ).toEqual({ staticFlagged: 2, confirmed: 2, refuted: 1, untested: 1, errors: 1 });
+  });
+
+  it("two unscoped lookups in one GET handler are one static unit", async () => {
+    const one = copyDemo("units-one");
+    const two = copyDemo("units-two");
+    const file = path.join(two, "app", "api", "notes", "[id]", "route.js");
+    fs.writeFileSync(
+      file,
+      fs
+        .readFileSync(file, "utf8")
+        .replace(
+          'const { data } = await db.from("notes").select("*").eq("id", id).single();',
+          'const { data } = await db.from("notes").select("*").eq("id", id).single();\n  const { data: again } = await db.from("notes").select("*").eq("id", id).single();',
+        ),
+    );
+    expect(fs.readFileSync(file, "utf8")).toContain("again");
+    const scanned = await new ScannerPipeline(createDefaultRegistry()).scan({
+      rootPath: two,
+      online: false,
+    });
+    const lookups = scanned.findings.filter(
+      (f) => f.ruleId === "authorization/idor-unscoped-lookup" && f.file.includes("notes"),
+    );
+    expect(lookups.length).toBeGreaterThanOrEqual(3); // GET twice + PATCH
+    const a = await runAttack({ projectPath: one, mode: "dry-run" });
+    const b = await runAttack({ projectPath: two, mode: "dry-run" });
+    expect(b.ledger.staticFlagged).toBe(a.ledger.staticFlagged);
+  });
+});
+
+describe("hasDotSegment", () => {
+  it("catches dot segments in every spelling and backslashes", () => {
+    for (const p of [
+      "/api/notes/../cron",
+      "/api/notes/%2e%2e/cron/purge",
+      "/api/notes/%2E./x",
+      "/api/notes/./x",
+      "/api/notes\\..\\cron",
+    ]) {
+      expect(hasDotSegment(p), p).toBe(true);
+    }
+    expect(hasDotSegment("/api/notes/n1?x=../y")).toBe(false);
+    expect(hasDotSegment("/api/notes/a..b")).toBe(false);
   });
 });
 
@@ -324,6 +354,67 @@ describe("replayAttack", () => {
     );
     expect(r.reasoning).not.toMatch(/may write/);
     expect(seen.some((u) => u.includes("secret_probe"))).toBe(true);
+  });
+
+  it("a saved path with a dot segment is never sent", async () => {
+    const dir = projectWithRun("dot-segment");
+    sessionsWith(dir, ["carol", "dave"]);
+    writeRoute(
+      dir,
+      "app/api/notes/[...slug]/route.ts",
+      "export async function GET() { return Response.json({}); }\n",
+    );
+    writeRoute(dir, "app/api/cron/purge/route.ts", WRITING_GET);
+    const f = path.join(dir, ".vibesafe", LAST_FILE);
+    const run = JSON.parse(fs.readFileSync(f, "utf8")) as AttackRun;
+    const g = run.groups[0];
+    if (g) {
+      g.route = "/api/notes/[...slug]";
+      for (const r of g.requests) r.path = "/api/notes/%2e%2e/cron/purge";
+    }
+    fs.writeFileSync(f, JSON.stringify(run));
+    seen.length = 0;
+    const r = await replayAttack(
+      { projectPath: dir, target: base, mode: "retest", rate: 100 },
+      "ATK-0123456789ab",
+    );
+    expect(r.outcome).toBe("INCONCLUSIVE");
+    expect(seen).toEqual([]);
+  });
+
+  it("a saved route with a risky segment is never sent, even with no current route", async () => {
+    const dir = projectWithRun("risky-saved");
+    sessionsWith(dir, ["carol", "dave"]);
+    const f = path.join(dir, ".vibesafe", LAST_FILE);
+    const run = JSON.parse(fs.readFileSync(f, "utf8")) as AttackRun;
+    const g = run.groups[0];
+    if (g) {
+      g.route = "/api/cron/[x]";
+      for (const r of g.requests) r.path = r.path.replace("/api/notes/", "/api/cron/");
+    }
+    fs.writeFileSync(f, JSON.stringify(run));
+    seen.length = 0;
+    const r = await replayAttack(
+      { projectPath: dir, target: base, mode: "retest", rate: 100 },
+      "ATK-0123456789ab",
+    );
+    expect(r.outcome).toBe("INCONCLUSIVE");
+    expect(r.reasoning).toMatch(/may write/);
+    expect(seen).toEqual([]);
+  });
+
+  it("replay in dry-run mode sends nothing", async () => {
+    const dir = projectWithRun("replay-dry");
+    sessionsWith(dir, ["carol", "dave"]);
+    const connect = vi.spyOn(net.Socket.prototype, "connect");
+    seen.length = 0;
+    const r = await replayAttack(
+      { projectPath: dir, target: base, mode: "dry-run", rate: 100 },
+      "ATK-0123456789ab",
+    );
+    expect(r.outcome).toBe("INCONCLUSIVE");
+    expect(seen).toEqual([]);
+    expect(connect).not.toHaveBeenCalled();
   });
 
   it("an unknown attack id is an exit-2 error", async () => {
