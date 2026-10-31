@@ -24,6 +24,7 @@ import { formatCurl } from "./report/curl.js";
 import { renderHtmlReport } from "./report/html.js";
 import { renderAgentReport } from "./report/markdown.js";
 import { safeId } from "./report/text.js";
+import { normalizePattern } from "./ids.js";
 import { MAY_WRITE_REASON, preflightGet } from "./plan/preflight.js";
 import { AttackConfigError, MAX_RATE, loadAttackConfig, loadSessions } from "./sessions.js";
 import {
@@ -126,13 +127,18 @@ export function computeLedger(
   findings: readonly Finding[],
   results: readonly AttackResult[],
   scope?: (r: AttackResult) => boolean,
+  planned: readonly { attackId: string }[] = [],
 ) {
   const consumed = new Set(ATTACK_CHECKS.map((c) => c.id));
+  // Findings that a check merged into one attack group (two unscoped lookups in one handler, a
+  // write-path skip next to the GET group) are one live attack: count the group once.
+  const merged = planned.length - new Set(planned.map((g) => g.attackId)).size;
+  const flagged = findings.filter((f) => {
+    const check = CHECK_RULES[f.ruleId];
+    return check !== undefined && consumed.has(check);
+  }).length;
   const ledger: Ledger = {
-    staticFlagged: findings.filter((f) => {
-      const check = CHECK_RULES[f.ruleId];
-      return check !== undefined && consumed.has(check);
-    }).length,
+    staticFlagged: Math.max(0, flagged - merged),
     confirmed: 0,
     refuted: 0,
     untested: 0,
@@ -259,27 +265,66 @@ function plainResult(
   return out;
 }
 
+/** True when a Next.js App Router pattern ("/api/[a]/[...rest]") can serve the concrete path. */
+export function routeServes(pattern: string, requestPath: string): boolean {
+  const clean = (requestPath.split(/[?#]/)[0] ?? "").split("/").filter((x) => x !== "");
+  const segs = pattern.split("/").filter((x) => x !== "");
+  const walk = (i: number, j: number): boolean => {
+    if (i === segs.length) return j === clean.length;
+    const seg = segs[i] as string;
+    if (/^\[\[\.\.\.[^\]]+\]\]$/.test(seg)) return i === segs.length - 1;
+    if (/^\[\.\.\.[^\]]+\]$/.test(seg)) return i === segs.length - 1 && j < clean.length;
+    if (j >= clean.length) return false;
+    if (/^\[[^\]]+\]$/.test(seg)) return walk(i + 1, j + 1);
+    return seg === clean[j] && walk(i + 1, j + 1);
+  };
+  return walk(0, 0);
+}
+
 /**
- * GET pre-flight for groups taken from a saved run (spec 3.3): the current source decides, not the
- * source at baseline time. A handler that may write now (or whose source cannot be read) becomes
- * a skip group, so nothing is sent to it. A route that no longer exists has no handler to run.
+ * Pre-flight for groups taken from a saved run (spec 3.3): the current source decides, not the
+ * source at baseline time. A group whose session is gone, with no route, or with a request path its
+ * route cannot serve, is judged INCONCLUSIVE before anything is sent. Every current route that
+ * matches the saved route (renamed parameters included) or can serve one of the concrete paths
+ * (catch-alls, moved files) is checked; if any may write (or its source cannot be read) nothing
+ * is sent. Only a path no current route can serve (the GONE case) is replayed unguarded.
  */
-function guardGroup(group: ProbeGroup, pass: StaticPass, fresh?: ProbeGroup): ProbeGroup {
+function guardGroup(
+  group: ProbeGroup,
+  pass: StaticPass,
+  sessions: readonly SessionSpec[],
+  fresh?: ProbeGroup,
+): ProbeGroup {
   if (group.skip || group.requests.length === 0) return group;
   const skipped = (reason: string): ProbeGroup => ({
     ...group,
     requests: [],
     skip: { outcome: "INCONCLUSIVE", reason },
   });
-  if (fresh?.skip?.reason === MAY_WRITE_REASON) return skipped(MAY_WRITE_REASON);
-  if (group.route === undefined || (group.method !== undefined && group.method !== "GET")) {
-    return group;
+  const missing = group.requests.find(
+    (r) => r.session !== undefined && findSession(sessions, r.session) === undefined,
+  );
+  if (missing) {
+    return skipped(`session "${missing.session ?? ""}" is not in sessions.json; can't replay`);
   }
-  const entry = pass.routes.find((r) => r.pattern === group.route);
-  if (entry === undefined) return group;
-  const src = pass.readSource(entry.sourceFile);
-  if (src === undefined) return skipped(MAY_WRITE_REASON);
-  return preflightGet(entry.pattern, src).skip ? skipped(MAY_WRITE_REASON) : group;
+  if (fresh?.skip?.reason === MAY_WRITE_REASON) return skipped(MAY_WRITE_REASON);
+  const route = group.route;
+  if (route === undefined) return skipped("saved group has no route; can't replay");
+  const paths = group.requests.filter((r) => r.host === "target").map((r) => r.path);
+  const mismatch = paths.find((p) => !routeServes(route, p));
+  if (mismatch !== undefined) {
+    return skipped("a saved request does not belong to the saved route; can't replay");
+  }
+  const wanted = normalizePattern(route);
+  const candidates = pass.routes.filter(
+    (r) => normalizePattern(r.pattern) === wanted || paths.some((p) => routeServes(r.pattern, p)),
+  );
+  for (const entry of candidates) {
+    const src = pass.readSource(entry.sourceFile);
+    if (src === undefined || preflightGet(entry.pattern, src).skip)
+      return skipped(MAY_WRITE_REASON);
+  }
+  return group;
 }
 
 /** Sends one group's requests in order and evaluates them with its check. */
@@ -418,13 +463,14 @@ function finishRun(
   run: Omit<AttackRun, "finishedAt" | "ledger" | "vibesafeVersion" | "schemaVersion">,
   findings: readonly Finding[],
   scope?: (r: AttackResult) => boolean,
+  planned: readonly { attackId: string }[] = [],
 ): AttackRun {
   const full: AttackRun = {
     schemaVersion: 1,
     vibesafeVersion: VIBESAFE_VERSION,
     ...run,
     finishedAt: new Date().toISOString(),
-    ledger: computeLedger(findings, run.results, scope),
+    ledger: computeLedger(findings, run.results, scope, planned),
   };
   if (full.mode === "dry-run") return full;
   saveRun(s.root, full, { newBaseline: options.newBaseline });
@@ -474,7 +520,12 @@ export async function runAttack(options: RunOptions): Promise<AttackRun> {
   const freshById = new Map(planned.map((g) => [g.attackId, g] as const));
   const replayGroups = (baseline?.groups ?? []).map((g) => {
     const fresh = freshById.get(g.attackId);
-    return guardGroup((g.skip || g.requests.length === 0) && fresh ? fresh : g, pass, fresh);
+    return guardGroup(
+      (g.skip || g.requests.length === 0) && fresh ? fresh : g,
+      pass,
+      s.sessions,
+      fresh,
+    );
   });
   const baselineIds = new Set(replayGroups.map((g) => g.attackId));
   const freshGroups =
@@ -526,7 +577,7 @@ export async function runAttack(options: RunOptions): Promise<AttackRun> {
       : (r: AttackResult): boolean =>
           freshIds.has(r.attackId) ||
           (r.staticRef !== undefined && findingIds.has(r.staticRef.findingId));
-  return finishRun(options, s, run, pass.findings, scope);
+  return finishRun(options, s, run, pass.findings, scope, planned);
 }
 
 async function dryRun(
@@ -573,13 +624,31 @@ export async function replayAttack(options: RunOptions, attackId: string): Promi
   const saved = loadSavedRun(s.root, "last") ?? loadSavedRun(s.root, "baseline");
   if (saved === undefined) throw new AttackPersistError(NO_BASELINE_MESSAGE);
   const wanted = attackId.startsWith("ATK-") ? attackId : `ATK-${attackId}`;
-  const savedGroup = saved.groups.find((g) => g.attackId === wanted);
+  let savedGroup = saved.groups.find((g) => g.attackId === wanted);
   if (savedGroup === undefined) {
     throw new AttackPersistError(`No attack ${safeId(wanted)} in the last run.`);
   }
   const pass = await staticPass(s.root);
   for (const w of pass.warnings) options.log?.(`Static scan: ${w}`);
-  const group = guardGroup(savedGroup, pass);
+  let fresh: ProbeGroup | undefined;
+  if (savedGroup.skip || savedGroup.requests.length === 0) {
+    // A skip group in attack-last.json (a guarded retest, a missing session at the time) must not
+    // pin the attack: fall back to the baseline group, else re-plan it from the current source.
+    const base = loadSavedRun(s.root, "baseline")?.groups.find((g) => g.attackId === wanted);
+    fresh = planGroups(
+      {
+        findings: pass.findings,
+        routes: pass.routes,
+        sessions: s.sessions,
+        env: {},
+        readSource: pass.readSource,
+      },
+      options.log,
+    ).find((g) => g.attackId === wanted);
+    if (base && !base.skip && base.requests.length > 0) savedGroup = base;
+    else if (fresh) savedGroup = fresh;
+  }
+  const group = guardGroup(savedGroup, pass, s.sessions, fresh);
   const client = newClient(s, options);
   if (group.skip || group.requests.length === 0) {
     // Nothing to send: no target detection, no controls.

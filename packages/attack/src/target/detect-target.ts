@@ -27,7 +27,7 @@ export const NO_TARGET_MESSAGE =
   "no dev server answered on 127.0.0.1 / [::1] ports 3000 and 3001; start your app or pass --target";
 
 /** Max owner-control requests sent to verify a target that has no recognisable header. */
-const MAX_OWNER_CHECKS = 3;
+const MAX_OWNER_CHECKS = 1;
 
 /**
  * Validates a loopback target and reduces it to its origin ("http://127.0.0.1:3000").
