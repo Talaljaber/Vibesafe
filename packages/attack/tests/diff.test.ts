@@ -94,6 +94,10 @@ describe("computeRetestDiff: the 7 states", () => {
       stateOf("CONFIRMED", "NOT_REPRODUCED", { ownerOk: false }, { ownerStatus: 500, routes: [] }),
     ).toBe("BROKEN");
   });
+  it("is never GONE without a replayed owner control that returned 404", () => {
+    expect(stateOf("CONFIRMED", "INCONCLUSIVE", {}, { routes: [] })).toBe("UNCHANGED");
+    expect(stateOf("CONFIRMED", "NOT_REPRODUCED", {}, { routes: [] })).toBe("BLOCKED");
+  });
   it("GONE matches routes after parameter renames", () => {
     expect(
       stateOf(

@@ -48,7 +48,8 @@ describe("runner static pass", () => {
     );
     expect(scan).toHaveBeenCalledTimes(1);
     expect(scan.mock.calls[0]?.[0]).toMatchObject({ rootPath: dir, online: false, deep: false });
-    // Core rejects the key in a config file; either way the run stops or proceeds offline.
+    // The guarantee is the spy assertion above (explicit online:false reaches the scan). Core also
+    // rejects the key in a config file, so here the run stops early with exit 2.
     if (err !== undefined) expect((err as { exitCode?: number }).exitCode).toBe(2);
     expect(net1).not.toHaveBeenCalled();
     expect(connect).not.toHaveBeenCalled();
@@ -65,6 +66,16 @@ describe("runner static pass", () => {
     expect(run.ledger.staticFlagged).toBe(4);
     expect(net1).not.toHaveBeenCalled();
     expect(connect).not.toHaveBeenCalled();
+  });
+
+  it("rejects a rate above the attack.json cap before scanning", async () => {
+    const dir = copyDemo("rate-cap");
+    const scan = vi.spyOn(ScannerPipeline.prototype, "scan");
+    const err = await runAttack({ projectPath: dir, mode: "dry-run", rate: 101 }).catch(
+      (e: unknown) => e,
+    );
+    expect((err as Error).message).toMatch(/invalid rate: 101/);
+    expect(scan).not.toHaveBeenCalled();
   });
 
   it("a retest without a baseline is refused (exit 2) before scanning or sending", async () => {
@@ -175,7 +186,7 @@ describe("replayAttack", () => {
     const dir = projectWithRun("missing-session");
     seen.length = 0;
     const r = await replayAttack(
-      { projectPath: dir, target: base, mode: "retest", rate: 1000 },
+      { projectPath: dir, target: base, mode: "retest", rate: 100 },
       "ATK-0123456789ab",
     );
     expect(r.outcome).toBe("INCONCLUSIVE");

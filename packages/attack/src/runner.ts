@@ -24,7 +24,8 @@ import { formatCurl } from "./report/curl.js";
 import { renderHtmlReport } from "./report/html.js";
 import { renderAgentReport } from "./report/markdown.js";
 import { safeId } from "./report/text.js";
-import { AttackConfigError, loadAttackConfig, loadSessions } from "./sessions.js";
+import { MAY_WRITE_REASON, preflightGet } from "./plan/preflight.js";
+import { AttackConfigError, MAX_RATE, loadAttackConfig, loadSessions } from "./sessions.js";
 import {
   DEFAULT_TARGETS,
   detectTarget,
@@ -61,6 +62,7 @@ const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
 
 interface StaticPass {
   findings: Finding[];
+  warnings: string[];
   routes: RouteEntry[];
   readSource(relativeFile: string): string | undefined;
 }
@@ -87,6 +89,7 @@ function sourceReader(root: string): (relativeFile: string) => string | undefine
  */
 async function staticPass(root: string): Promise<StaticPass> {
   let findings: Finding[];
+  let warnings: string[];
   let files: string[];
   try {
     const scan = await new ScannerPipeline(createDefaultRegistry()).scan({
@@ -95,12 +98,13 @@ async function staticPass(root: string): Promise<StaticPass> {
       deep: false,
     });
     findings = scan.findings;
+    warnings = scan.warnings ?? [];
     files = await new FileDiscovery(root).discoverFiles([], { includeTests: false });
   } catch (err) {
     throw new AttackConfigError(`static scan failed: ${(err as Error).message}`);
   }
   const readSource = sourceReader(root);
-  return { findings, routes: buildRouteMap(files, readSource, findings), readSource };
+  return { findings, warnings, routes: buildRouteMap(files, readSource, findings), readSource };
 }
 
 function planGroups(ctx: PlanContext, log: RunOptions["log"]): ProbeGroup[] {
@@ -118,7 +122,11 @@ function planGroups(ctx: PlanContext, log: RunOptions["log"]): ProbeGroup[] {
 // ---------------------------------------------------------------- ledger
 
 /** Spec 9: over findings whose ruleId a check in this run consumes. */
-export function computeLedger(findings: readonly Finding[], results: readonly AttackResult[]) {
+export function computeLedger(
+  findings: readonly Finding[],
+  results: readonly AttackResult[],
+  scope?: (r: AttackResult) => boolean,
+) {
   const consumed = new Set(ATTACK_CHECKS.map((c) => c.id));
   const ledger: Ledger = {
     staticFlagged: findings.filter((f) => {
@@ -130,7 +138,7 @@ export function computeLedger(findings: readonly Finding[], results: readonly At
     untested: 0,
     errors: 0,
   };
-  for (const r of results) {
+  for (const r of scope ? results.filter(scope) : results) {
     if (r.outcome === "CONFIRMED") ledger.confirmed += 1;
     else if (r.outcome === "NOT_REPRODUCED") ledger.refuted += 1;
     else if (r.outcome === "INCONCLUSIVE") ledger.untested += 1;
@@ -251,6 +259,29 @@ function plainResult(
   return out;
 }
 
+/**
+ * GET pre-flight for groups taken from a saved run (spec 3.3): the current source decides, not the
+ * source at baseline time. A handler that may write now (or whose source cannot be read) becomes
+ * a skip group, so nothing is sent to it. A route that no longer exists has no handler to run.
+ */
+function guardGroup(group: ProbeGroup, pass: StaticPass, fresh?: ProbeGroup): ProbeGroup {
+  if (group.skip || group.requests.length === 0) return group;
+  const skipped = (reason: string): ProbeGroup => ({
+    ...group,
+    requests: [],
+    skip: { outcome: "INCONCLUSIVE", reason },
+  });
+  if (fresh?.skip?.reason === MAY_WRITE_REASON) return skipped(MAY_WRITE_REASON);
+  if (group.route === undefined || (group.method !== undefined && group.method !== "GET")) {
+    return group;
+  }
+  const entry = pass.routes.find((r) => r.pattern === group.route);
+  if (entry === undefined) return group;
+  const src = pass.readSource(entry.sourceFile);
+  if (src === undefined) return skipped(MAY_WRITE_REASON);
+  return preflightGet(entry.pattern, src).skip ? skipped(MAY_WRITE_REASON) : group;
+}
+
 /** Sends one group's requests in order and evaluates them with its check. */
 async function runGroup(
   ctx: SendContext,
@@ -358,8 +389,10 @@ function setup(options: RunOptions): Setup {
   const config = loadAttackConfig(root);
   const sessions = loadSessions(root, options.sessionsPath).sessions;
   const rate = options.rate ?? config?.rate ?? DEFAULT_RATE;
-  if (typeof rate !== "number" || !Number.isFinite(rate) || rate <= 0) {
-    throw new AttackConfigError(`invalid rate: ${String(rate)} (must be a number above 0)`);
+  if (typeof rate !== "number" || !Number.isFinite(rate) || rate <= 0 || rate > MAX_RATE) {
+    throw new AttackConfigError(
+      `invalid rate: ${String(rate)} (must be a number above 0 and at most ${MAX_RATE})`,
+    );
   }
   return { root, sessions, rate, configuredTarget: config?.target };
 }
@@ -384,13 +417,14 @@ function finishRun(
   s: Setup,
   run: Omit<AttackRun, "finishedAt" | "ledger" | "vibesafeVersion" | "schemaVersion">,
   findings: readonly Finding[],
+  scope?: (r: AttackResult) => boolean,
 ): AttackRun {
   const full: AttackRun = {
     schemaVersion: 1,
     vibesafeVersion: VIBESAFE_VERSION,
     ...run,
     finishedAt: new Date().toISOString(),
-    ledger: computeLedger(findings, run.results),
+    ledger: computeLedger(findings, run.results, scope),
   };
   if (full.mode === "dry-run") return full;
   saveRun(s.root, full, { newBaseline: options.newBaseline });
@@ -418,6 +452,7 @@ export async function runAttack(options: RunOptions): Promise<AttackRun> {
   }
 
   const pass = await staticPass(s.root);
+  for (const w of pass.warnings) log?.(`Static scan: ${w}`);
   log?.(`Static scan: ${pass.findings.length} findings, ${pass.routes.length} routes`);
   const planned = planGroups(
     {
@@ -439,7 +474,7 @@ export async function runAttack(options: RunOptions): Promise<AttackRun> {
   const freshById = new Map(planned.map((g) => [g.attackId, g] as const));
   const replayGroups = (baseline?.groups ?? []).map((g) => {
     const fresh = freshById.get(g.attackId);
-    return (g.skip || g.requests.length === 0) && fresh ? fresh : g;
+    return guardGroup((g.skip || g.requests.length === 0) && fresh ? fresh : g, pass, fresh);
   });
   const baselineIds = new Set(replayGroups.map((g) => g.attackId));
   const freshGroups =
@@ -482,7 +517,16 @@ export async function runAttack(options: RunOptions): Promise<AttackRun> {
       freshRoutes: pass.routes.map((r) => r.pattern),
     });
   }
-  return finishRun(options, s, run, pass.findings);
+  // The retest ledger covers only results tied to a fresh finding (spec 9: the findings consumed).
+  const freshIds = new Set(planned.map((g) => g.attackId));
+  const findingIds = new Set(pass.findings.map((f) => f.id));
+  const scope =
+    baseline === undefined
+      ? undefined
+      : (r: AttackResult): boolean =>
+          freshIds.has(r.attackId) ||
+          (r.staticRef !== undefined && findingIds.has(r.staticRef.findingId));
+  return finishRun(options, s, run, pass.findings, scope);
 }
 
 async function dryRun(
@@ -529,11 +573,19 @@ export async function replayAttack(options: RunOptions, attackId: string): Promi
   const saved = loadSavedRun(s.root, "last") ?? loadSavedRun(s.root, "baseline");
   if (saved === undefined) throw new AttackPersistError(NO_BASELINE_MESSAGE);
   const wanted = attackId.startsWith("ATK-") ? attackId : `ATK-${attackId}`;
-  const group = saved.groups.find((g) => g.attackId === wanted);
-  if (group === undefined) {
+  const savedGroup = saved.groups.find((g) => g.attackId === wanted);
+  if (savedGroup === undefined) {
     throw new AttackPersistError(`No attack ${safeId(wanted)} in the last run.`);
   }
+  const pass = await staticPass(s.root);
+  for (const w of pass.warnings) options.log?.(`Static scan: ${w}`);
+  const group = guardGroup(savedGroup, pass);
   const client = newClient(s, options);
+  if (group.skip || group.requests.length === 0) {
+    // Nothing to send: no target detection, no controls.
+    const ctx: SendContext = { client, base: saved.targetUrl, sessions: s.sessions };
+    return (await runGroup(ctx, group, buildControlSet([]), new Set())).result;
+  }
   const target = await detectTarget({
     client,
     explicit: options.target,

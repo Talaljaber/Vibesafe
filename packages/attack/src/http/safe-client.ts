@@ -313,7 +313,15 @@ export class SafeHttpClient {
 
       // Redirect handling: same origin only, at most 3 hops, every hop goes through the gate.
       const blockRedirect = (reason: GateReason): SafeResponse => {
-        this.record(method, hop.location ?? "", 0, 0, req.session, reason);
+        // Persisted logs never carry a server-controlled query (OAuth or magic-link tokens).
+        let shown = "(redirect)";
+        try {
+          const u = new URL(hop.location ?? "", decision.url);
+          shown = `${u.origin}${u.pathname}`;
+        } catch {
+          // keep the placeholder
+        }
+        this.record(method, shown, 0, 0, req.session, reason);
         return { ...response, redirectBlocked: true, blocked: reason };
       };
       const loc = hop.location;

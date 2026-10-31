@@ -28,9 +28,7 @@ function stateFor(
   if (was === "CONFIRMED") {
     if (now === "CONFIRMED") return "STILL_VULNERABLE";
     // A removed route is reported as GONE, never counted as a fix.
-    if (!routePresent && (replayed.ownerStatus === undefined || replayed.ownerStatus === 404)) {
-      return "GONE";
-    }
+    if (!routePresent && replayed.ownerStatus === 404) return "GONE";
     const ownerOk = replayed.result.ownerOk;
     // Under 7.1 an owner control that is not 200 makes the verdict INCONCLUSIVE, so an
     // over-broad fix (404 for everyone) arrives as INCONCLUSIVE with ownerOk false.

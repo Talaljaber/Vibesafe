@@ -56,9 +56,16 @@ function startHarness(extra: string[] = []): Promise<string> {
 function stopHarness(): Promise<void> {
   const proc = child;
   child = undefined;
-  if (!proc || proc.exitCode !== null) return Promise.resolve();
+  if (!proc || proc.exitCode !== null || proc.signalCode !== null) return Promise.resolve();
   return new Promise<void>((resolve) => {
-    proc.once("exit", () => resolve());
+    const timer = setTimeout(() => {
+      proc.kill("SIGKILL");
+      resolve();
+    }, 5_000);
+    proc.once("exit", () => {
+      clearTimeout(timer);
+      resolve();
+    });
     proc.kill();
   });
 }
@@ -75,7 +82,7 @@ afterEach(() => {
 
 afterAll(async () => {
   await stopHarness();
-  for (const c of children) if (c.exitCode === null) c.kill();
+  for (const c of children) if (c.exitCode === null && c.signalCode === null) c.kill();
   try {
     fs.rmSync(tmp, { recursive: true, force: true });
   } catch {
@@ -91,6 +98,7 @@ const vs = (...p: string[]): string => path.join(root, ".vibesafe", ...p);
 describe("runAttack on the demo harness", () => {
   let base = "";
   let baseline: AttackRun;
+  let fixedBase = "";
 
   it("dry run plans at least four groups and opens no connection", async () => {
     base = await startHarness();
@@ -205,7 +213,7 @@ describe("runAttack on the demo harness", () => {
     await stopHarness();
     // The user's agent applies the fix in the project; the harness serves the fixed twin.
     fs.cpSync(fixedOverlay, root, { recursive: true });
-    const fixedBase = await startHarness(["--overlay", fixedOverlay]);
+    fixedBase = await startHarness(["--overlay", fixedOverlay]);
     const before = fs.readFileSync(vs(BASELINE_FILE), "utf8");
 
     const retest = await runAttack({
@@ -247,7 +255,16 @@ describe("runAttack on the demo harness", () => {
     expect(exitCodeForRun(retest)).toBe(0);
     expect(retest.mode).toBe("retest");
     // the fixed twin keeps only the deliberate static false positive (invoices)
-    expect(retest.ledger.staticFlagged).toBe(1);
+    expect(retest.ledger).toEqual({
+      staticFlagged: 1,
+      confirmed: 0,
+      refuted: 1,
+      untested: 0,
+      errors: 0,
+    });
+    expect(ledgerLine(retest.ledger)).toBe(
+      "Static flagged 1 · live confirmed 0 · refuted 1 · couldn't test 0",
+    );
     // a retest never overwrites the baseline
     expect(fs.readFileSync(vs(BASELINE_FILE), "utf8")).toBe(before);
     expect(JSON.parse(fs.readFileSync(vs(LAST_FILE), "utf8")).mode).toBe("retest");
@@ -260,5 +277,37 @@ describe("runAttack on the demo harness", () => {
     );
     expect(replay).toMatchObject({ outcome: "NOT_REPRODUCED", ownerOk: true });
     expect(replay.curl.every((l) => l.includes(fixedBase))).toBe(true);
+  });
+
+  it("retest never sends to a GET handler that has started to write since the baseline", async () => {
+    const file = path.join(root, "app", "api", "notes", "[id]", "route.js");
+    const src = fs.readFileSync(file, "utf8");
+    fs.writeFileSync(
+      file,
+      src.replace(
+        /(export async function GET\([^)]*\{ params \}\) \{)/,
+        '$1\n  await db.from("audit").insert({ at: 1 });',
+      ),
+    );
+    expect(fs.readFileSync(file, "utf8")).toContain(".insert(");
+    const retest = await runAttack({
+      projectPath: root,
+      target: fixedBase,
+      mode: "retest",
+      rate: 50,
+    });
+    const notesId = byRoute(baseline)["GET /api/notes/[id]"]?.attackId ?? "";
+    expect(retest.requestLog.some((e) => e.url.includes("/api/notes/"))).toBe(false);
+    const notes = retest.results.find((r) => r.attackId === notesId);
+    expect(notes?.outcome).toBe("INCONCLUSIVE");
+    expect(notes?.reasoning).toMatch(/may write/);
+    expect(retest.diff?.find((x) => x.attackId === notesId)?.state).toBe("UNCHANGED");
+
+    // --replay of the same attack is guarded the same way
+    const replay = await replayAttack(
+      { projectPath: root, target: fixedBase, mode: "retest", rate: 50 },
+      notesId,
+    );
+    expect(replay.outcome).toBe("INCONCLUSIVE");
   });
 });
