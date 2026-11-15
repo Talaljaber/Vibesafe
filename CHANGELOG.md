@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Attack Mode retests now report "fixed & verified" and "still vulnerable" in the terminal, HTML and Markdown headline (JSON ledger unchanged), and the agent report and replay hints say `vibesafe attack --retest` instead of `npx vibesafe`.
 - Attack demo app fixture (`fixtures/attack-demo-app/`), its fixed-twin overlay and a zero-dependency harness for Attack Mode.
 - Core now exports the Next.js route helpers (nextRoutePath, findHandlerLine, isPublicRoutePath, isApiRoute, isRiskyRoutePattern) for Attack Mode.
 - Attack Mode: validating loaders for `.vibesafe/sessions.json` and `.vibesafe/attack.json` (loopback-only target, schemaVersion check, exit-2 errors).

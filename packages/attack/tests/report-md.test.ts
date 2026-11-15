@@ -105,7 +105,7 @@ describe("agent markdown report", () => {
     expect(md).toContain("<key>");
     expect(md).toContain("keys: id, <key>, <key>");
     expect(md).toContain("# VibeSafe Attack Report: 2 confirmed · 1 refuted · 1 not tested");
-    expect(md).toContain("npx vibesafe attack --replay ATK-3f9a1c2b7d10");
+    expect(md).toContain("vibesafe attack --replay ATK-3f9a1c2b7d10");
     expect(md).toContain("- Owner access: OK");
   });
 
@@ -234,5 +234,43 @@ describe("terminal summary", () => {
     ).join("\n");
     expect(out).not.toContain("Tell your agent");
     expect(out).not.toContain("HTML report");
+  });
+
+  it("retest ledger: calls out fixed & verified, baseline wording unchanged, no npx", () => {
+    const blocked = (id: string) => ({
+      attackId: id,
+      was: "CONFIRMED" as const,
+      now: "NOT_REPRODUCED" as const,
+      state: "BLOCKED" as const,
+    });
+    const rs = [
+      result({ attackId: "ATK-aaaaaaaaaaaa", outcome: "NOT_REPRODUCED" }),
+      result({ attackId: "ATK-bbbbbbbbbbbb", outcome: "NOT_REPRODUCED" }),
+      result({ attackId: "ATK-cccccccccccc", outcome: "NOT_REPRODUCED" }),
+    ];
+    const retest = run(rs, {
+      mode: "retest",
+      ledger: { staticFlagged: 4, confirmed: 0, refuted: 3, untested: 1, errors: 0 },
+      diff: [
+        blocked("ATK-aaaaaaaaaaaa"),
+        blocked("ATK-bbbbbbbbbbbb"),
+        {
+          attackId: "ATK-cccccccccccc",
+          was: "NOT_REPRODUCED",
+          now: "NOT_REPRODUCED",
+          state: "UNCHANGED",
+        },
+      ],
+    });
+    const line =
+      "Static flagged 4 · fixed & verified 2 · still vulnerable 0 · refuted 1 · couldn't test 1";
+    expect(renderTerminalSummary(retest)[0]).toBe(line);
+    const md = renderAgentReport(retest);
+    expect(md).toContain(line);
+    expect(md).toContain("2 fixed & verified · 0 still vulnerable · 1 refuted");
+    expect(renderTerminalSummary(run(rs))[0]).toBe(
+      "Static flagged 4 · live confirmed 2 · refuted 1 · couldn't test 1",
+    );
+    expect(renderAgentReport(run([result()]))).not.toContain("npx");
   });
 });

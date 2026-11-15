@@ -6,6 +6,7 @@ import type {
   RetestDiff,
   RetestState,
 } from "../types.js";
+import { retestCounts, runLedgerLine } from "./text.js";
 
 const SAFE_KEY_RE = /^[\w.-]{1,64}$/;
 const LOOPBACK_RE = /^http:\/\/(?:127\.0\.0\.1|\[::1\]|localhost)(?::\d+)?(?:\/|$)/;
@@ -100,16 +101,21 @@ footer{margin-top:32px;color:var(--muted);font-size:13px;border-top:1px solid va
 
 function ledgerTiles(run: AttackRun): string {
   const l = run.ledger;
+  const c = retestCounts(run);
   const tile = (n: number, label: string, cls: string) =>
     `<div class="tile ${cls}"><b>${esc(n)}</b><span>${esc(label)}</span></div>`;
   return (
     `<div class="tiles">` +
     tile(l.staticFlagged, "Static flagged", "") +
-    tile(l.confirmed, "Live confirmed", l.confirmed > 0 ? "bad" : "") +
-    tile(l.refuted, "Refuted", l.refuted > 0 ? "ok" : "") +
+    (c
+      ? tile(c.fixed, "Fixed & verified", c.fixed > 0 ? "ok" : "") +
+        tile(l.confirmed, "Still vulnerable", l.confirmed > 0 ? "bad" : "") +
+        tile(c.refuted, "Refuted", c.refuted > 0 ? "ok" : "")
+      : tile(l.confirmed, "Live confirmed", l.confirmed > 0 ? "bad" : "") +
+        tile(l.refuted, "Refuted", l.refuted > 0 ? "ok" : "")) +
     tile(l.untested, "Couldn't test", "") +
     `</div>` +
-    `<p class="ledger">Static flagged ${esc(l.staticFlagged)} \u00b7 live confirmed ${esc(l.confirmed)} \u00b7 refuted ${esc(l.refuted)} \u00b7 couldn't test ${esc(l.untested)}` +
+    `<p class="ledger">${runLedgerLine(run).replace(/&/g, "&amp;")}` +
     (l.errors > 0 ? ` \u00b7 errors ${esc(l.errors)}` : "") +
     `</p>`
   );
@@ -227,7 +233,10 @@ export function renderHtmlReport(run: AttackRun): string {
   const groups = new Map<string, ProbeGroup>(run.groups.map((g) => [g.attackId, g]));
   const diffs = new Map<string, RetestDiff>((run.diff ?? []).map((d) => [d.attackId, d]));
   const l = run.ledger;
-  const heading = `${l.confirmed} confirmed \u00b7 ${l.refuted} refuted \u00b7 ${l.untested} not tested`;
+  const rc = retestCounts(run);
+  const heading = rc
+    ? `${rc.fixed} fixed & verified · ${l.confirmed} still vulnerable · ${rc.refuted} refuted · ${l.untested} not tested`
+    : `${l.confirmed} confirmed · ${l.refuted} refuted · ${l.untested} not tested`;
 
   const body = SECTIONS.map(({ outcome, title }) => {
     const items = run.results.filter((r) => r.outcome === outcome);

@@ -32,6 +32,21 @@ export function ledgerLine(l: Ledger): string {
   return `Static flagged ${l.staticFlagged} · live confirmed ${l.confirmed} · refuted ${l.refuted} · couldn't test ${l.untested}`;
 }
 
+/** Retest runs split "refuted" into fixed & verified (BLOCKED on retest) and still-refuted. */
+export function retestCounts(run: AttackRun): { fixed: number; refuted: number } | undefined {
+  if (run.mode !== "retest" || !run.diff || run.diff.length === 0) return undefined;
+  const fixed = run.diff.filter((d) => d.state === "BLOCKED").length;
+  return { fixed, refuted: Math.max(0, run.ledger.refuted - fixed) };
+}
+
+/** Ledger line for a run; baseline output is unchanged, retests call out fixed & verified. */
+export function runLedgerLine(run: AttackRun): string {
+  const c = retestCounts(run);
+  const l = run.ledger;
+  if (!c) return ledgerLine(l);
+  return `Static flagged ${l.staticFlagged} · fixed & verified ${c.fixed} · still vulnerable ${l.confirmed} · refuted ${c.refuted} · couldn't test ${l.untested}`;
+}
+
 export function diffFor(run: AttackRun, id: string): RetestDiff | undefined {
   return run.diff?.find((d) => d.attackId === id);
 }

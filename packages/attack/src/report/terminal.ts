@@ -1,4 +1,4 @@
-import { diffFor, ledgerLine, oneLine, routeText, safeId } from "./text.js";
+import { diffFor, runLedgerLine, oneLine, routeText, safeId } from "./text.js";
 import type { AttackRun } from "../types.js";
 
 export interface TerminalOptions {
@@ -15,7 +15,7 @@ export interface TerminalOptions {
 export function renderTerminalSummary(run: AttackRun, options: TerminalOptions = {}): string[] {
   const md = options.markdownReportPath ?? ".vibesafe/attack-report.md";
   const html = options.htmlReportPath ?? ".vibesafe/attack-report.html";
-  const lines: string[] = [ledgerLine(run.ledger), ""];
+  const lines: string[] = [runLedgerLine(run), ""];
   const rows = run.results.map((r) => {
     const d = diffFor(run, r.attackId);
     return [d ? d.state : r.outcome, safeId(r.attackId), oneLine(r.title, 70), routeText(r)];
