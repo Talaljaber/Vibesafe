@@ -13,6 +13,9 @@
     "clean": "turbo run clean && rimraf node_modules",
     "version:check": "node scripts/sync-versions.mjs --check",
     "bench": "node scripts/bench.mjs",
+    "demo:create": "node scripts/create-attack-demo.mjs",
+    "demo:prewarm": "node scripts/attack-prewarm.mjs",
+    "demo:smoke": "node scripts/attack-demo-smoke.mjs",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,mjs,cjs,json,md}\" --ignore-path .gitignore --ignore-path .prettierignore",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,mjs,cjs,json,md}\" --ignore-path .gitignore --ignore-path .prettierignore"
   },

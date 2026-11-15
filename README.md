@@ -125,6 +125,8 @@ Proves the static findings against your running local dev server. It sends a few
 | `--open-report`       | Opens the HTML report in your browser.                                                                                                                        |
 | `-j`, `--json`        | Prints the run as JSON on stdout, with no banner.                                                                                                             |
 
+Live demo: see [DEMO.md](DEMO.md) for the booth runbook and `pnpm demo:smoke` for a one-command check of the whole flow.
+
 Exit codes: `0` when nothing is confirmed (on `--retest`: nothing still vulnerable and nothing new), `1` when at least one issue is confirmed live, still vulnerable or new, `2` for usage or runtime errors (a baseline already exists, no baseline to retest, the target could not be verified, an invalid sessions file).
 
 Run `vibesafe --help` or `vibesafe <command> --help` for the full list.
