@@ -99,12 +99,19 @@ function main() {
 
   git(outDir, ["checkout", "--quiet", "main"]);
 
+  const cli = path.join(repoRoot, "packages", "cli", "dist", "bin.js");
+  const prewarm = path.join(repoRoot, "scripts", "attack-prewarm.mjs");
   console.log(`\nAttack demo repo created at ${outDir} (branches: main = vulnerable, fixed)`);
-  console.log("\nNext steps:");
-  console.log(`  cd ${outDir}`);
-  console.log("  node server.mjs --port 3000            # harness (or: pnpm install && pnpm dev)");
-  console.log("  vibesafe attack . --target http://127.0.0.1:3000");
-  console.log("  git checkout fixed                      # restart the harness, then --retest");
+  console.log("\nNext steps (two terminals, both in the demo folder; see DEMO.md in the repo):");
+  console.log(`  cd "${outDir}"`);
+  console.log("  Terminal 1:  npm install                 # once, needs network");
+  console.log("               npm run dev                 # Next.js on http://127.0.0.1:3000");
+  console.log("               (no Next? node server.mjs --port 3000, the zero-dependency harness)");
+  console.log(`  Terminal 2:  node "${prewarm}" .`);
+  console.log(`               node "${cli}" attack --open-report`);
+  console.log('  Claude Code: "Fix the issues in .vibesafe/attack-report.md"');
+  console.log("               (fallback: git checkout fixed; restart the harness if you use it)");
+  console.log(`  Terminal 2:  node "${cli}" attack --retest --open-report`);
 }
 
 main();
