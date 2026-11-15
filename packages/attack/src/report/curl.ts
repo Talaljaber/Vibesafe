@@ -64,5 +64,5 @@ export function formatCurl(o: CurlOptions): string {
 
 /** The replay line avoids shell-quoting problems entirely. */
 export function replayLine(attackId: string): string {
-  return `npx vibesafe attack --replay ${safeId(attackId)}`;
+  return `vibesafe attack --replay ${safeId(attackId)}`;
 }

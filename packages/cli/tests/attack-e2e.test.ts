@@ -232,5 +232,9 @@ describe("vibesafe attack end to end on the demo harness", () => {
     expect(res.stdout).toContain("Alice can no longer read Bob's note");
     expect(res.stdout).toContain("owner access still works");
     expect(res.stdout).toContain("Still refuted by the live test");
+    expect(res.stdout).toContain(
+      "Static flagged 1 · fixed & verified 2 · still vulnerable 0 · refuted 0 · couldn't test 0",
+    );
+    expect(res.stdout).not.toContain("npx vibesafe");
   }, 60_000);
 });

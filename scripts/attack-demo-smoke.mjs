@@ -114,6 +114,13 @@ const ledgerText = (l) =>
     ? `Static flagged ${l.staticFlagged} · live confirmed ${l.confirmed} · refuted ${l.refuted} · couldn't test ${l.untested}`
     : "no ledger";
 
+const retestLedgerText = (run) => {
+  const l = run?.ledger;
+  if (!l) return "no ledger";
+  const fixed = (run.diff ?? []).filter((d) => d.state === "BLOCKED").length;
+  return `Static flagged ${l.staticFlagged} · fixed & verified ${fixed} · still vulnerable ${l.confirmed} · refuted ${Math.max(0, l.refuted - fixed)} · couldn't test ${l.untested}`;
+};
+
 async function main() {
   if (!fs.existsSync(BIN)) {
     console.error("FAIL  packages/cli/dist/bin.js is missing. Run `pnpm build` first.");
@@ -188,6 +195,12 @@ async function main() {
       diff("GET /api/admin/users")?.state === "BLOCKED",
       "BLOCKED: admin/users refuses logged-out visitors",
       diff("GET /api/admin/users")?.state,
+    );
+    check(
+      retestLedgerText(retest) ===
+        "Static flagged 1 · fixed & verified 2 · still vulnerable 0 · refuted 0 · couldn't test 0",
+      "retest ledger calls out fixed & verified 2",
+      retestLedgerText(retest),
     );
     check(
       diff("GET /api/invoices/[id]")?.state === "UNCHANGED",

@@ -65,13 +65,13 @@ Arrange the windows: Terminal 2 large on the left, Claude Code on the right, bro
 
 ## Live flow (about 90 seconds)
 
-| Time  | Where       | Do this                                              | What the audience sees                                                                                                            |
-| ----- | ----------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| 0:00  | Terminal 2  | `vibesafe attack --open-report`                      | Banner, then **CONFIRMED: Alice read Bob's note**, **CONFIRMED: a logged-out visitor read /api/admin/users**, REFUTED, NOT TESTED |
-| 0:05  | Browser     | Point at the ledger                                  | "Static flagged 4 · live confirmed 2 · refuted 1 · couldn't test 1", static and live evidence side by side                        |
-| 0:15  | Claude Code | Type: `Fix the issues in .vibesafe/attack-report.md` | Claude reads the report and adds the owner check and the admin check (allow up to 60 s)                                           |
-| ~1:15 | Terminal 2  | `vibesafe attack --retest --open-report`             | **BLOCKED**: Alice can no longer read Bob's note, "owner access still works ✓"; admin/users BLOCKED; invoices still refuted       |
-| ~1:30 | Browser     | Point at the before/after view                       | The retest view of the HTML report                                                                                                |
+| Time  | Where       | Do this                                              | What the audience sees                                                                                                                                                                                                          |
+| ----- | ----------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0:00  | Terminal 2  | `vibesafe attack --open-report`                      | Banner, then **CONFIRMED: Alice read Bob's note**, **CONFIRMED: a logged-out visitor read /api/admin/users**, REFUTED, NOT TESTED                                                                                               |
+| 0:05  | Browser     | Point at the ledger                                  | "Static flagged 4 · live confirmed 2 · refuted 1 · couldn't test 1", static and live evidence side by side                                                                                                                      |
+| 0:15  | Claude Code | Type: `Fix the issues in .vibesafe/attack-report.md` | Claude reads the report and adds the owner check and the admin check (allow up to 60 s)                                                                                                                                         |
+| ~1:15 | Terminal 2  | `vibesafe attack --retest --open-report`             | **BLOCKED**: Alice can no longer read Bob's note, "owner access still works ✓"; admin/users BLOCKED; invoices still refuted. Ledger: "Static flagged 4 · fixed & verified 2 · still vulnerable 0 · refuted 1 · couldn't test 1" |
+| ~1:30 | Browser     | Point at the before/after view                       | The retest view of the HTML report                                                                                                                                                                                              |
 
 What to say at each step:
 
@@ -80,7 +80,7 @@ What to say at each step:
 - **Retest:** "Same attacks, replayed. Blocked, and Bob can still read his own note. A fix that locks everyone out would show up as BROKEN."
 - **Exit codes, if asked:** the baseline exits 1 (confirmed issues), the retest exits 0, so it can gate a deploy.
 
-Claude may end with "run `npx vibesafe attack --retest`". Ignore that and use the `vibesafe` command from your profile.
+Claude may end by asking you to run `vibesafe attack --retest`. That is the command to run.
 
 ## Between visitors (reset, about 10 seconds)
 
