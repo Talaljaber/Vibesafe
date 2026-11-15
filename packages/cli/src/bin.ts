@@ -8,6 +8,7 @@ import { runWatch } from "./commands/watch.js";
 import { runFixWizard } from "./commands/fix-wizard.js";
 import { runFixAllCommand } from "./commands/fix-all.js";
 import { runHookClaude } from "./commands/hook.js";
+import { runAttackCommand } from "./commands/attack.js";
 import { createRequire } from "node:module";
 
 // Real CLI version; both dist/bin.js and src/bin.ts sit one level below package.json.
@@ -172,6 +173,25 @@ program
     });
   });
 
+program
+  .command("attack")
+  .description(
+    "Prove static findings against your local dev server with safe live requests (loopback only, GET only)",
+  )
+  .argument("[dir]", "Project directory", ".")
+  .option("--target <url>", "Dev server URL (loopback only); detected when omitted")
+  .option("--sessions <file>", "Test sessions file (default .vibesafe/sessions.json)")
+  .option("--retest", "Replay the baseline attacks and compare (never overwrites the baseline)")
+  .option("--new-baseline", "Archive the existing baseline and record a new one")
+  .option("--dry-run", "Print the planned requests and send nothing")
+  .option("--replay <attackId>", "Re-send one result's requests and print the outcome")
+  .option("--rate <rps>", "Requests per second (default 5)")
+  .option("--open-report", "Open the HTML report in your browser")
+  .option("-j, --json", "Print the run as JSON on stdout (no banner)")
+  .action(async (dir: string, options) => {
+    await runAttackCommand(dir, options);
+  });
+
 // Agent hooks and scan exit-code help.
 program
   .command("hook")
@@ -195,6 +215,19 @@ program.commands
       "  0  scan passed: deploy status safe or warning",
       "  1  deploy status danger or blocker (a deploy-blocking finding, or score below 40)",
       "  2  usage or runtime error (unknown --format, unwritable --output, scan failure)",
+    ].join("\n"),
+  );
+
+program.commands
+  .find((c) => c.name() === "attack")
+  ?.addHelpText(
+    "after",
+    [
+      "",
+      "Exit codes:",
+      "  0  nothing confirmed (on --retest: nothing still vulnerable and nothing new)",
+      "  1  at least one issue confirmed live, still vulnerable, or new",
+      "  2  usage or runtime error (baseline exists, no baseline, target not verified, bad sessions file)",
     ].join("\n"),
   );
 
