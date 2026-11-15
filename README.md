@@ -109,6 +109,24 @@ Scans once, then re-scans on every file change and prints what got better or wor
 
 Prints a [Claude Code hook](https://docs.claude.com/en/docs/claude-code/hooks) that re-scans the project after every `Edit`, `MultiEdit` or `Write` and shows Claude the markdown summary when the deploy status is `danger` or `blocker`, so it can fix the findings itself. `--write` merges the hook into `.claude/settings.json` and keeps existing settings. The hook scan is offline (no `--online`, no `--deep`). See [`examples/claude-code`](examples/claude-code/README.md).
 
+**`vibesafe attack [dir]`** (Attack Mode)
+
+Proves the static findings against your running local dev server. It sends a few safe requests (for example, signed in as Alice, ask for Bob's note) and reports which findings are real (CONFIRMED), which the live test refuted, and which it could not test. Safety rules: loopback targets only (`127.0.0.1`, `[::1]`, `localhost`), `GET` only, no request bodies, 5 requests per second by default and at most 300 requests per run. Responses are reported as shapes (status, key names), never values. Results go to `.vibesafe/` (`attack-report.md` for your AI agent, `attack-report.html` for people).
+
+| Option                | What it does                                                                                                                                                  |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--target <url>`      | Dev server URL (loopback only). Detected when omitted.                                                                                                        |
+| `--sessions <file>`   | Test sessions file (default `.vibesafe/sessions.json`).                                                                                                       |
+| `--retest`            | Replays every baseline attack and shows what is now `BLOCKED` (and that the owner still has access), still vulnerable, or new. Never overwrites the baseline. |
+| `--new-baseline`      | Archives the existing baseline and records a new one.                                                                                                         |
+| `--dry-run`           | Prints the planned requests and sends nothing.                                                                                                                |
+| `--replay <attackId>` | Re-sends one result's requests (for example `ATK-df44c1e8a995`) and prints the outcome.                                                                       |
+| `--rate <rps>`        | Requests per second (default 5).                                                                                                                              |
+| `--open-report`       | Opens the HTML report in your browser.                                                                                                                        |
+| `-j`, `--json`        | Prints the run as JSON on stdout, with no banner.                                                                                                             |
+
+Exit codes: `0` when nothing is confirmed (on `--retest`: nothing still vulnerable and nothing new), `1` when at least one issue is confirmed live, still vulnerable or new, `2` for usage or runtime errors (a baseline already exists, no baseline to retest, the target could not be verified, an invalid sessions file).
+
 Run `vibesafe --help` or `vibesafe <command> --help` for the full list.
 
 **Exit codes:** `scan` exits with `1` when the deploy status is `blocker` or `danger`, so it can gate CI, and with `2` when the scan itself fails.
