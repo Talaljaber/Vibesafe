@@ -297,7 +297,10 @@ export class SafeHttpClient {
       const started = Date.now();
       const hop = await sendOnce(decision.url, decision.kind, headers, timeoutMs, "127.0.0.1");
       const ms = Date.now() - started;
-      this.record(method, decision.url.href, hop.status, ms, req.session);
+      // Followed redirect hops are server-chosen: log origin and path only, never their query.
+      const shownUrl =
+        hops === 0 ? decision.url.href : `${decision.url.origin}${decision.url.pathname}`;
+      this.record(method, shownUrl, hop.status, ms, req.session);
 
       const response: SafeResponse = {
         status: hop.status,
@@ -313,12 +316,25 @@ export class SafeHttpClient {
 
       // Redirect handling: same origin only, at most 3 hops, every hop goes through the gate.
       const blockRedirect = (reason: GateReason): SafeResponse => {
-        this.record(method, hop.location ?? "", 0, 0, req.session, reason);
+        // Persisted logs never carry a server-controlled query (OAuth or magic-link tokens).
+        let shown = "(redirect)";
+        try {
+          const u = new URL(hop.location ?? "", decision.url);
+          shown = `${u.origin}${u.pathname}`;
+        } catch {
+          // keep the placeholder
+        }
+        this.record(method, shown, 0, 0, req.session, reason);
         return { ...response, redirectBlocked: true, blocked: reason };
       };
       const loc = hop.location;
       const absolute = /^[A-Za-z][A-Za-z0-9+.-]*:/.test(loc) || loc.startsWith("//");
-      const rawTarget = loc.startsWith("//") ? `${decision.url.protocol}${loc}` : loc;
+      // A fragment is never sent, so drop it before gating, as the relative path does below.
+      const hashAt = loc.indexOf("#");
+      const locNoHash = hashAt >= 0 ? loc.slice(0, hashAt) : loc;
+      const rawTarget = locNoHash.startsWith("//")
+        ? `${decision.url.protocol}${locNoHash}`
+        : locNoHash;
       let next: URL;
       try {
         next = new URL(loc, decision.url);

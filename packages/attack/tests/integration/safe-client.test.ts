@@ -31,9 +31,15 @@ beforeAll(async () => {
     } else if (url.startsWith("/hop/")) {
       const n = Number(url.slice(5));
       res.writeHead(302, { location: `/hop/${n + 1}` }).end();
+    } else if (url === "/to-absolute-fragment") {
+      res.writeHead(302, { location: `http://127.0.0.1:${port}/login#next` }).end();
+    } else if (url === "/to-token-external") {
+      res.writeHead(302, { location: "http://example.com/cb?token=SECRETTOKEN#frag" }).end();
+    } else if (url === "/to-query") {
+      res.writeHead(302, { location: "/login?token=SECRETQ" }).end();
     } else if (url === "/to-login") {
       res.writeHead(302, { location: "/login#next" }).end();
-    } else if (url === "/login") {
+    } else if (url.split("?")[0] === "/login") {
       res.end("login");
     } else if (url === "/slow") {
       // never answers
@@ -101,6 +107,24 @@ describe("SafeHttpClient", () => {
     const res = await new SafeHttpClient({ ...fast }).request({ url: `${base()}/big` });
     expect(res.bodyTruncated).toBe(true);
     expect(res.body.length).toBe(256 * 1024);
+  });
+
+  it("logs a blocked redirect without its query string or fragment", async () => {
+    const client = new SafeHttpClient({ ...fast });
+    const res = await client.request({ url: `${base()}/to-token-external` });
+    expect(res.redirectBlocked).toBe(true);
+    const logged = JSON.stringify(client.log);
+    expect(logged).not.toContain("SECRETTOKEN");
+    expect(logged).toContain("http://example.com/cb");
+  });
+
+  it("never logs the query of a followed same-origin redirect hop", async () => {
+    const client = new SafeHttpClient({ ...fast });
+    const res = await client.request({ url: `${base()}/to-query` });
+    expect(res.status).toBe(200);
+    const logged = JSON.stringify(client.log);
+    expect(logged).not.toContain("SECRETQ");
+    expect(logged).toContain("/login");
   });
 
   it("follows a same-host redirect through the gate", async () => {
@@ -179,6 +203,16 @@ describe("SafeHttpClient", () => {
     expect(r.status).toBe(200);
     expect(r.body).toBe("login");
     expect(seen.map((s) => s.url)).toEqual(["/to-login", "/login"]);
+  });
+
+  it("follows an absolute same-origin redirect with a fragment, sending no fragment", async () => {
+    const client = new SafeHttpClient({ ...fast });
+    const r = await client.request({ url: `${base()}/to-absolute-fragment` });
+    expect(r.redirectBlocked).toBeUndefined();
+    expect(r.status).toBe(200);
+    expect(r.body).toBe("login");
+    expect(seen.map((s) => s.url)).toEqual(["/to-absolute-fragment", "/login"]);
+    expect(client.log.every((e) => !e.url.includes("#"))).toBe(true);
   });
 
   it("keeps the 3xx when the ceiling stops a redirect hop", async () => {

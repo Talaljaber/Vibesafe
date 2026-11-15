@@ -445,6 +445,30 @@ describe("idor.evaluate review fixes", () => {
     expect(r.outcome).toBe("NOT_REPRODUCED");
   });
 
+  it("no id key: the same body for everyone (anonymous too) is INCONCLUSIVE, never CONFIRMED", () => {
+    const same = { title: "welcome", body: "x" };
+    const r = run([
+      res("R0", 200, same),
+      res("R1", 200, same),
+      res("R2", 200, same),
+      res("R3", 200, same),
+    ]);
+    expect(r.outcome).toBe("INCONCLUSIVE");
+    expect(r.severity).not.toBe("critical");
+  });
+
+  it("no id key: anonymous copy of bob's distinct record is still CONFIRMED critical", () => {
+    const bobs = { title: "bob", body: "y" };
+    const r = run([
+      res("R0", 200, bobs),
+      res("R1", 200, { title: "alice", body: "x" }),
+      res("R2", 200, bobs),
+      res("R3", 200, bobs),
+    ]);
+    expect(r.outcome).toBe("CONFIRMED");
+    expect(r.severity).toBe("critical");
+  });
+
   it("curl lines are escaped placeholders", () => {
     const evil = { ...bob, resources: { "/api/notes/[id]": "n1" } };
     const g = idor.plan(ctx({ sessions: [alice, evil] }))[0]!;

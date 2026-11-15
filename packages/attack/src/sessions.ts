@@ -17,7 +17,7 @@ const LOOPBACK_HOSTS = new Set(["127.0.0.1", "[::1]", "::1", "localhost"]);
 const LABEL_RE = /^[A-Za-z0-9_.-]{1,32}$/;
 const RESOURCE_ID_RE = /^[A-Za-z0-9_.~:-]{1,128}$/;
 const MAX_SESSIONS = 10;
-const MAX_RATE = 100;
+export const MAX_RATE = 100;
 const BAD_CHARS_RE = /[\\\u0000-\u0020\u007f]/;
 
 export const SESSIONS_RELATIVE_PATH = path.join(".vibesafe", "sessions.json");
@@ -133,7 +133,7 @@ function parseSession(file: string, raw: unknown, i: number): SessionSpec {
         `${file}: ${at}.resources key "${pattern}" must be a route pattern starting with "/"`,
       );
     }
-    if (typeof id !== "string" || !RESOURCE_ID_RE.test(id)) {
+    if (typeof id !== "string" || !RESOURCE_ID_RE.test(id) || id === "." || id === "..") {
       throw new AttackConfigError(
         `${file}: ${at}.resources["${pattern}"] must be a string of 1-128 characters from [A-Za-z0-9_.~:-]`,
       );
